@@ -62,11 +62,17 @@ templates/ (294 files)  staticfiles/ (77)  fixtures/ (1)  tests/ (182, not shipp
 
 ## Coupling
 
-`cis` imports outward into 19 apps — `myce` (46), `future_sections` (32), `ethos` (18),
-`grades` (14), `student_transactions` (12), `student_onboarding` (12), `setting` (10),
+`cis` imports outward into 18 apps — `myce` (46), `future_sections` (32), `ethos` (18),
+`student_transactions` (12), `student_onboarding` (12), `setting` (10),
 `myce_tenant_configs` (9) and others — while `future_sections` imports `cis` 150 times in
 return. This is mutual coupling by design; it is documented as host requirements rather
 than declared as dependencies.
+
+`grades` is the exception, and the pattern to copy when an app should be optional: as of
+v0.0.4 `cis` imports it exactly zero times. All grade logic moved into the `grades` package,
+and the handful of cis features that need a grade fact call `cis/integrations/grades.py`,
+which detects the app with `find_spec` once at import and returns safe defaults when it is
+missing. Never reintroduce a direct `from grades …` import into `cis`.
 
 ## Tenant seam
 
