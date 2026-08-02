@@ -37,9 +37,16 @@
                     <li class="nav-item">
                         <a class="nav-link" data-toggle="tab" href="#by_syllabi">By Syllabi</a>
                     </li>
-                    <li class="nav-item d-none">
-                        <a class="nav-link" data-toggle="tab" href="#grades">Grades</a>
+                    {# Tabs contributed by other installed apps (e.g. `grades`). #}
+                    {# Emits nothing at all when nothing is registered. #}
+                    {% for slug, tab in extra_tabs.items %}
+                    <li class="nav-item{% if tab.hidden %} d-none{% endif %}">
+                        <a class="nav-link" data-toggle="tab" href="#{{ tab.slug }}">
+                            {% if tab.icon %}<i class="{{ tab.icon }}"></i> {% endif %}{{ tab.title }}
+                            {% if tab.badge %}<span class="badge badge-pill badge-secondary">{{ tab.badge }}</span>{% endif %}
+                        </a>
                     </li>
+                    {% endfor %}
                     <li class="nav-item d-none">
                         <a class="nav-link" data-toggle="tab" href="#archived">Archived</a>
                     </li>
@@ -213,10 +220,13 @@
                     </div>
                     <!-- end tab # records_active -->
 
-                    <div class="tab-pane" id="grades">
-                        {% include "grades/partials/_sections_grades_tab.html" %}
-                    </div>
-                    <!-- end tab # grades -->
+                    {# Panes for externally-registered tabs. Rendered eagerly by  #}
+                    {# TabRegistry.for_record (lazy=False), so no AJAX endpoint  #}
+                    {# is needed and `tab.url` is unused on this page.           #}
+                    {% for slug, tab in extra_tabs.items %}
+                    <div class="tab-pane" id="{{ tab.slug }}">{{ tab.html|safe }}</div>
+                    {% endfor %}
+                    <!-- end externally-registered tabs -->
 
                 </div>
                 <!-- end tab-content -->

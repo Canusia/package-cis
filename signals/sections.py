@@ -62,41 +62,12 @@ def grades_submitted(sender, instance, **kwargs):
             status_changed_on = {}
 
         instance.grade_status_changed_on = status_changed_on
-        status_changed_on[datetime.now().strftime('%m/%d/%Y %I:%M:%S %p')] = status 
+        status_changed_on[datetime.now().strftime('%m/%d/%Y %I:%M:%S %p')] = status
 
-        from grades.settings.class_section_grades import class_section_grades
-        gr_settings = class_section_grades.from_db()
-
-        subject = gr_settings.get('grades_submitted_email_subject')
-        message = gr_settings.get('grades_submitted_email')
-
-        if status == 'submitted':
-            message = Template(message)
-            context = Context({
-                'instructor_first_name': instance.teacher.user.first_name,
-                'instructor_last_name': instance.teacher.user.last_name,
-                'course': instance.course,
-                'class_number': instance.class_number
-            })
-            to = [instance.teacher.user.email]
-
-            text_body = message.render(context)
-
-            template = get_template('cis/email.html')
-            html_body = template.render({
-                'message': text_body
-            })
-
-            if getattr(settings, 'DEBUG', True):
-                to = ['kadaji@gmail.com']
-
-            send_html_mail(
-                subject,
-                text_body,
-                html_body,
-                settings.DEFAULT_FROM_EMAIL,
-                to
-            )
+        # NOTE: the "grade_status == 'submitted'" instructor notification email that
+        # used to live here now belongs to the optional ``grades`` app
+        # (``grades/signals.py``). ``cis`` keeps only the timestamp bookkeeping on
+        # its own field.
 
 @receiver(pre_save, sender=ClassSection)
 def roster_status_updated(sender, instance, **kwargs):

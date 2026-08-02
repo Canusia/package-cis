@@ -470,9 +470,6 @@ class SetNeedsMirroringForm(forms.Form):
         return value
 
 
-# Grade forms moved to grades app - re-export for backward compatibility
-from grades.forms.section import ClassSectionGradeForm, ClassSectionGradeFormSet
-
 
 class AddNewHighSchoolClassOfferingForm(forms.Form):
     """

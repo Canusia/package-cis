@@ -576,18 +576,6 @@ class ClassSection(MyCEBaseModel):
         
     #     return costs
 
-    def get_students_for_grades(self):
-        from grades.settings.class_section_grades import class_section_grades
-        settings = class_section_grades.from_db()
-
-        registration_status = settings.get('registration_status')
-        students = self.get_students(
-            status=registration_status
-        )
-        return students
-
-    # end grades module
-
     @property
     def last_notified_roster_request(self):
         return self.last_notified()
@@ -612,22 +600,6 @@ class ClassSection(MyCEBaseModel):
             return '11/18/2018'
 
         return notifications.get(notif_type) if notifications.get(notif_type) else '11/18/2018'
-
-    @classmethod
-    def needs_grades_reminder(cls):
-        from grades.settings.class_section_grades import (
-            class_section_grades
-        )
-        notif_settings = class_section_grades.from_db()
-
-        reminder_dates_str = notif_settings.get('reminder_dates', '')
-        if not reminder_dates_str:
-            return False
-
-        today = datetime.datetime.now().strftime('%m/%d/%Y')
-        reminder_dates = [d.strip() for d in reminder_dates_str.split(',') if d.strip()]
-
-        return today in reminder_dates
 
     def needs_roster_verification_reminder(self):
         if self.roster_status != 'pending verification':
@@ -839,95 +811,6 @@ class ClassSection(MyCEBaseModel):
                     pending.add_note(None, 'Failed to Send pending roster verification email')
 
         summary += f"\r\nSuccessfully sent {success}. Failed to send {{failed}}"
-        return (summary, detailed_log)
-    
-    @classmethod
-    def notify_sections_pending_grade(cls, *args, **kwargs):
-        from django.db.models import Count
-        from grades.settings.class_section_grades import class_section_grades
-
-        configs = class_section_grades.from_db()
-        term_ids = configs.get('terms', [])
-
-        # Get all pending sections for adding notes later
-        all_pending_sections = ClassSection.objects.filter(
-            grade_status__in=['', 'saved'],
-            term__id__in=term_ids
-        )
-
-        pending_grades = all_pending_sections.annotate(
-            num_sections=Count('teacher__user__email', distinct=True)
-        ).order_by('teacher__user__email').values(
-            'teacher__user__first_name',
-            'teacher__user__last_name',
-            'teacher__user__email',
-            'num_sections'
-        ).distinct()
-
-        grading_terms = Term.objects.filter(id__in=term_ids)
-        term_labels = ', '.join([f"{term.label} {term.year}" for term in grading_terms])
-
-        summary = ''
-        detailed_log = {
-            'teachers_notified': []
-        }
-
-        # create and send email
-        email_subject = configs.get('grades_due_subject')
-        if not email_subject:
-            return None
-
-        summary = "Notifying for " + term_labels + "\r\n"
-        summary += 'Found ' + str(pending_grades.count()) + ' teachers'
-        for pending_grade in pending_grades:
-
-            detailed_log['teachers_notified'].append(
-                pending_grade
-            )
-            email_text = configs.get('grades_due_email')
-
-            teacher_email = pending_grade['teacher__user__email']
-            try:
-                validate_email(teacher_email)
-                send_to = [teacher_email]
-            except:
-                continue
-
-            if getattr(settings, 'DEBUG', True):
-                send_to = ['kadaji@gmail.com']
-
-            message = Template(email_text)
-            context = Context({
-                'teacher_first_name': pending_grade['teacher__user__first_name'],
-                'teacher_last_name': pending_grade['teacher__user__last_name'],
-                'number_of_sections_pending_grades': pending_grade['num_sections'],
-                'term': term_labels,
-            })
-
-            text_body = message.render(context)
-
-            template = get_template('cis/email.html')
-            html_body = template.render({
-                'message': text_body
-            })
-
-            send_html_mail(
-                email_subject,
-                text_body,
-                html_body,
-                settings.DEFAULT_FROM_EMAIL,
-                send_to
-            )
-
-            # Add note to each of this teacher's pending sections
-            teacher_sections = all_pending_sections.filter(
-                teacher__user__email=teacher_email
-            )
-            for section in teacher_sections:
-                section.add_note(
-                    note='Sent grades due reminder email'
-                )
-
         return (summary, detailed_log)
 
     def notify_teacher_on_roster_confirmed(self):
@@ -1701,17 +1584,15 @@ class StudentRegistration(models.Model):
     
     @property
     def submitted_grade(self):
-        if not self.class_section.grade_submitted:
-            return '-'
-        
-        from grades.settings.class_section_grades import class_section_grades
-        configs = class_section_grades.from_db()
+        """Display grade for this registration.
 
-        # if today is before configs['end_date'] then return '-'
-        if datetime.datetime.now() < datetime.datetime.strptime(configs.get('start_date', '11/01/2035'), '%m/%d/%Y'):
-            return '-'
-        
-        return self.grade
+        Grade *policy* lives in the optional ``grades`` app; this delegates
+        through the ``cis.integrations.grades`` shim, which returns ``'-'``
+        when grades is not installed.
+        """
+        from cis.integrations.grades import submitted_grade
+
+        return submitted_grade(self)
 
     @property
     def billed_school_cost(self):

@@ -741,61 +741,30 @@ def send_sms(to, text_body):
     return False
         
 # Start Grades Module
+#
+# These three helpers used to hold the grade-window logic themselves. That logic now
+# lives in ``grades.services.window``; the functions are kept here purely for
+# backward compatibility because host apps import them from ``cis.utils``
+# (``instructor/views/uploads.py`` and ``instructor/views/dashboard.py``).
+# They delegate through ``cis.integrations.grades``, so they degrade safely
+# (``''`` / ``False``) when the optional ``grades`` app is not installed.
 def grades_page_header_for_instructor():
-    from grades.settings.class_section_grades import class_section_grades
+    """Instructor grades page header. ``''`` when grades is absent."""
+    from cis.integrations.grades import page_header_for_instructor
 
-    settings = class_section_grades.from_db()
-    
-    header = settings.get('grades_closed')
-    if is_submit_grades_open():
-        header = settings.get('grades_open')
-
-    return header
+    return page_header_for_instructor()
 
 def can_view_grades():
-    from grades.settings.class_section_grades import class_section_grades
+    """Is the grade viewing window open? ``False`` when grades is absent."""
+    from cis.integrations.grades import can_view_grades as _can_view_grades
 
-    now = datetime.datetime.now()
-    settings = class_section_grades.from_db()
-    
-    start_date = datetime.datetime.strptime(
-        settings.get('viewable_from_date'),
-        '%m/%d/%Y'
-    )
-    if now < start_date:
-        return False
-
-    end_date = datetime.datetime.strptime(
-        settings.get('viewable_end_date'),
-        '%m/%d/%Y'
-    )
-    if now > end_date:
-        return False
-    return True
+    return _can_view_grades()
 
 def is_submit_grades_open():
-    try:
-        from grades.settings.class_section_grades import class_section_grades
+    """Is the grade submission window open? ``False`` when grades is absent."""
+    from cis.integrations.grades import is_submit_grades_open as _is_submit_grades_open
 
-        now = datetime.datetime.now()
-        settings = class_section_grades.from_db()
-        
-        start_date = datetime.datetime.strptime(
-            settings.get('start_date'),
-            '%m/%d/%Y'
-        )
-        if now < start_date:
-            return False
-
-        end_date = datetime.datetime.strptime(
-            settings.get('end_date'),
-            '%m/%d/%Y'
-        )
-        if now > end_date:
-            return False
-        return True
-    except:
-        return False
+    return _is_submit_grades_open()
 
 def upload_to_s3(results, path_prefix='ums/class_import/results'):
     time = datetime.datetime.now().strftime('%m%d%Y')

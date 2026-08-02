@@ -60,7 +60,8 @@ from cis.services.importers.class_section_schema import ClassSectionRow
 from cis.services.table_configs import get_table_config
 build_registrations_table_config = get_table_config('registrations_table').build_config
 build_sections_table_config = get_table_config('sections_table').build_config
-from grades.settings.class_section_grades import class_section_grades
+
+from myce.component_registry.class_section_index import class_section_index_tabs
 
 logger = logging.getLogger(__name__)
 
@@ -1187,41 +1188,18 @@ def index(request):
     menu = draw_menu(cis_menu, 'classes', 'sections')
     template = 'cis/sections/index.html'
 
-    # Grade statistics for grades tab
-    grade_settings = class_section_grades.from_db()
-    grade_term_ids = grade_settings.get('terms', [])
-
-    submitted_count = ClassSection.objects.filter(
-        grade_status='submitted',
-        term__id__in=grade_term_ids
-    ).count()
-    saved_count = ClassSection.objects.filter(
-        grade_status='saved',
-        term__id__in=grade_term_ids
-    ).count()
-    not_started_count = ClassSection.objects.filter(
-        grade_status='',
-        term__id__in=grade_term_ids
-    ).count()
-    total_count = submitted_count + saved_count + not_started_count
-
-    grade_stats = {
-        'submitted': submitted_count,
-        'saved': saved_count,
-        'not_started': not_started_count,
-        'total': total_count,
-        'completion_pct': round((submitted_count / total_count * 100), 1) if total_count > 0 else 0,
-    }
-
-    # Grade distribution
-    grade_distribution = StudentRegistration.objects.filter(
-        class_section__term__id__in=grade_term_ids,
-        class_section__grade_status='submitted'
-    ).exclude(grade='-').exclude(grade='').values('grade').annotate(
-        count=Count('grade')
-    ).order_by('grade')
-
-    grade_total = sum(item['count'] for item in grade_distribution)
+    # Tabs contributed by other apps (e.g. the optional `grades` package).
+    # Rendered eagerly (lazy=False) — this page has no per-tab AJAX route, so
+    # `url_for` is a no-op. With no app registering, this is empty and the
+    # template emits no extra nav item or pane.
+    extra_tabs = class_section_index_tabs.for_record(request, None, lambda slug: '#')
+    for slug, tab in extra_tabs.items():
+        # This page has no per-tab AJAX route, so a tab registered as lazy
+        # would leave a permanently empty pane. Render it now regardless.
+        if tab['html'] is None:
+            resp = class_section_index_tabs.render_tab(request, None, slug)
+            tab['html'] = resp.content.decode(resp.charset)
+            tab['lazy'] = False
 
     return render(
         request,
@@ -1260,11 +1238,7 @@ def index(request):
             'campus': get_accessible_campuses(request.user),
             'default_campus': get_default_campus(request.user),
             'terms': Term.objects.all(),
-            # Grade statistics
-            'grade_stats': grade_stats,
-            'grade_distribution': list(grade_distribution),
-            'grade_total': grade_total,
-            'grade_terms': Term.objects.filter(pk__in=grade_term_ids),
+            'extra_tabs': extra_tabs,
         }
     )
 

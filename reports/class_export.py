@@ -22,7 +22,7 @@ from cis.models.highschool import HighSchool
 from cis.models.term import Term
 from cis.models.course import Campus
 from cis.models.section import ClassSection, StudentRegistration
-from grades.settings.class_section_grades import class_section_grades
+from cis.integrations.grades import grade_scale
 from cis.campus_gate import get_accessible_campuses, scope_report_by_campus
 
 class class_export(forms.Form):
@@ -119,9 +119,11 @@ class class_export(forms.Form):
                 str(student_registration['class_section'])+'-'+student_registration['status']
             ] = student_registration['count']
 
-        # Get grade list from settings and aggregate grade counts
-        grade_settings = class_section_grades.from_db()
-        grade_list = [g.strip() for g in grade_settings.get('grades', '').split(',') if g.strip()]
+        # Get grade list from the grades app (via the cis shim) and aggregate
+        # grade counts. ``grade_scale()`` mirrors today's parsing, returning
+        # ``['']`` for an empty setting and ``[]`` when grades is absent; the
+        # strip/filter below collapses both to no grade columns, exactly as before.
+        grade_list = [g.strip() for g in grade_scale() if g.strip()]
 
         grade_registrations = StudentRegistration.objects.filter(
             class_section__id__in=section_ids
