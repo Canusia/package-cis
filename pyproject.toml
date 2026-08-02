@@ -10,7 +10,7 @@ authors = [
 ]
 description = "MyCE - core platform app (cis)"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 classifiers = [
     "Environment :: Web Environment",
     "Framework :: Django",

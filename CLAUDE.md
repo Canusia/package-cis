@@ -28,6 +28,29 @@
   self-rooted layout; they are remapped onto the `cis.` prefix with
   `package_dir={'cis': '.'}`. A switch to declarative `packages = find:` would install
   `models`, `views`, `forms` as top-level packages.
+- **`migrations/0056_studentregistration_mirror_fields.py` depends on
+  `('ethos', '0003_resource_preferred_representation')`** and adds an M2M to
+  `ethos.EthosLog`. This is an undeclared minimum-version coupling — it ships inside the
+  public wheel with no corresponding `install_requires` entry — so `cis` cannot be installed
+  against an `ethos` older than that migration.
+
+## Shipping a change to `cis`
+
+Editing files under `webapp/cis/**` on the host and merging `dev` → `staging` does **not**
+ship the change. `webapp/cis` is a gitlink; `/merge-to-staging` strips gitlinks, and
+production gets `cis` only from the `git+…@v0.0.1` pin in `webapp/requirements.txt`. The full
+sequence to actually ship a `cis` fix:
+
+1. Commit the change inside `webapp/cis` (it is a separate git repo).
+2. Push that commit to `Canusia/package-cis`.
+3. Tag a new version (e.g. `v0.0.2`).
+4. Bump the pin in `webapp/requirements.txt` to the new tag.
+5. `git add webapp/cis` in the host repo to move the gitlink to the new commit.
+6. Merge to staging/main as usual.
+
+**Skipping the tag-and-pin step means production silently keeps running the old version** —
+the build succeeds, there is no conflict and no warning, and the fix simply never reaches
+production.
 
 ## Structure
 
