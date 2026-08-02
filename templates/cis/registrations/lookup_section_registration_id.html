@@ -1,0 +1,51 @@
+{% extends 'cis/ajax-base.html' %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block body %}
+<div class="card">
+    <div class="card-body">
+        <h3 class="card-title">{{ title }}</h3>
+        <div class="card-text">
+            <p class="text-muted">
+                Ethos returned a section-registration record for
+                <strong>{{ registration.student }}</strong> — {{ registration.class_section }}.
+            </p>
+
+            <table class="table table-sm table-bordered">
+                <thead>
+                    <tr>
+                        <th style="width: 30%;">Field</th>
+                        <th>Current</th>
+                        <th>From Ethos</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr{% if has_changes %} class="table-warning"{% endif %}>
+                        <th>Section Registration SIS ID</th>
+                        <td>{{ current_sis_id|default:"—" }}</td>
+                        <td>{{ new_sis_id|default:"—" }}</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <form action="{{ form_action|safe }}" method="post" class="frm_ajax">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="{{ action_slug }}">
+                <input type="hidden" name="action_confirmed" value="1">
+                {% for id in ids %}<input type="hidden" name="ids[]" value="{{ id }}">{% endfor %}
+                <input type="hidden" name="new_sis_id" value="{{ new_sis_id }}">
+
+                {% if has_changes %}
+                    <p>Save this Section Registration ID to the registration?</p>
+                    <input type="submit" class="btn btn-primary btn-sm" value="Yes, save">
+                    <button type="button" class="btn btn-sm" data-dismiss="modal">Cancel</button>
+                {% else %}
+                    <p class="text-muted">No change — the registration already has this SIS ID.</p>
+                    <button type="button" class="btn btn-sm btn-primary" data-dismiss="modal">Close</button>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

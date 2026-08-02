@@ -1,0 +1,90 @@
+{% extends "cis/base.html" %}
+
+{% block title %}{{ MYCE_SETTINGS.site_name }} Students {% endblock %}
+{% block body %}
+
+<main role="main" id="content">
+
+    <section class="jumbotron text-center">
+        <div class="container">
+            <h1 class="jumbotron-heading">Welcome </h1>
+        </div>
+    </section>
+
+    <div class="py-5 bg-light">
+        <div class="container">
+
+            <div class="row ">
+                <div class="col-12 mb-3">
+                    <nav aria-label="breadcrumb">
+                        <ol class="breadcrumb">
+                            <li class="breadcrumb-item"><a href="{% url 'index' %}">Home</a></li>
+                            <li class="breadcrumb-item active" aria-current="page">Student</li>
+                        </ol>
+                    </nav>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-12">
+                    {% if messages %}
+                    <ul class="messages list-group">
+                        {% for message in messages %}
+                        <li{% if message.tags %} class="list-group-item {{ message.tags }}" {% endif %}>
+                            {{ message }}</li>
+                            {% endfor %}
+                    </ul>
+                    {% endif %}
+                    <!-- Tab panes -->
+                    <div class="tab-content1">
+                        <div id="prospects" class="container tab-pane active"><br>
+                            <h3 class="mb-4">
+                                {% if registration_is_open %}
+                                Log in or create a new record to register for {{MYCE_SETTINGS.college_name}} {{MYCE_SETTINGS.cep_full_name}} courses.
+                                {% else %}
+                                {{window_close_notice}}
+                                {% endif %}
+                            </h3>
+                            <div class="row">
+                                <div class="col-md-6 col-sm-12 mt-2">
+                                    <div class="card">
+                                        <div class="card-body">
+                                            <h5 class="card-title mb-3">Please log with your {{MYCE_SETTINGS.site_name}} account</h5>
+                                            <form method="POST">
+                                                {% csrf_token %}
+                                                <div class="form-group">
+                                                    <label for="userEmail">Username</label>
+                                                    <input type="text" class="form-control" id="userEmail" name='username' aria-describedby="emailHelp" placeholder="Enter your school username">
+                                                    <small id="emailHelp" class="form-text text-muted"></small>
+                                                </div>
+                                                <div class="form-group">
+                                                    <label for="inputPassword">Password</label>
+                                                    <input type="password" class="form-control" name='password' id="inputPassword" placeholder="Password">
+                                                </div>
+                                                <button type="submit" class="btn btn-primary">Login</button>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6 col-sm-12 mt-2">
+                                    <div class="card">
+                                        <div class="card-body">
+                                            {% if registration_is_open %}
+                                            <a href="{% url 'student:start_app' %}" class="btn btn-block btn-primary"><i
+                                                    class="fas fas-light fa-plus"></i>&nbsp;&nbsp;Start New Application</a>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+
+                                </div>
+                            </div>
+                        </div> <!-- end prospects -->
+                    </div>
+                </div>
+            </div>
+        </div> <!-- end row -->
+    </div> <!-- end container -->
+    </div> <!-- end py-5 -->
+
+</main>
+{% endblock %}

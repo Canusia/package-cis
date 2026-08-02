@@ -1,0 +1,106 @@
+<div class="row">
+  <div class="col-xl-12 col-md-12 mb-4">
+    <div class="card border-top-0">
+      <div class="card-body">
+        <div class="row no-gutters align-items-center">
+          <div class="col mr-2">
+            <div class="mb-0 font-weight-bold text-gray-800">
+              <script>
+                var tbl_registration_summary_by_create_date;
+                setInterval(function() {
+                    tbl_registration_summary_by_create_date.ajax.reload(null, false);
+                }, 5000 * 60);
+
+                $(document).ready(function () {
+                    tbl_registration_summary_by_create_date = $('#registration_summary_by_create_date').DataTable(
+                        {
+                          footerCallback: function (row, data, start, end, display) {
+                              let api = this.api();
+
+                              // Remove the formatting to get integer data for summation
+                              let intVal = function (i) {
+                                  return typeof i === 'string'
+                                      ? i.replace(/[\$,]/g, '') * 1
+                                      : typeof i === 'number'
+                                      ? i
+                                      : 0;
+                              };
+
+                              // Total over all pages
+                              total = api
+                                  .column(2)
+                                  .data()
+                                  .reduce((a, b) => intVal(a) + intVal(b), 0);
+
+                              // Total over this page
+                              pageTotal = api
+                                  .column(1, { page: 'current' })
+                                  .data()
+                                  .reduce((a, b) => intVal(a) + intVal(b), 0);
+
+                              // Update footer
+                              api.column(2).footer().innerHTML =
+                                  total;
+                          },
+                          "info": false,
+                          dom: 'B<"float-left mt-3 mb-3"l><"float-right mt-3"f><"row clear">rt<"row"<"col-6"i><"col-6 float-right"p>>',
+                          buttons: [
+                              {
+                                  extend: 'csv', className: 'btn btn-sm btn-primary text-white text-light',
+                                  text: '<i class="fas fa-file-csv text-white"></i>&nbsp;CSV',
+                                  titleAttr: 'Export Records in current View to CSV'
+                              },
+                              {
+                                  extend: 'print', className: 'btn btn-sm btn-primary text-white text-light',
+                                  text: '<i class="fas fa-print text-white"></i>&nbsp;Print',
+                                  titleAttr: 'Print Records in Current View'
+                              },
+                            ],
+                            stateSave: true,
+                            'paging': false,
+                            // 'searching': false,
+                            'columns': [
+                                {
+                                  'render': function (data, type, row, meta) {
+                                      return row.highschool_name
+                                  }
+                                  // 'orderable': false,
+                                  // 'searchable': false,
+                                },
+                                {
+                                  // 'orderable': false,
+                                  // 'searchable': false,
+                                },
+                                {
+                                  // 'orderable': false,
+                                  'searchable': false,
+                                }
+                            ]
+                        }
+                    ); //end registration_summary_by_create_date
+                });
+              </script>
+
+              <table id="registration_summary_by_create_date" class="table table-striped" style="width:100%" data-server-side="true" data-ajax="{{ registration_summary_api_url }}&records_type=by_highschool_registration_created">
+                  <thead>
+                      <tr>
+                          <th searchable="1" data-data="highschool_name" data-name="student.highschool.name">High School</th>
+                          <th searchable="1" data-data="status" data-name="status">Status</th>
+                          <th searchable="1" data-data="count" data-name='count'>Count</th>
+                      </tr>
+                  </thead>
+                  <tfoot>
+                      <tr>
+                          <th></th>
+                          <th style="text-align:right">Total:</th>
+                          <th></th>
+                      </tr>
+                  </tfoot>
+              </table>
+            </div> <!-- end mb-0 -->
+          </div> <!-- end col mr-2 -->
+        </div> <!-- end row no-gutters -->
+      </div> <!-- end card-body -->
+    </div> <!-- end card -->
+  </div> <!-- end col-xl-12 -->
+</div> <!-- end row -->

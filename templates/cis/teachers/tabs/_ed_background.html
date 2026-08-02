@@ -1,0 +1,130 @@
+{% load crispy_forms_tags %}
+<div class="row">
+    <div class="col-12 bg-gray-100">
+        <div class="card mb-4 border-top-0">
+            <div class="card-body">
+                <form action="" method="post" id="">
+                    {% csrf_token %}
+                    <div class="row form-group">
+                        <div class="col">Institution</div>
+                        <div class="col">Degree, Licensure, or Other</div>
+                        <div class="col">Major (if any)</div>
+                    </div>
+
+                    <div class="row form-group">
+                        <div class="col">
+                            <input type="text" name="ed_bg[institution]" class="form-control"
+                                placeholder=""
+                                value="{% if ed_bg %}{{ed_bg.institution.0}}{% endif %}">
+                        </div>
+                        <div class="col">
+                            <input type="text" name="ed_bg[degree]" class="form-control"
+                                placeholder=""
+                                value="{% if ed_bg %}{{ed_bg.degree.0}}{% endif %}">
+                        </div>
+                        <div class="col">
+                            <input type="text" name="ed_bg[major]" class="form-control"
+                                placeholder=""
+                                value="{% if ed_bg %}{{ed_bg.major.0}}{% endif %}">
+                            <input type="hidden" name="ed_bg[transcript_recv]"
+                                value="{% if ed_bg %}{{ed_bg.transcript_recv.0}}{% endif %}">
+                        </div>
+                    </div>
+
+                    <div class="row form-group">
+                        <div class="col">
+                            <input type="text" name="ed_bg[institution]" class="form-control"
+                                placeholder=""
+                                value="{% if ed_bg %}{{ed_bg.institution.1}}{% endif %}">
+                        </div>
+                        <div class="col">
+                            <input type="text" name="ed_bg[degree]" class="form-control"
+                                placeholder=""
+                                value="{% if ed_bg %}{{ed_bg.degree.1}}{% endif %}">
+                        </div>
+                        <div class="col">
+                            <input type="text" name="ed_bg[major]" class="form-control"
+                                placeholder=""
+                                value="{% if ed_bg %}{{ed_bg.major.1}}{% endif %}">
+                            <input type="hidden" name="ed_bg[transcript_recv]"
+                                value="{% if ed_bg %}{{ed_bg.transcript_recv.1}}{% endif %}">
+                        </div>
+                    </div>
+
+                    <div class="row form-group">
+                        <div class="col">
+                            <input type="text" name="ed_bg[institution]" class="form-control"
+                                placeholder=""
+                                value="{% if ed_bg %}{{ed_bg.institution.2}}{% endif %}">
+                        </div>
+                        <div class="col">
+                            <input type="text" name="ed_bg[degree]" class="form-control"
+                                placeholder=""
+                                value="{% if ed_bg %}{{ed_bg.degree.2}}{% endif %}">
+                        </div>
+                        <div class="col">
+                            <input type="text" name="ed_bg[major]" class="form-control"
+                                placeholder=""
+                                value="{% if ed_bg %}{{ed_bg.major.2}}{% endif %}">
+                            <input type="hidden" name="ed_bg[transcript_recv]"
+                                value="{% if ed_bg %}{{ed_bg.transcript_recv.2}}{% endif %}">
+                        </div>
+                    </div>
+
+                    <div class="row form-group">
+                        <div class="col">
+                            <input type="text" name="ed_bg[institution]" class="form-control"
+                                placeholder=""
+                                value="{% if ed_bg %}{{ed_bg.institution.3}}{% endif %}">
+                        </div>
+                        <div class="col">
+                            <input type="text" name="ed_bg[degree]" class="form-control"
+                                placeholder=""
+                                value="{% if ed_bg %}{{ed_bg.degree.3}}{% endif %}">
+                        </div>
+                        <div class="col">
+                            <input type="text" name="ed_bg[major]" class="form-control"
+                                placeholder=""
+                                value="{% if ed_bg %}{{ed_bg.major.3}}{% endif %}">
+                            <input type="hidden" name="ed_bg[transcript_recv]"
+                                value="{% if ed_bg %}{{ed_bg.transcript_recv.3}}{% endif %}">
+                        </div>
+                    </div>
+
+                    <div class="row form-group">
+                        <div class="col">
+                            <input type="text" name="ed_bg[institution]" class="form-control"
+                                placeholder=""
+                                value="{% if ed_bg %}{{ed_bg.institution.4}}{% endif %}">
+                        </div>
+                        <div class="col">
+                            <input type="text" name="ed_bg[degree]" class="form-control"
+                                placeholder=""
+                                value="{% if ed_bg %}{{ed_bg.degree.4}}{% endif %}">
+                        </div>
+                        <div class="col">
+                            <input type="text" name="ed_bg[major]" class="form-control"
+                                placeholder=""
+                                value="{% if ed_bg %}{{ed_bg.major.4}}{% endif %}">
+                            <input type="hidden" name="ed_bg[transcript_recv]"
+                                value="{% if ed_bg %}{{ed_bg.transcript_recv.4}}{% endif %}">
+                        </div>
+                    </div>
+
+                    {{ ed_bg_form.credits_earned|as_crispy_field }}
+                    {{ ed_bg_form.masters_level_credits|as_crispy_field }}
+                    {{ ed_bg_form.grad_courses|as_crispy_field }}
+                    {{ ed_bg_form.undergrad_program|as_crispy_field }}
+                    {{ ed_bg_form.certified_states|as_crispy_field }}
+                    {{ ed_bg_form.certified_subjects|as_crispy_field }}
+                    {{ ed_bg_form.highschool_years|as_crispy_field }}
+                    {{ ed_bg_form.college_years|as_crispy_field }}
+                    {{ ed_bg_form.courses_taught|as_crispy_field }}
+                    {{ed_bg_form.action|as_crispy_field}}
+
+                    <input type="submit" class="btn btn-primary btn-sm" value="Save">
+                </form>
+            </div>
+        </div>
+    </div>
+</div>

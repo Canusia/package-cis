@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "myce_cis"
+version = "0.0.1"
+authors = [
+  { name="Avinash Kadaji", email="avi@canusia.com" },
+]
+description = "MyCE - core platform app (cis)"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Environment :: Web Environment",
+    "Framework :: Django",
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/Canusia/package-cis"

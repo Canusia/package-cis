@@ -1,0 +1,148 @@
+{% extends "cis/logged-base.html" %}
+{%block title %}{{page_title}}{% endblock %}
+
+{% load templatehelpers %}
+{% load static %}
+
+{% block body %}
+<main>
+    <div class="">
+        <div class="row">
+            <div class="col-sm-6 col-xs-12">
+                <h1 class="h3 mb-4 text-gray-800">{{page_title}}&nbsp;
+                    <div class="btn-group btn-group-sm">
+                        <button type="button" class="btn btn-primary btn-sm dropdown-toggle" data-toggle="dropdown"
+                            aria-haspopup="true" aria-expanded="false">
+                            Actions
+                        </button>
+                        <div class="dropdown-menu">
+                            <a href="{% url urls.add_new %}" class="dropdown-item"><i
+                                    class="fas fa-plus"></i>&nbsp;&nbsp;Import PSID</a>
+                            <a href="{% url 'cis:settings_overview' 'student_registration' %}" class="dropdown-item"><i
+                                    class="fas fa-sliders-h"></i>&nbsp;&nbsp;Settings</a>
+                        </div>
+                    </div>
+                </h1>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <div class="">
+                {% include "cis/messages.html" with messages=messages %}
+                <ul class="nav nav-tabs">
+                    <li class="nav-item">
+                        <a class="nav-link active" data-toggle="tab" href="#all">All {{page_title}}</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-toggle="tab" href="#dirty">
+                            Profile Changes
+                        </a>
+                    </li>
+                    {% include "student_onboarding/ce/_tabs_nav.html" %}
+                </ul>
+
+                <div class="tab-content">
+                    <div class="tab-pane active " id="all">
+                        <div class="bg-white border border-top-0">
+                            <div class="col-12 pt-3 mb-3">
+
+                                <div class="row">                                    
+                                    <div class="col-md-12 mb-3">
+                                        <div class="card">
+                                            <div class="card-body bg-gray-200">
+                                                <form id="class_section_filter" class="form-inline filter">
+                                                    <div class="form-row">
+                                                        <div class="col">
+                                                            <div class="float-right">
+                                                                <input type="date" name="created_on" placeholder="Created On From" class="form-control mt-2" id="">&nbsp;&nbsp;
+                                                                <input placeholder="Created Until" type="date" name="created_until" class="form-control mt-2" id="">&nbsp;&nbsp;
+                                                                <select class="form-control mt-2" name="record_type">
+                                                                    <option value="">By Status</option>
+                                                                    <!-- <option value="missing_ssn" >Missing SSN</option> -->
+                                                                    <option value="not_verified" >Account Not Verified</option>
+                                                                    <option value="not_applied" >Not Applied for Class</option>
+                                                                    <option value="status_draft">Application: Draft</option>
+                                                                    <option value="status_pending">Application: Pending</option>
+                                                                    <option value="status_in_review">Application: In Review</option>
+                                                                    <option value="status_accepted">Application: Accepted</option>
+                                                                    
+                                                                    <!-- <option value="missing_sis_send">Not Sent to SIS</option>
+                                                                    <option value="missing_sis">Pending Applied</option>
+                                                                    <option value="pending_admit">Pending Admit</option>
+                                                                    <option value="pending_matriculation">Pending Matriculation</option> -->
+
+                                                                    <!-- <option value="sis_error" >SIS Error(s)</option> -->
+                                                                </select>
+                                                                &nbsp;
+                                                                <select class="form-control mt-2" name="term_id">
+                                                                    <option value="">By Term</option>
+                                                                    {% for c in terms %}
+                                                                    <option value="{{c.id}}"
+                                                                        >{{c.label}} {{c.year}}</option>
+                                                                    {% endfor %}
+                                                                </select>
+                                                                &nbsp;
+
+                                                                {% include 'snippets/campus.html' with campus=accessible_campuses default_campus=default_campus %}
+
+                                                                <div class="clearfix">&nbsp;</div>
+                                                                <input name="btn_search" id="id_btn_filter" type="button" value="Filter & Get Results" class="btn btn-primary">
+                                                            </div>
+
+                                                        </div>
+                                                    </div>
+                                                </form>
+
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {% include students_table.partial_template with config=students_table %}
+                            </div>
+                        </div>
+                    </div>
+                    <!-- end tab # records_active -->
+
+                    <div class="tab-pane" id="dirty">
+                        <div class="bg-white border border-top-0">
+                            <div class="col-12 pt-3 mb-3">
+
+                                <div class="row">
+                                    <div class="col-md-12 mb-3">
+                                        <div class="card">
+                                            <div class="card-body bg-gray-200">
+                                                <form id="dirty_students_filter" class="form-inline filter">
+                                                    <div class="form-row">
+                                                        <div class="col">
+                                                            <div class="float-right">
+                                                                <input type="date" name="created_on" placeholder="Created On From" class="form-control mt-2">&nbsp;&nbsp;
+                                                                <input placeholder="Created Until" type="date" name="created_until" class="form-control mt-2">&nbsp;&nbsp;
+                                                                {% include 'snippets/campus.html' with campus=accessible_campuses default_campus=default_campus %}
+                                                                <div class="clearfix">&nbsp;</div>
+                                                                <input name="btn_search" type="button" value="Filter & Get Results" class="btn btn-primary">
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {% include dirty_students_table.partial_template with config=dirty_students_table %}
+                            </div>
+                        </div>
+                    </div>
+
+                    {% include "student_onboarding/ce/_tab_by_student.html" %}
+                    {% include "student_onboarding/ce/_tab_by_highschool.html" %}
+                    {% include "student_onboarding/ce/_tab_timeline.html" %}
+                    {% include "student_onboarding/ce/_tab_stalled.html" %}
+
+            </div>
+        </div>
+
+</main>
+
+{% endblock %}

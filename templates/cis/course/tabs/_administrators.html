@@ -1,0 +1,63 @@
+{% load crispy_forms_tags %}
+<div class="card border-top-0 pt-4 pb-2">
+    <div class="col-12">
+        <p class="alert alert-info">List all faculty, visitor(s) and administrators for this course.</p>
+        <div class="float-right mb-3"><a href="#administrators"
+            class="btn btn-sm btn-primary ajax-add_new" data-parent="{{record.id}}"
+            data-id="-1" data-modal="modal-add_new" data-model="course_administrator"
+            data-updater=""><i class="fa fas-light fa-plus-circle"></i>&nbsp;Add New</a></div>
+            <div class="clearfix">&nbsp;</div>
+        <div class="pb-2 card border-0">
+            <div class="">
+                <div class="table-responsive">
+                    <table class="table dataTable table-striped">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Role</th>
+                                <th>Status</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for r in administrators %}
+                            <tr>
+                                <td>
+                                    <a title="Edit" data-parent="{{record.id}}" class="ajax-add_new"
+                                    data-id="{{r.id}}" data-modal="modal-add_new" data-model="course_administrator" href="#administrators">
+                                        {{r.user}}
+                                    </a>
+                                </td>
+                                <td>{{r.role}}</td>
+                                <td>{{r.status}}</td>
+                                <td>
+                                    <a title="Edit" data-parent="{{record.id}}" class="ajax-add_new"
+                                    data-id="{{r.id}}" data-modal="modal-add_new" data-model="course_administrator" href="#administrators">
+                                        Edit
+                                    </a>
+                                </td>
+                            </tr>
+                            </a>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div> <!-- end table-responsive -->
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 d-none">
+        <div class="clearfix">&nbsp;</div>
+        {% if not course_admin %}
+        <h3 class="mb-3">Add New</h3>
+        {% else %}
+        <h3 class="mb-3">Edit</h3>
+        {% endif %}
+        <form action="" method="post">
+            {% csrf_token %}
+            {{ course_admin_form | crispy }}
+            <input type="hidden" name="action" value='save_course_admin'>
+            <input type="submit" class="btn btn-primary btn-sm" value="Save">
+        </form>
+    </div>
+</div>

@@ -1,0 +1,49 @@
+{% extends "cis/logged-base.html" %}
+{%block title %}{{ page_title }}{% endblock %}
+
+{% load templatehelpers %}
+{% load crispy_forms_tags %}
+
+{% block body %}
+<main>
+    <div class="row">
+        <div class="col-12">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="/">Home</a></li>
+                    <li class="breadcrumb-item"><a href='#' onClick="javscript:window.history.back()">Back</a>
+                    </li>
+                    <li class="breadcrumb-item active" aria-current="page">SIS Log</li>
+                </ol>
+            </nav>
+        </div>
+
+        <div class="col-6">
+            <div class="card">
+                <div class="card-body">                    
+                    <pre>{{record.message.url|pretty_json}}<br>
+                        {% if record.message.headers %}{{record.message.headers|pretty_json}}<br>{% endif %}
+                        {% if record.message.data %}{{record.message.data|load_and_pretty_json}}{% endif %}</pre>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-6">
+            <div class="card">
+                <div class="card-body">
+                    {% if record.response.response %}
+                        <pre>{{record.response.status|pretty_json}}<br>{{record.response.response|load_and_pretty_json}}
+                        </pre>
+                    {% else %}
+                        <pre>{{record.response.status|pretty_json}}<br>{{record.response.message|load_and_pretty_json}}</pre>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+
+    </div> <!-- end row -->
+
+
+</main>
+{% endblock %}

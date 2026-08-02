@@ -1,0 +1,110 @@
+{% extends "cis/logged-base.html" %}
+{%block title %}{{page_title}}{% endblock %}
+
+{% load templatehelpers %}
+
+{% block body %}
+<main>
+    <div class="">
+        <div class="row">
+            <div class="col-sm-6 col-xs-12">
+                <h1 class="h3 mb-4 text-gray-800">{{page_title}}&nbsp;&nbsp;
+                    <div class="btn-group btn-group-sm">
+                        <button type="button" class="btn btn-primary btn-sm dropdown-toggle" data-toggle="dropdown"
+                            aria-haspopup="true" aria-expanded="false">
+                            Actions
+                        </button>
+                        <div class="dropdown-menu">
+                            <a href="{% url 'cis:faculty_coordinator_add_new' %}" class="dropdown-item"><i
+                                    class="fas fa-plus"></i>&nbsp;&nbsp;Add New</a>
+                        </div>
+                    </div>
+                </h1>
+            </div>
+        </div>
+
+        <div class="table-responsive" style="min-height: 500px;">
+            <ul class="nav nav-tabs">
+                <li class="nav-item">
+                    <a class="nav-link active" data-toggle="tab" href="#faculty">All Faculty</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" data-toggle="tab" href="#all">By Course</a>
+                </li>
+            </ul>
+
+            <div class="tab-content">
+                <div class="tab-pane active" id="faculty">
+                    <div class="bg-white border border-top-0">
+                        <div class="card border-top-0">
+                            <div class="card-body">
+                                {% include faculty_table.partial_template with config=faculty_table %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tab-pane" id="all">
+                    <div class="bg-white border border-top-0">
+                        <div class="card border-top-0">
+                            <div class="card-body">
+                                <div class="card mb-3">
+                                    <div class="card-body bg-gray-200">
+                                        <form id="faculty_filter" class="form-inline filter mb-3">
+                                            {% include 'snippets/campus.html' with campus=accessible_campuses default_campus=default_campus %}
+                                        </form>
+                                    </div>
+                                </div>
+                                {% include faculty_coords_table.partial_template with config=faculty_coords_table %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+</main>
+
+<script>
+    // The By Course table now initialises inside a hidden pane, where DataTables
+    // measures every column as zero-width. Re-measure when its tab is shown.
+    jQuery(function ($) {
+        $('a[data-toggle="tab"]').on('shown.bs.tab', function () {
+            $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
+        });
+    });
+
+    function do_bulk_action(action, dt) {
+        if (!dt.rows('.selected').any()) {
+            alert("Please select a row and try again.");
+            return;
+        }
+
+        var selectedRows = dt.rows({ selected: true });
+        let data = {
+            'action': action,
+            'ids': Array()
+        };
+        selectedRows.every(function () {
+            data.ids.push(this.id());
+        });
+
+        $(dt).block();
+        let url = "{% url 'cis:faculty_bulk_actions' %}";
+        let modal = "modal-bulk_actions";
+
+        $.ajax({
+            type: "GET",
+            url: url,
+            data: data,
+            success: function (response) {
+                $(dt).unblock();
+                $("#bulk_modal_content").html(response);
+                $("#" + modal).modal('show');
+            }
+        });
+    }
+</script>
+{% endblock %}

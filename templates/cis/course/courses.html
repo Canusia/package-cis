@@ -1,0 +1,91 @@
+{% extends "cis/logged-base.html" %}
+{%block title %}{{page_title}}{% endblock %}
+
+{% load templatehelpers %}
+{% load static %}
+
+{% block body %}
+<script src="{% static 'js/courses.js' %}"></script>
+
+<main>
+    <div class="">
+        <div class="row">
+            <div class="col-sm-6 col-xs-12">
+                <h1 class="h3 mb-4 text-gray-800">{{page_title}}&nbsp;
+                    <div class="btn-group btn-group-sm">
+                        <button type="button" class="btn btn-primary btn-sm dropdown-toggle" data-toggle="dropdown"
+                            aria-haspopup="true" aria-expanded="false">
+                            Actions
+                        </button>
+                        <div class="dropdown-menu">
+                            <a href="{% url urls.add_new %}" class="dropdown-item"><i
+                                    class="fas fa-plus"></i>&nbsp;&nbsp;Add New</a>
+                        </div>
+                    </div>
+                </h1>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <div class="">
+                <ul class="nav nav-tabs">
+                    <li class="nav-item">
+                        <a class="nav-link active" data-toggle="tab" href="#all">All Courses</a>
+                    </li>
+                    <li class="nav-item d-none">
+                        <a class="nav-link" data-toggle="tab" href="#course_requirements">Course Requirements</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-toggle="tab" href="#course_administrators">By Course Administrator</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-toggle="tab" href="#app_requirements">Teacher App Requirements</a>
+                    </li>
+                </ul>
+
+                <div class="tab-content">
+
+                    {% comment %}
+                    Course Requirements (#course_requirements) AND By Course
+                    Administrator (#course_administrators) panes — incl. the
+                    table_course_administrator DataTable init — are owned and
+                    rendered by this include. Do not add a second
+                    #course_administrators pane here (duplicate-id collision).
+                    {% endcomment %}
+                    {% include "instructor_app/ce/course_requirements_tab.html" %}
+
+                    <div class="tab-pane active " id="all">
+                        <div class="bg-white border border-top-0">
+                            <div class="col-12 pt-3 mb-3">
+                                <form id="courses_campus_filter" class="form-inline filter mb-3">
+                                    <label class="mr-2 mb-0">Campus:</label>
+                                    <select class="form-control" name="campus">
+                                        <option value="-1">All My Campuses</option>
+                                        {% for c in accessible_campuses %}
+                                        <option value="{{ c.id }}" {% if c.id|stringformat:'s' == default_campus %}selected{% endif %}>{{ c.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </form>
+                                {% include courses_table.partial_template with config=courses_table %}
+                            </div>
+                        </div>
+                    </div>
+                    <!-- end tab # all -->
+
+                    <div class="tab-pane" id="app_requirements">
+                        <div class="bg-white border border-top-0">
+                            <div class="card border-top-0">
+                                <div class="card-body">
+                                    {% include course_app_requirements_table.partial_template with config=course_app_requirements_table %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+                <!-- end tab-content -->
+            </div>
+        </div>
+
+</main>
+{% endblock %}

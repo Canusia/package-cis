@@ -1,0 +1,140 @@
+{% extends "cis/logged-base-modal.html" %}
+{%block title %}{{ page_title }}{% endblock %}
+
+{% load templatehelpers %}
+{% load crispy_forms_tags %}
+{% load static %}
+
+{% block body %}
+<script src="{% static 'js/change_history.js' %}"></script>
+<script>
+    jQuery(function ($) {
+        $('.dataTable').DataTable({
+            dom: 'B<"float-left mt-3 mb-3"l><"float-right mt-3"f><"row clear">rt<"row"<"col-6"i><"col-6 float-right"p>>',
+                                buttons: [
+                                    {
+                                        extend: 'csv', className: 'btn btn-sm btn-primary text-white text-light',
+                                        text: '<i class="fas fa-file-csv text-white"></i>&nbsp;CSV',
+                                        titleAttr: 'Export results to CSV' 
+                                    },
+                                    { 
+                                        extend: 'print', className: 'btn btn-sm btn-primary text-white text-light',
+                                        text: '<i class="fas fa-print text-white"></i>&nbsp;Print',
+                                        titleAttr: 'Print' 
+                                    },
+                                ]
+        });
+
+    });
+
+    var bulk_actions_url = "{% url 'cis:course_bulk_actions' %}";
+
+    function do_ajax_action(action, record_id) {
+        let modal = "modal-bulk_actions"
+
+        let data = {
+            'action': action,
+            'record_id': record_id
+        }
+
+        $.ajax({
+            type: "GET",
+            url: bulk_actions_url,
+            data: data,
+            success: function(response) {
+                $("#bulk_modal_content").html(response);
+                $("#" + modal).modal('show');
+            }
+        });
+    }
+
+    function do_action(action, record_id) {
+        let data = {
+            'action': action,
+            'ids[]': record_id,
+        };
+
+        $.blockUI();
+        $.ajax({
+            type: "GET",
+            url: bulk_actions_url,
+            data: data,
+            success: function(response) {
+                $.unblockUI();
+                if (response.outcome === 'alert') {
+                    var span = document.createElement('span');
+                    span.innerHTML = response.message;
+                    swal({
+                        title: response.title,
+                        content: span,
+                        icon: response.status,
+                    });
+                }
+            },
+            error: function() {
+                $.unblockUI();
+                swal({ title: 'Error', text: 'An error occurred.', icon: 'error' });
+            }
+        });
+    }
+</script>
+<div class="">
+    <div class="row">
+        <div class="col-md-6 col-sm-12">
+            <h1 class="h3 mt-3 text-gray-800 mb-3">{{ record.name }}</h1>
+        </div>
+        <div class="col-md-6 col-sm-12 text-right">
+            <div class="btn-group btn-group-sm mt-3 mb-3">
+                <button type="button" class="btn btn-primary dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Actions</button>
+                <div class="dropdown-menu">
+                    <a class="dropdown-item" href="#" onclick='do_ajax_action("change_status", "{{record.id}}")'><i class="fa fas fa-edit fa-pencil text-dark"></i>&nbsp;Edit Status</a>
+                    {% if detail_actions %}
+                        <div class="dropdown-divider"></div>
+                        {% for group_key, group in detail_actions.items %}
+                            {% for slug, action in group.actions.items %}
+                                <a class="dropdown-item" href="#" onclick="do_action('{{ slug }}', '{{ record.id }}')"><i class="{{ action.icon }} text-dark"></i>&nbsp;{{ action.label }}</a>
+                            {% endfor %}
+                        {% endfor %}
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<main>
+    <div class="">
+        <div class="row">
+            
+            
+            <div class="col-md-12">
+                {% include "cis/messages.html" with messages=messages %}
+            </div>
+
+            <div class="col-md-12 col-sm-12">
+                <ul class="nav nav-tabs">
+                    {% for slug, tab in detail_tabs.items %}
+                    <li class="nav-item">
+                        <a class="nav-link {% if tab.active %}active{% endif %}" data-toggle="tab" href="#{{ tab.slug }}">
+                            {% if tab.icon %}<i class="{{ tab.icon }}"></i> {% endif %}{{ tab.title }}
+                            {% if tab.badge %}<span class="badge badge-pill badge-secondary">{{ tab.badge }}</span>{% endif %}
+                        </a>
+                    </li>
+                    {% endfor %}
+                </ul>
+
+                <div class="tab-content">
+                    {% for slug, tab in detail_tabs.items %}
+                    {% if tab.lazy %}
+                    <div class="tab-pane {% if tab.active %}active{% endif %}" id="{{ tab.slug }}" data-tab-url="{{ tab.url }}"></div>
+                    {% else %}
+                    <div class="tab-pane {% if tab.active %}active{% endif %}" id="{{ tab.slug }}">{{ tab.html|safe }}</div>
+                    {% endif %}
+                    {% endfor %}
+                </div>
+                <!-- end tab-content -->
+            </div>
+        </div>
+    </div>
+
+</main>
+{% endblock %}

@@ -1,0 +1,24 @@
+<div class="row">
+    <div class="col-12 bg-gray-100">
+        <div class="card mb-4 border-top-0">
+            <div class="card-body ">
+                <form id="fc_class_section_filter" class="form-inline float-right filter">
+                    <div class="form-row">
+                        <div class="col">
+                            <div class="float-right">
+                                <select class="form-control mt-2" name="term">
+                                    <option value="-1">All Terms</option>
+                                    {% for c in terms %}
+                                    <option value="{{ c.id }}">{{ c }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+                <div class="clearfix">&nbsp;</div>
+                {% include sections_table.partial_template with config=sections_table %}
+            </div>
+        </div>
+    </div>
+</div>

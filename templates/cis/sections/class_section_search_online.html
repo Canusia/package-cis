@@ -1,0 +1,389 @@
+{% if not is_registration_open %}
+<p class="alert alert-danger mt-3">{{window_close_notice}}</p>
+{% else %}
+{{message.tab_apply|safe}}
+<script>
+    jQuery(document).ready(function () {
+        
+        function ut_load_subject() {
+            let dropdown = $('#uto_id_subject')
+            let campus = $('#uto_id_campus')
+            let term = $('#uto_id_term')
+
+            $.blockUI();
+            uto_table.clear().draw();
+            $("#uto_btn_apply_for_selected").hide();
+
+            dropdown.empty()
+            dropdown.prop('selectedIndex', 0)
+
+            let url = '/ce/api/cohort/?term=' + $(term).val()
+            
+            
+            $.getJSON(url, function (data) {
+                $.each(data.results, function (key, entry) {
+
+                    dropdown.append(
+                        $('<option></option>').attr(
+                            'value', entry.id
+                        ).text(
+                            '(' + entry.designator + ') ' + entry.name
+                        )
+                    )
+                });
+
+                $.unblockUI();
+                $(dropdown).multipleSelect('destroy');
+                $(dropdown).multipleSelect({
+                    selectAll: false,
+                    filter: true,
+                    dropWidth: 300,
+                    placeholder: 'Select from list'
+                });
+            })
+        }
+
+        $("#uto_id_term").change(ut_load_subject)
+        $("#uto_id_subject").change(ut_load_course)
+
+        function ut_load_course() {
+            let dropdown = $('#uto_id_course')
+            let subjects = $('#uto_id_subject')
+            
+            $("#uto_class_search_results_container").addClass('d-none');
+            dropdown.empty()
+            dropdown.prop('selectedIndex', 0)
+
+            uto_table.clear().draw();
+            $("#uto_btn_apply_for_selected").hide();
+
+            if ($(subjects).val() == '') {
+
+                $(dropdown).multipleSelect('destroy');
+                $('#uto_id_course').multipleSelect({
+                    selectAll: false,
+                    filter: true,
+                    dropWidth: 400,
+                    placeholder: 'Select subject(s) to see course(s)'
+                });
+                return;
+            }
+
+            $.blockUI();
+
+            let term = $('#uto_id_term')
+            let url = '/ce/api/course/?cohort=' + $(subjects).val() + '&term=' + $(term).val()
+            
+            $.getJSON(url, function (data) {
+                $.each(data.results, function (key, entry) {
+                    dropdown.append(
+                        $('<option></option>').attr(
+                            'value', entry.id
+                        ).text(
+                            '(' + entry.cohort.designator + ' ' + entry.catalog_number + ') ' + entry.title
+                        )
+                    )
+                });
+
+                $(dropdown).multipleSelect('destroy');
+                $(dropdown).multipleSelect({
+                    selectAll: false,
+                    filter: true,
+                    dropWidth: 400,
+                    placeholder: 'Select from list'
+                });
+
+                $.unblockUI();
+            })
+        }
+
+        var uto_table = $('#uto_class_search_results').DataTable()
+
+        function ut_get_class_results() {
+            let course_dd = $('#uto_id_course')
+            let subject = $('#uto_id_subject')
+            let crn = $('#uto_id_crn')
+
+            if ($(subject).val() == '' && $(crn).val() == '') {
+                swal(
+                    "Error",
+                    "Please select a subject and try again.",
+                    "error")
+                $(subject).focus()
+                return false;
+            }
+            uto_table.destroy();
+
+            // $.blockUI();
+            $("#uto_class_search_results_container").removeClass('d-none');
+
+            let filters = $('#uto_frm_class_search').serialize();
+            uto_table = $('#uto_class_search_results').DataTable({
+                // serverSide: true,
+                order: [[3, 'asc']],
+                initComplete: function (settings, json) {
+                    $.unblockUI();
+                    if(uto_table.data().count() >= 50) {
+                        swal(
+                            "",
+                            "Your search criteria was too broad...only first 50 results are displayed. Please narrow your search criteria by selecting a course or campus.",
+                            "warning")
+                    }
+                    if (!uto_table.data().any()) {
+                        swal(
+                            "",
+                            "Your search did not produce any results. Please try a different search criteria.",
+                            "warning")
+                        $("#uto_btn_apply_for_selected").hide();
+                    } else {
+                        $("#uto_btn_apply_for_selected").show();
+                    }
+                },
+                // processing: true,
+                ajax: '/ce/api/class_section/?format=datatables&' + filters,
+                lengthMenu: [10, 20, 50, 100],
+                columns: [
+                    {
+                        'width': '5%',
+                        'searchable': false,
+                        'orderable': false,
+                        'render': function (data, type, row, meta) {
+                            return '<input type="checkbox" name="class_section" id="id_class_section_' + row.id + '" value="' + row.id + '">';
+                        }
+                    },
+                    {
+                        'width': '10%',
+                        'searchable': false,
+                        'orderable': false,
+                        'render': function (data, type, row, meta) {
+                            return row.term.label
+                        }
+                    },
+                    {
+                        'width': '25%',
+                        'render': function (data, type, row, meta) {
+                            let instructor = '';
+                            if(row.teacher !== null) {
+                                instructor = "<span class='text-muted'>" + row.teacher.user.first_name + ' ' + row.teacher.user.last_name + '</span><br>'
+                            }
+
+                            return instructor;
+                        }
+                    },
+                    {
+                        'width': '20%',
+                        'render': function (data, type, row, meta) {
+                            return row.course.cohort.designator + ' ' + row.course.catalog_number + ' (' + row.credit_hours + ' credits)<br>' + "<span class='text-muted'>" + row.course.title + '</span><br>' +
+                                row.class_number;
+                        }
+                    },                    
+                    {
+                        'width': '10%',
+                        'render': function (data, type, row, meta) {
+                            return row.schedule;                            
+                        }
+                    },
+                    
+                ]
+            })
+
+            return false;
+        }
+
+        $("#uto_btn_search_for_classes").on('click', ut_get_class_results);
+
+        // load_location();
+        ut_load_subject();
+        ut_load_course();
+        get_student_registrations();
+    });
+</script>
+
+<form action="" id="uto_frm_class_search" method="POST" class="bg-light p-3 mb-4 border">
+    <div class="row">
+        <div class="col-md-6">
+            <div class="form-group">
+                <label for="uto_id_campus" class="col-xs-12 control-label">Select Term</label>
+                <div class="col-xs-12">
+                    <select name="term" id="uto_id_term" class="form-control" required="required">
+                        {% for term in registration_terms %}
+                        <option value="{{term.id}}">{{term.label}} {{term.year}}</option>
+                        {%endfor%}
+                    </select>
+                </div>
+            </div>
+        </div>        
+        <div class="col-md-6">
+            
+        </div>        
+    </div> <!-- end term and campus row -->
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="form-group">
+                <label for="id_subject" class="col-xs-12 control-label">Select
+                    Subject(s)</label>
+                <div class="col-xs-12">
+                    <select multiple="multiple" name="subject" id="uto_id_subject" class="" required="required">
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div> <!-- end location, subject -->
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="form-group">
+                <label for="id_course" class="col-xs-12 control-label">Select
+                    Course(s)</label>
+                <div class="col-xs-12">
+                    <select multiple="multiple" name="course" id="uto_id_course" class="">
+                    </select>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 d-none">
+            <div class="form-group">
+                <label for="id_course" class="col-xs-12 control-label">Class Meeting Days / Times</label>
+                <div class="col-xs-12">
+                    <input type="checkbox" name="days[]" id="uto_id_monday_time" value="M">&nbsp;<label for="uto_id_monday_time">Monday</label><br>
+                    <input type="checkbox" name="days[]" id="uto_id_tuesday_time" value="T">&nbsp;<label for="uto_id_tuesday_time">Tuesday</label><br>
+                    <input type="checkbox" name="days[]" id="uto_id_wednesday_time" value="W">&nbsp;<label for="uto_id_wednesday_time">Wednesday</label><br>
+                    <input type="checkbox" name="days[]" id="uto_id_thursday_time" value="R">&nbsp;<label for="uto_id_thursday_time">Thursday</label><br>
+                    <input type="checkbox" name="days[]" id="uto_id_friday_time" value="F">&nbsp;<label for="uto_id_friday_time">Friday</label><br>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-6">
+
+                        <label for="id_course" class="col-xs-12 control-label">Starts After</label>
+                        <div class="col-xs-12">
+                            <select name="starts_after" id="uto_id_starts_after" class="form-control">
+                                <option value="">----</option>
+                                <option value="0">12:00 AM</option>
+                                <option value="0100">1:00 AM</option>
+                                <option value="0200">2:00 AM</option>
+                                <option value="300">3:00 AM</option>
+                                <option value="400">4:00 AM</option>
+                                <option value="500">5:00 AM</option>
+                                <option value="600">6:00 AM</option>
+                                <option value="700">7:00 AM</option>
+                                <option value="800">8:00 AM</option>
+                                <option value="900">9:00 AM</option>
+                                <option value="1000">10:00 AM</option>
+                                <option value="1100">11:00 AM</option>
+                                <option value="1200">12:00 PM</option>
+                                <option value="1300">1:00 PM</option>
+                                <option value="1400">2:00 PM</option>
+                                <option value="1500">3:00 PM</option>
+                                <option value="1600">4:00 PM</option>
+                                <option value="1700">5:00 PM</option>
+                                <option value="1800">6:00 PM</option>
+                                <option value="1900">7:00 PM</option>
+                                <option value="2000">8:00 PM</option>
+                                <option value="2100">9:00 PM</option>
+                                <option value="2200">10:00 PM</option>
+                                <option value="2300">11:00 PM</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="col-6">
+                        <label for="id_course" class="col-xs-12 control-label">Ends Before</label>
+                        <div class="col-xs-12">
+                            <select name="ends_before" id="uto_id_ends_before" class="form-control">
+                                <option value="">----</option>
+                                <option value="0">12:00 AM</option>
+                                <option value="0100">1:00 AM</option>
+                                <option value="0200">2:00 AM</option>
+                                <option value="300">3:00 AM</option>
+                                <option value="400">4:00 AM</option>
+                                <option value="500">5:00 AM</option>
+                                <option value="600">6:00 AM</option>
+                                <option value="700">7:00 AM</option>
+                                <option value="800">8:00 AM</option>
+                                <option value="900">9:00 AM</option>
+                                <option value="1000">10:00 AM</option>
+                                <option value="1100">11:00 AM</option>
+                                <option value="1200">12:00 PM</option>
+                                <option value="1300">1:00 PM</option>
+                                <option value="1400">2:00 PM</option>
+                                <option value="1500">3:00 PM</option>
+                                <option value="1600">4:00 PM</option>
+                                <option value="1700">5:00 PM</option>
+                                <option value="1800">6:00 PM</option>
+                                <option value="1900">7:00 PM</option>
+                                <option value="2000">8:00 PM</option>
+                                <option value="2100">9:00 PM</option>
+                                <option value="2200">10:00 PM</option>
+                                <option value="2300">11:00 PM</option>
+                            </select>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6"></div>
+    </div> <!-- end course, time -->
+
+    <div class="row">
+        <div class="col-md-12">
+            <div class="form-group ">
+                <label class="col-xs-12 control-label" for="uto_id_crn">If you know the exact
+                    Class Number please enter below</label>
+                <div class="col-xs-12">
+                    <input type="text" style="width: 200px;" class="form-control" name="class_number" id="id_crn"
+                        placeholder="Ex: 12345">
+                    <span class="help-block"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-12">
+            <input type="hidden" name="status" id="id_status" value="A">
+            <input type="hidden" name="instruction_mode" id="id_instruction_mode" value="WEB">
+            <input type="submit" class="btn btn-primary" name="uto_cepm_submit_student_class_search"
+                id="uto_btn_search_for_classes" value="Submit form and Search for Class(es) »">
+        </div>
+    </div>
+</form>
+
+
+<div id="uto_class_search_results_container" class="d-none">
+    <form action="" method="post">
+        {% csrf_token %}
+        <div class="">
+            <table class="table dataTable table-striped" id="uto_class_search_results">
+                <thead>
+                    <tr>
+                        <th data-name='id' data-data='id'></th>
+                        <th data-name='term.code' data-data='term.code'>Term</th>
+                        <th data-name='campus.name' data-data='campus.name'>Instructor</th>
+                        <th data-data='class_number' data-name='class_number'>Course /
+                            Section No.</th>
+                        <th data-data="start_date" data-name="start_date">Schedule</th>
+                    </tr>
+                </thead>
+
+                <tfoot>
+                    <tr>
+                        <td colspan="5">
+                            <input type="submit" class="btn btn-primary" id="uto_btn_apply_for_selected"
+                                value="Apply for Selected" name="apply_for_selected">
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+            <script>
+                jQuery(document).ready(function ($) {
+                    $('#activate_applied_classes').click(function () {
+                        $("#tab_applied_classes").tab('show');
+                    })
+                })
+            </script>
+        </div>
+    </form>
+</div> <!-- end #class_search_results_container -->
+{%endif%}

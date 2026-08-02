@@ -1,0 +1,25 @@
+{% extends "cis/logged-base.html" %}
+{% block title %}Pending SIS Mirror{% endblock %}
+
+{% block body %}
+<main>
+  <div class="">
+    <div class="row">
+      <div class="col-sm-12 col-xs-12">
+        <h1 class="h3 mb-2 text-gray-800">Registrations: Pending SIS Mirror</h1>
+        <p class="text-muted mb-3">
+          Registrations queued for the next <code>send_registrations_to_sis</code> run
+          (status in the SIS mirror trigger set and flagged <strong>needs mirroring</strong>).
+          <strong>Will Send?</strong> is <em>No</em> only when a record is held for parent consent.
+        </p>
+      </div>
+    </div>
+
+    <div class="bg-white border responsive p-3">
+      <div class="table-responsive">
+        {% include pending_mirror_table.partial_template with config=pending_mirror_table %}
+      </div>
+    </div>
+  </div>
+</main>
+{% endblock %}

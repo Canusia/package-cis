@@ -1,0 +1,60 @@
+{% load crispy_forms_tags %}
+<div class="card border-top-0 pt-4 pb-2">
+    <div class="col-12">
+        <p class="alert alert-info">List all document(s) you require an SI applicant to upload. You can mark a document as 'required' or 'optional'. <br><br>The system will only allow applications that have uploaded all  'required' documents to be submitted.</p>
+        <div class="pb-2 card border-0">
+            <div class="">
+                <div class="table-responsive">
+                    <table class="table dataTable table-striped">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Description</th>
+                                <th>Required</th>
+                                <th>Status</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for r in app_reqs %}
+                            <tr>
+                                <td>
+                                    <a title="Edit" href="{% url 'cis:course' record.id %}?course_app_id={{r.id}}#app_documents">
+                                        {{r.name}}
+                                    </a>
+                                </td>
+                                <td>{{r.description|safe}}</td>
+                                <td>
+                                    {% if r.required == '1' %}
+                                    Yes
+                                    {% else %}
+                                    No
+                                    {%endif%}
+                                </td>
+                                <td>{{r.status}}</td>
+                                <td>
+                                    <a title="Edit" href="{% url 'cis:course' record.id %}?course_app_id={{r.id}}#app_documents">
+                                        Edit
+                                    </a>
+                                </td>
+                            </tr>
+                            </a>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div> <!-- end table-responsive -->
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12">
+        <div class="clearfix">&nbsp;</div>
+        <h3>Add/Edit</h3>
+        <form action="" method="post">
+            {% csrf_token %}
+            {{ course_app_req_form | crispy }}
+            <input type="hidden" name="action" value='save_course_app_req'>
+            <input type="submit" class="btn btn-primary btn-sm" value="Save">
+        </form>
+    </div>
+</div>

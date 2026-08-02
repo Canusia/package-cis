@@ -1,0 +1,34 @@
+{% extends "cis/logged-base.html" %}
+{%block title %}Welcome{% endblock %}
+
+{% load templatehelpers %}
+
+{% block body %}
+<main>
+    <h3 class="display-5 mb-5 text-center">Welcome {{user.username}}, please select from your active role(s) to continue</h3>
+
+    <div class="row">
+        {% for r in roles %}
+        <br><br>
+        <div class="col-md-4">
+            <div class="card mb-4 shadow-sm">
+                <div class="text-center pt-2">
+                    <i class="{{ r.icon }} card-img-top"></i>
+                </div>
+                <div class="card-body text-center">
+                    <p class="card-text">{{ r.nice_name }}</p>
+                    <div class="align-items-center">
+                        <div class="">
+                            <a class="btn btn-sm btn-block btn-outline-secondary stretched-link" title="{{ r.nice_name }}" href="{% url r.url %}">Continue</a>
+                        </div>
+                    </div> <!-- end d-flex -->
+                </div> <!-- end card body -->
+            </div> <!-- end card -->
+        </div>
+        {% empty %}
+            <p class="alert alert-danger">You don't have any roles defined. Please contact the administrator for assistance.</p>
+        {% endfor %}
+    </div>
+
+</main>
+{% endblock %}

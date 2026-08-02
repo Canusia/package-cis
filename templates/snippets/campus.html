@@ -1,0 +1,7 @@
+{% load templatehelpers %}
+<select class="form-control mt-2" name="campus">
+    <option value="">Filter By Campus</option>
+    {% for c in campus %}
+    <option value="{{c.id}}" {% if c.id|stringformat:"s" == default_campus %} selected {% endif %}>{{c.name}}</option>
+    {% endfor %}
+</select>

@@ -1,0 +1,382 @@
+<script>
+    jQuery(document).ready(function ($) {
+        $('#activate_applied_classes').click(function () {
+            $("#tab_applied_classes").tab('show');
+        })
+    })
+    
+    jQuery(document).ready(function () {
+
+        $('a[data-toggle="tab"]').on('shown.bs.tab', function (e) {
+            $($.fn.dataTable.tables(true)).DataTable()
+                .columns.adjust();
+        });
+
+        function load_campus() {
+            let dropdown = $('#id_campus')
+
+            dropdown.empty()
+            dropdown.append('<option value="">Any Campus</option>');
+            dropdown.prop('selectedIndex', 0)
+
+            const url = '/ce/api/campus/'
+            $.getJSON(url, function (data) {
+                $.each(data.results, function (key, entry) {
+                    dropdown.append(
+                        $('<option></option>').attr(
+                            'value', entry.id
+                        ).text(
+                            entry.name
+                        )
+                    )
+                });
+            })
+        }
+
+        function load_location() {
+            let dropdown = $('#id_location')
+            let campus = $('#id_campus')
+
+            $.blockUI();
+            dropdown.empty()
+            dropdown.append('<option value="">Any Location</option>');
+            dropdown.prop('selectedIndex', 0)
+
+            const url = '/ce/api/location/'
+            $.getJSON(url, function (data) {
+                $.each(data.results, function (key, entry) {
+                    dropdown.append(
+                        $('<option></option>').attr(
+                            'value', entry.id
+                        ).text(
+                            entry.name
+                        )
+                    )
+                });
+
+                $.unblockUI();
+            })
+        }
+
+        function load_subject() {
+            let dropdown = $('#id_subject')
+            let campus = $('#id_campus')
+            let term = $('#id_term')
+
+            $.blockUI();
+            table.clear().draw();
+            $("#btn_apply_for_selected").hide();
+
+            dropdown.empty()
+            dropdown.prop('selectedIndex', 0)
+
+            let url = '/ce/api/cohort/?term=' + $(term).val()
+            
+            $.getJSON(url, function (data) {
+                $.each(data.results, function (key, entry) {
+
+                    dropdown.append(
+                        $('<option></option>').attr(
+                            'value', entry.id
+                        ).text(
+                            '(' + entry.designator + ') ' + entry.name
+                        )
+                    )
+                });
+
+                $.unblockUI();
+                $(dropdown).multipleSelect('destroy');
+                $(dropdown).multipleSelect({
+                    selectAll: false,
+                    filter: true,
+                    dropWidth: 300,
+                    placeholder: 'Select from list'
+                });
+            })
+        }
+
+        $("#id_term, #id_campus").change(load_subject)
+        $("#id_subject, #id_campus").change(load_course)
+        $('#id_campus').change(load_location)
+
+        function load_course() {
+            let dropdown = $('#id_course')
+            let subjects = $('#id_subject')
+            let campus = $('#id_campus')
+            let location = $('#id_location')
+
+            $("#class_search_results_container").addClass('d-none');
+            dropdown.empty()
+            dropdown.prop('selectedIndex', 0)
+
+            table.clear().draw();
+            $("#btn_apply_for_selected").hide();
+
+            if ($(subjects).val() == '') {
+
+                $(dropdown).multipleSelect('destroy');
+                $('#id_course').multipleSelect({
+                    selectAll: false,
+                    filter: true,
+                    dropWidth: 400,
+                    placeholder: 'Select subject(s) to see course(s)'
+                });
+                return;
+            }
+
+            $.blockUI();
+
+            let term = $('#id_term')
+            let url = '/ce/api/course/?cohort=' + $(subjects).val()
+            
+            $.getJSON(url, function (data) {
+                $.each(data.results, function (key, entry) {
+                    dropdown.append(
+                        $('<option></option>').attr(
+                            'value', entry.id
+                        ).text(
+                            '(' + entry.name + ') ' + entry.title
+                        )
+                    )
+                });
+
+                $(dropdown).multipleSelect('destroy');
+                $(dropdown).multipleSelect({
+                    selectAll: false,
+                    filter: true,
+                    dropWidth: 400,
+                    placeholder: 'Select from list'
+                });
+
+                $.unblockUI();
+            })
+        }
+
+        var table = $('#class_search_results').DataTable()
+
+        function get_class_results() {
+            let course_dd = $('#id_course')
+            let subject = $('#id_subject')
+            let crn = $('#id_crn')
+            let location = $("#id_location")
+
+            if ($(subject).val() == '' && $(crn).val() == '' && $(location).val() == '') {
+                swal(
+                    "Error",
+                    "Please select a subject or location and try again.",
+                    "error")
+                $(subject).focus()
+                return false;
+            }
+            table.destroy();
+
+            $.blockUI();
+            $("#class_search_results_container").removeClass('d-none');
+
+            let filters = $('#frm_class_search').serialize();
+            table = $('#class_search_results').DataTable({
+                // serverSide: true,
+                order: [[3, 'asc']],
+                initComplete: function (settings, json) {
+                    $.unblockUI();
+                    if (!table.data().any()) {
+                        swal(
+                            "",
+                            "Your search did not produce any results. Please try a different search criteria.",
+                            "warning")
+                        $("#btn_apply_for_selected").hide();
+                    } else {
+                        $("#btn_apply_for_selected").show();
+                    }
+                },
+                // processing: true,
+                ajax: '/ce/api/class_section/?format=datatables&' + filters,
+                lengthMenu: [10, 20, 50, 100],
+                columns: [
+                    {
+                        'width': '5%',
+                        'searchable': false,
+                        'orderable': false,
+                        'render': function (data, type, row, meta) {
+                            return '<input type="checkbox" name="class_section" id="id_class_section_' + row.id + '" value="' + row.id + '">';
+                        }
+                    },
+                    {
+                        'width': '10%',
+                        'searchable': false,
+                        'orderable': false,
+                        'render': function (data, type, row, meta) {
+                            return row.term.label
+                        }
+                    },
+                    {
+                        'width': '25%',
+                        'render': function (data, type, row, meta) {
+                            let instructor = '';
+                            if(row.teacher !== null) {
+                                instructor = "<span class='text-muted'>" + row.teacher.user.first_name + ' ' + row.teacher.user.last_name + '</span><br>'
+                            }
+
+                            return instructor;
+                        }
+                    },
+                    {
+                        'width': '20%',
+                        'render': function (data, type, row, meta) {
+                            return row.course.name + ' (' + row.course.credit_hours + ' credits)<br>' + "<span class='text-muted'>" + row.course.title + '</span><br>' +
+                                row.class_number;
+                        }
+                    },
+                    {
+                        'width': '10%',
+                        'render': function (data, type, row, meta) {
+                            return row.schedule;                            
+                        }
+                    },
+                ]
+            })
+
+            return false;
+        }
+
+        $("#btn_search_for_classes").on('click', get_class_results);
+
+        // load_campus();
+        // load_location();
+        load_subject();
+        load_course();
+        // Optional hook: outer templates (faa.html, drop_wd, degree_pathway, course_search)
+        // define get_student_registrations() to refresh their own registrations table.
+        // The shared students/detail.html now uses the registrations_table partial and
+        // does not define it — guard so the missing symbol doesn't abort this handler.
+        if (typeof get_student_registrations === 'function') {
+            get_student_registrations();
+        }
+    });
+</script>
+
+{% if not is_registration_open %}
+<p class="alert alert-danger mt-3">{{window_close_notice}}</p>
+{% else %}
+{{message.tab_apply|safe}}
+
+<form action="" id="frm_class_search" method="POST" class="bg-light p-3 mb-4 border">
+    <div class="row">
+        <div class="col-md-6">
+            <div class="form-group">
+                <label for="id_campus" class="col-xs-12 control-label">Select Term</label>
+                <div class="col-xs-12">
+                    <select name="term" id="id_term" class="form-control" required="required">
+                        {% for term in registration_terms %}
+                        <option value="{{term.id}}">{{term.academic_year.name}} - {{term.label}}</option>
+                        {%endfor%}
+                    </select>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 d-none">
+            <div class="form-group">
+                <label for="id_campus" class="col-xs-12 control-label">Select Campus</label>
+                <div class="col-xs-12">
+                    <select name="campus" id="id_campus" class="form-control" required="required">
+                        <option value='-1'>Any Campus</option>
+
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div> <!-- end term and campus row -->
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="form-group">
+                <label for="id_subject" class="col-xs-12 control-label">Select
+                    Subject(s)</label>
+                <div class="col-xs-12">
+                    <select multiple="multiple" name="subject" id="id_subject" class="" required="required">
+                    </select>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 d-none">
+            <div class="form-group">
+                <label for="id_location" class="col-xs-12 control-label">Select
+                    Location</label>
+                <div class="col-xs-12">
+                    <select name="location" id="id_location" class="form-control" required="required">
+                    </select>
+                </div>
+            </div>
+        </div>
+
+
+    </div> <!-- end location, subject -->
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="form-group">
+                <label for="id_course" class="col-xs-12 control-label">Select
+                    Course(s)</label>
+                <div class="col-xs-12">
+                    <select multiple="multiple" name="course" id="id_course" class="">
+                    </select>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6"></div>
+    </div> <!-- end course, time -->
+
+    <div class="row">
+        <div class="col-md-12">
+            <div class="form-group ">
+                <label class="col-xs-12 control-label" for="id_crn">If you know the exact
+                    Class Number please enter below</label>
+                <div class="col-xs-12">
+                    <input type="text" style="width: 200px;" class="form-control" name="class_number" id="id_crn"
+                        placeholder="Ex: 12345">
+                    <span class="help-block"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-12">
+            <input type="hidden" name="status" id="id_status" value="A">
+            <input type="hidden" name="type" id="id_type" value="non-web">
+            <input type="submit" class="btn btn-primary" name="cepm_submit_student_class_search"
+                id="btn_search_for_classes" value="Submit form and Search for Class(es) »">
+        </div>
+    </div>
+</form>
+
+<div id="class_search_results_container" class="d-none">
+    <form action="" method="post">
+        {% csrf_token %}
+        <div class="">
+            <table class="table dataTable table-striped" id="class_search_results">
+                <thead>
+                    <tr>
+                        <th data-name='id' data-data='id'></th>
+                        <th data-name='term.code' data-data='term.code'>Term</th>
+                        <th data-name='campus.name' data-data='campus.name'>Instructor</th>
+                        <th data-data='class_number' data-name='class_number'>Course</th>
+                        </th>
+                        <th data-data="start_date" data-name="start_date">Schedule</th>
+                    </tr>
+                </thead>
+
+                <tfoot>
+                    <tr>
+                        <td colspan="5">
+                            <input type="submit" class="btn btn-primary" id="btn_apply_for_selected"
+                                value="Apply for Selected" name="apply_for_selected">
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+            
+        </div>
+    </form>
+</div> <!-- end #class_search_results_container -->
+{%endif%}

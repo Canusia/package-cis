@@ -1,0 +1,108 @@
+{% extends "cis/logged-base.html" %}
+{%block title %}{{page_title}}{% endblock %}
+
+{% load templatehelpers %}
+
+{% block body %}
+
+<main>
+    <div class="">
+        <div class="row">
+            <div class="col-sm-6 col-xs-12">
+                <h1 class="h3 mb-4 text-gray-800">{{page_title}}
+                </h1>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <div class="">
+                {% include "cis/messages.html" with messages=messages %}
+                <ul class="nav nav-tabs">
+                    <li class="nav-item">
+                        <a class="nav-link active" data-toggle="tab" href="#all">All {{page_title}}</a>
+                    </li>
+                    <li class="nav-item d-none">
+                        <a class="nav-link" data-toggle="tab" href="#archived">Archived</a>
+                    </li>
+                </ul>
+
+                <div class="tab-content">
+                    <div class="tab-pane active " id="all">
+                        <div class="bg-white border responsive">
+                            <div class="col-12 pt-3 mb-3">
+                                <div class="row">
+                                    <div class="col-md-12 mb-3">
+                                        <div class="card">
+                                            <div class="card-body bg-gray-200">
+                                                <form id="class_section_filter" class="form-inline filter">
+                                                    <div class="form-row">
+                                                        <div class="col">
+                                                            <div class="float-right">
+                                                                <select class="form-control mt-2 d-none"
+                                                                    name="signed_parent_consent">
+                                                                    <option value="">By Parent Consent</option>
+                                                                    {% for c, c_label in yes_no %}
+                                                                    <option value="{{c}}" {% if c == active_term.id %}
+                                                                        selected {% endif %}>{{c_label}}</option>
+                                                                    {% endfor %}
+                                                                </select>
+                                                                &nbsp;<select class="form-control mt-2"
+                                                                    name="signed_student_agreement">
+                                                                    <option value="">By Student Agreement</option>
+                                                                    {% for c, c_label in yes_no %}
+                                                                    <option value="{{c}}" {% if c == active_term.id %}
+                                                                        selected {% endif %}>{{c_label}}</option>
+                                                                    {% endfor %}
+                                                                </select>
+                                                                &nbsp;
+                                                                <select class="form-control mt-2" name="record_type">
+                                                                    <option value="">By Record Type</option>
+                                                                    <option value="with_prereq" >With Prereqs</option>
+                                                                    <option value="needs_mirroring">Needs Mirroring</option>
+
+                                                                    <option value="sis_error" >**SIS Error(s)</option>
+                                                                </select>
+                                                                &nbsp;
+                                                                <select class="form-control mt-2" name="status">
+                                                                    <option value="">By Registration Status</option>
+                                                                    {% for c, c_label in registration_status %}
+                                                                    <option value="{{c}}" >{{c_label}}</option>
+                                                                    {% endfor %}
+                                                                </select>
+                                                                &nbsp;
+                                                                <select class="form-control mt-2" name="term">
+                                                                    <option value="-3">By Term</option>
+                                                                    <option selected value="-2">Current Registration Term(s)</option>
+                                                                    {% for c in terms %}
+                                                                    <option value="{{c.id}}"
+                                                                        >{{c}}</option>
+                                                                    {% endfor %}
+                                                                </select>
+                                                                &nbsp;
+                                                                {% include 'snippets/campus.html' with campus=campus default_campus=default_campus %}
+                                                                <div class="clearfix">&nbsp;</div>
+                                                                <input name="btn_search" id="id_btn_filter" type="button" value="Filter & Get Results" class="btn btn-primary">
+                                                            </div>
+
+                                                        </div>
+                                                    </div>
+                                                </form>
+
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% include registrations_table.partial_template with config=registrations_table %}
+                            </div>
+                        </div>
+                    </div>
+                    <!-- end tab # records_active -->
+
+                </div>
+                <!-- end tab-content -->
+            </div>
+        </div>
+
+</main>
+
+{% endblock %}

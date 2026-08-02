@@ -1,0 +1,169 @@
+from django.db.models import Q
+from django.contrib import messages
+from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+from django.shortcuts import get_object_or_404, redirect, render
+from django.http import JsonResponse
+
+from cis.models.course import (
+    Cohort, Course, Department
+)
+from cis.forms.course import DepartmentForm
+
+from cis.menu import cis_menu, draw_menu
+
+
+from django.views.decorators.clickjacking import xframe_options_exempt
+@xframe_options_exempt
+def detail(request, record_id):
+    '''
+    Record details page
+    '''
+    template = 'cis/course/department.html'    
+    record = get_object_or_404(Department, pk=record_id)
+
+    if request.method == 'POST':
+        form = DepartmentForm(request.POST, instance=record)
+
+        if form.is_valid():
+            record = form.save(commit=False)
+            record.save()
+
+            messages.add_message(
+                request,
+                messages.SUCCESS,
+                'Successfully updated record',
+                'list-group-item-success') 
+            return redirect('cis:department', record_id=record_id)
+    else:
+        form = DepartmentForm(instance=record)
+
+    courses = Course.objects.filter(department=record.id)
+    return render(
+        request,
+        template, {
+            'form': form,
+            'page_title': "Add New",
+            'labels': {
+                'all_items': 'All Departments'
+            },
+            'urls': {
+                'add_new': 'cis:department_add_new',
+                'all_items': 'cis:departments'
+            },
+            'menu': draw_menu(cis_menu, 'classes', 'departments'),
+            'record': record,
+            'courses': courses
+        })
+
+def add_new(request):
+    '''
+    Add new page
+    '''
+    base_template = 'cis/logged-base.html'
+    template = 'cis/course/department-add_new.html'
+    ajax = request.GET.get('ajax', None)
+
+    if request.method == 'POST':
+        form = DepartmentForm(request.POST)
+        ajax = request.POST.get('ajax', None)
+
+        if form.is_valid():
+            record = form.save(commit=False)
+            record.save()
+
+            if ajax == '1':
+                data = {
+                    'status':'success',
+                    'message':'Successfully added new record',
+                    'new_record_id':record.id,
+                    'new_record_name':record.name
+                }
+                return JsonResponse(data)
+
+            messages.add_message(
+                request,
+                messages.SUCCESS,
+                'Successfully added record',
+                'list-group-item-success') 
+            return redirect('cis:department', record_id=record.id) #d
+        
+        if ajax == '1':
+            data = {
+                'status':'error',
+                'message': ''.join([' '.join(x for x in l) for l in list(form.errors.values())])
+            }
+            return JsonResponse(data)
+    else:
+        form = DepartmentForm()
+
+    if ajax == '1':
+        base_template = 'cis/ajax-base.html'
+
+    return render(
+        request,
+        template, {
+            'form': form,
+            'page_title': "Add New College",
+            'labels': {
+                'all_items': 'All Departments'
+            },
+            'urls': {
+                'add_new': 'cis:department_add_new',
+                'all_items': 'cis:departments'
+            },
+            'ajax': ajax,
+            'base_template': base_template,
+            'menu': draw_menu(cis_menu, 'classes', 'departments')
+        })
+
+def index(request):
+    '''
+     search and index page for staff
+    '''
+    menu = draw_menu(cis_menu, 'classes', 'departments')
+
+    template = 'cis/course/department-list.html'
+    query = request.GET.get('q', '')
+    page = request.GET.get('page', 1)
+    order_by = request.GET.get('order_by', 'name').lower()
+    order = request.GET.get('order', 'asc')
+
+    valid_order_by_fields = [
+        'name'
+    ]
+    if order_by not in valid_order_by_fields:
+        order_by = 'name'
+
+    valid_order = [
+        'asc', 'desc'
+    ]
+    if order not in valid_order:
+        order = 'asc'
+
+    if not query:
+        record_list = Department.objects.all().order_by(order_by if order == 'asc' else f"-{order_by}")
+    else:
+        record_list = Department.objects.filter(
+            Q(name__contains=query)).order_by(order_by if order == 'asc' else f"-{order_by}")
+
+    paginator = Paginator(record_list, 10)
+    try:
+        records = paginator.page(page)
+    except PageNotAnInteger:
+        records = paginator.page(1)
+    except EmptyPage:
+        records = paginator.page(paginator.num_pages)
+
+    return render(
+        request,
+        template, {
+            'page_title': 'Departments',
+            'urls': {
+                'add_new': 'cis:department_add_new',
+                'details': 'cis:department'
+            },
+            'menu': menu,
+            'records':records,
+            'q': query,
+            'order_by': order_by,
+            'order': order})

@@ -1,0 +1,373 @@
+{% extends "cis/logged-base.html" %}
+{%block title %}{{ page_title }}{% endblock %}
+
+{% load templatehelpers %}
+{% load crispy_forms_tags %}
+
+{% block body %}
+<script>
+    jQuery(function ($) {
+        $('.dataTable').DataTable();
+    });
+</script>
+<main>
+    <div class="row">
+        <div class="col-md-5 col-sm-12 mb-4">
+            <ul class="nav nav-tabs">
+                <li class="nav-item">
+                    <a class="nav-link active" data-toggle="tab" href="#edit_registration">Edit Request & Class
+                        Registration</a>
+                </li>
+            </ul>
+
+            <div class="tab-content">
+                <div class="tab-pane active" id="edit_registration">
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="card mb-4 border-top-0">
+                                <div class="card-body">
+                                    <div class="card-text">
+                                        {% if messages %}
+                                        <ul class="messages list-group mb-4">
+                                            {% for message in messages %}
+                                            <li{% if message.tags %} class="list-group-item {{ message.tags }}"
+                                                {% endif %}>
+                                                {{ message }}
+                                                </li>
+                                                {% endfor %}
+                                        </ul>
+                                        {% endif %}
+                                        <form action="" method="post">
+                                            {% csrf_token %}
+                                            {{ form | crispy }}
+                                            <input type="submit" class="btn btn-primary btn-sm" value="Update">
+                                            <input type="button" value="Delete" class="btn btn-danger btn-sm delete">
+                                            <script>
+                                                jQuery(document).ready(function ($) {
+                                                    $("input.delete").on("click", function () {
+                                                        if (!confirm("Are you sure you want to permanently delete this record?"))
+                                                            return;
+
+                                                        $.blockUI();
+                                                        $.ajax({
+                                                            type: 'GET',
+                                                            url: "{% url 'cis:delete_drop_wd_req' record.id%}",
+                                                            success: function (response) {
+                                                                $.unblockUI();
+                                                                swal(
+                                                                    "",
+                                                                    response.message,
+                                                                    response.status
+                                                                )
+                                                                if (response.status == 'success') {
+                                                                    window.parent.closeModal();
+                                                                }
+                                                            }
+                                                        });
+                                                    });
+                                                });
+                                            </script>´
+                                        </form>
+                                        <hr>
+                                        <h5 class="card-title">Request Details</h5>
+                                        <div class="bg-gray-100 text-dark">
+                                            {{record.asHTML|safe}}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-7 col-sm-12">
+            <ul class="nav nav-tabs">
+                <li class="nav-item">
+                    <a class="nav-link active" data-toggle="tab" href="#student_details">Student Details</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" data-toggle="tab" href="#classes">Classes</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" data-toggle="tab" href="#recommendation">Recommendation</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" data-toggle="tab" href="#signatures">Agreement & Consent</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" data-toggle="tab" href="#notes">Notes</a>
+                </li>
+            </ul>
+            <div class="tab-content">
+
+                <div class="tab-pane" id="notes">
+                    <script>
+                        jQuery(document).ready(function () {
+                            $('#student_notes').DataTable(
+                                {
+                                    'lengthMenu': [30, 50, 100],
+                                    'order': [[0, 'desc']],
+                                    'columns': [
+                                        {
+                                            'searchable': false,
+                                        },
+                                        {
+                                            'render': function (data, type, row, meta) {
+                                                let note = row.note || '';
+                                                if (row.ethos_log_url) {
+                                                    note += ' <a target="_blank" href="' + row.ethos_log_url + '" class="btn btn-sm btn-outline-secondary ml-2" title="View SIS log entry"><i class="fa fa-server"></i> SIS log</a>';
+                                                }
+                                                return note;
+                                            }
+                                        },
+                                        {
+                                            'searchable': false,
+                                            'render': function(data, type, row, meta) {
+                                                if(row.meta !== null) {
+                                                    let type = '';
+                                                    $(row.meta.type).each(function(index, element) {
+                                                        element = element.replace('_', ' ').toUpperCase()
+
+                                                        type += element + '<br>';
+                                                    });
+                                                    return type;
+                                                } else {
+                                                    return 'PRIVATE';
+                                                }
+                                            }
+                                        },
+                                        {
+                                            'render': function (data, type, row, meta) {
+                                                return row.createdby.last_name + ", " +
+                                                    row.createdby.first_name
+                                            }
+                                        }
+                                    ]
+                                }
+                            );
+                        });
+                    </script>
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="card mb-4 border-top-0">
+                                <div class="card-body ">
+                                    <div class="text-right">
+                                        <a href="#notes" class="btn btn-sm btn-primary ajax-add_new"
+                                            data-parent="{{student.id}}" data-id="-1" data-modal="modal-add_new"
+                                            data-model="studentnote" data-updater=""><i
+                                                class="fa fas-light fa-plus-circle"></i>&nbsp;Add New Note</a>
+                                    </div>
+                                    <div class="clearfix">&nbsp;</div>
+                                    <div class="table-responsive">
+                                        <table id="student_notes" class="table table-striped responsive"
+                                            style="width:100%" data-server-side="true" data-ajax="{{note_api_url}}">
+                                            <thead>
+                                                <tr>
+                                                    <th data-data="createdon" data-name="createdon">Added On
+                                                    </th>
+                                                    <th data-data="note" data-name="note">Note
+                                                    </th>
+                                                    <th data-data="meta" data-name="meta">Type
+                                                    </th>
+                                                    <th data-data="createdby.last_name" data-name="createdby.last_name">
+                                                        Added By
+                                                    </th>
+                                                </tr>
+                                            </thead>
+                                        </table>
+                                    </div> <!-- end table-responsive -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div> <!-- end #notes -->
+
+                <div class="tab-pane active" id="student_details">
+                    <div class="card border-top-0">
+                        <div class="card-body">
+                            <div class="card-text">
+                                <div class="row">
+
+                                    <div class="col-12 p-0 m-0">
+                                        <div class="btn-group float-right" role="group" aria-label="">
+                                            <a class="btn btn-primary ajax-add_new" href="#"
+                                                data-parent="{{student.id}}" data-id="{{student.id}}"
+                                                data-modal="modal-add_new" data-model="student" data-updater=""><i
+                                                    class="fa fa-pencil-alt"></i>&nbsp;Edit Record</a>
+                                            <a class="btn btn-secondary" target="_parent"
+                                                href='{% url 'impersonate-start' student.user.id %}'><i
+                                                    class="fa fa-ghost"></i></a>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-12 p-0 m-0">
+                                        {{student.asHTML|safe}}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div> <!-- end tab # student_details -->
+
+
+                <div class="tab-pane" id="classes">
+                    <div class="card border-top-0">
+                        <div class="card-body">
+                            <div class="row ">
+                                <div class="col-12">
+                                    <table id="tbl_student_registrations" class="table table-striped">
+                                        <thead>
+                                            <tr>
+                                                <th data-data="class_section.term.code"
+                                                    data-name="class_section.term.code">Term
+                                                </th>
+                                                <th data-data="created_on" data-name="created_on">
+                                                    Applied On
+                                                </th>
+                                                <th data-data="reviewed_on" data-name="reviewed_on">Reviewed On</th>
+                                                <th data-data="status" data-name="status">Status</th>
+                                                <th data-data="class_section.course.title"
+                                                    data-name="class_section.course.title">Course
+                                                </th>
+                                                <th data-data="highschool.name" data-name="highschool.name">High
+                                                    School
+                                                    /
+                                                    Reviewer</th>
+                                                <th data-data="ce_url" data-name='ce_url'><span
+                                                        class="sr-only">Actions</span></th>
+                                            </tr>
+                                        </thead>
+                                    </table>
+
+                                    <script>
+
+                                        function get_student_registrations() {
+
+                                        }
+
+                                        $(document).ready(function () {
+                                            // $('form.filter').rememberState()
+                                            let baseURL = '{{registrations_url}}'
+                                            let form = $('form#class_section_filter')
+
+                                            $(document).on("change", "form#class_section_filter :input", function () {
+                                                load_data();
+                                            })
+
+                                            function load_data() {
+                                                let newURL = baseURL + '&' + $(form).serialize();
+
+                                                table.ajax.url(newURL).load()
+                                            }
+
+                                            var table = $('#tbl_student_registrations').DataTable(
+                                                {
+                                                    'order': [[0, 'desc']],
+                                                    ajax: '{{registrations_url}}' + '&' + form.serialize(),
+                                                    serverSide: true,
+                                                    processing: true,
+                                                    stateSave: true,
+                                                    language: {
+                                                        'loadingRecords': '&nbsp;',
+                                                    },
+                                                    'lengthMenu': [30, 50, 100],
+                                                    'columns': [
+                                                        {
+                                                            'render': function (data, type, row, meta) {
+                                                                return row.class_section.term.label + ' ' + row.class_section.term.year
+                                                            }
+                                                        },
+                                                        {
+                                                            'render': function (data, type, row, meta) {
+                                                                return row.created_on
+                                                            }
+                                                        },
+                                                        {
+                                                            'searchable': false,
+                                                            'orderable': false,
+                                                            'render': function (data, type, row, meta) {
+                                                                return row.reviewed_on
+                                                            }
+                                                        },
+                                                        {
+                                                            'render': function (data, type, row, meta) {
+                                                                let col = row.status_pretty + '<br>'
+                                                if(row.changed_on) col += 'on ' + row.changed_on
+                                                return col
+
+                                                            }
+                                                        },
+                                                        {
+                                                            'render': function (data, type, row, meta) {
+                                                                return row.class_section.course.cohort.designator + ' ' + row.class_section.course.catalog_number + ' (' + row.class_section.course.credit_hours + ' credits)' + '<br>' + row.class_section.course.title + '<br>' +
+                                                                    'Pre-req: ' + row.class_section.prereq
+                                                            }
+                                                        },
+                                                        {
+                                                            'render': function (data, type, row, meta) {
+                                                                let hs = row.highschool.name
+                                                                if (row.reviewer === null) {
+                                                                    return hs
+                                                                }
+
+                                                                hs += '<br>' + row.reviewer.user.last_name + ', ' + row.reviewer.user.first_name
+                                                                return hs
+                                                            }
+                                                        },
+                                                        {
+                                                            'searchable': false,
+                                                            'orderable': false,
+                                                            'render': function (data, type, row, meta) {
+                                                                if (row.id == '{{record.id}}')
+                                                                    return '';
+
+                                                                return "<a class='btn btn-sm btn-primary' href='" + row.ce_url + "'>Edit</a>"
+                                                            }
+                                                        }
+                                                    ]
+                                                }
+                                            );
+                                        });
+                                    </script>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div> <!-- end tab # classes -->
+
+                <div class="tab-pane" id="recommendation">
+                    <div class="card border-top-0">
+                        <div class="card-body">
+                            <div class="card-text">
+                                {{recommendation.asHTML|safe}}
+                            </div>
+                        </div>
+                    </div>
+                </div> <!-- end tab # recommendation -->
+
+                <div class="tab-pane" id="signatures">
+                    <div class="card border-top-0">
+                        <div class="card-body">
+                            <div class="card-text">
+                                {{student_signature.asHTML|safe}}
+                                <hr>
+                                {% if parent_consent %}
+                                {{parent_consent.asHTML|safe}}
+                                {% else %}
+                                <p class="alert alert-danger">Parent consent not found</p>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div> <!-- end tab # recommendation -->
+
+            </div>
+        </div> <!-- end col-md-8 -->
+
+    </div> <!-- end row -->
+
+
+</main>
+{% endblock %}

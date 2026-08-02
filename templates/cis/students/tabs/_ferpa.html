@@ -1,0 +1,13 @@
+<div class="card border-top-0">
+    <div class="card-body">
+        <div class="row">
+            <div class="col-12">
+                {% if ferpa %}
+                {{ferpa.asHTML|safe}}
+                {% else %}
+                <p class="alert alert-danger">Information Release form has not been completed</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>

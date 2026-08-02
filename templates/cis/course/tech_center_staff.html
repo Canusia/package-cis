@@ -1,0 +1,98 @@
+{% extends "cis/logged-base.html" %}
+{%block title %}{{ page_title }}{% endblock %}
+
+{% load templatehelpers %}
+{% load crispy_forms_tags %}
+
+{% block body %}
+<script>
+    jQuery(function ($) {
+        /* $('.ui.search').search({
+            apiSettings: {
+                url: "{% url 'cis:district_ajax_search' %}?q={query}"
+            },
+            fields: {
+                results: 'items',
+                title: 'name',
+                url: 'html_url'
+            },
+            minCharacters: 3
+        }); */
+
+        $('.dataTable').DataTable();
+    });
+</script>
+<div class="">
+    <div class="row">
+        <div class="col-md-6 col-sm-12">
+            <h1 class="h3 mt-3 text-gray-800 mb-3">{{ record.user.first_name }} {{record.user.last_name}}</h1>
+        </div>
+    </div>
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="#">Home</a></li>
+            <li class="breadcrumb-item"><a href="{% url urls.all_items %}?{% query_transform %}">{{ labels.all_items }}</a>
+            </li>
+            <li class="breadcrumb-item active" aria-current="page">{{ record.user.first_name }}</li>
+        </ol>
+    </nav>
+</div>
+<main>
+    <div class="">
+        <div class="row">
+            <div class="col-md-4 col-sm-12 mb-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title mb-3">Details <small class="float-right"><a  target="_parent" href='{% url 'impersonate-start' record.user.id %}'><i class="fa fa-ghost"></i></a></small></h5>
+                        <div class="card-text">
+                            {% if messages %}
+                            <ul class="messages list-group">
+                                {% for message in messages %}
+                                <li{% if message.tags %} class="list-group-item {{ message.tags }}" {% endif %}>
+                                    {{ message }}</li>
+                                    {% endfor %}
+                            </ul>
+                            {% endif %}
+                            <form action="" method="post">
+                                {% csrf_token %}
+                                {{ form | crispy }}
+                                <input type="submit" class="btn btn-primary btn-sm" value="Update">
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-8 col-sm-12 d-none">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        Colleges
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table dataTable">
+                                <thead>
+                                    <tr>
+                                        <th>College</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for r in college %}
+                                    <tr>
+                                        <td>
+                                            <a href="{% url 'cis:college' r.id %}">{{r.name}}</a>
+                                        </td>
+                                    </tr>
+                                    </a>
+    
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div> <!-- end table-responsive -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</main>
+{% endblock %}

@@ -1,0 +1,651 @@
+{% extends "cis/logged-base.html" %}
+{%block title %}Dashboard{% endblock %}
+{% load templatehelpers %}
+
+{% block body %}
+<style>
+  tfoot {
+    display: table-footer-group
+  }
+</style>
+<main>
+    <h1 class="h3">Dashboard</h1>
+    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+    <section>
+      <div class="row">
+
+        <div class="col-xl-4 col-md-4 mb-4">
+          <div class="card shadow h-100 py-2">
+            <div class="card-body">
+              <div class="row no-gutters align-items-center">
+                <div class="col mr-2">
+                  <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Registration Settings</div>
+                  <div class="mb-0 font-weight-bold text-gray-800">
+                    {{reg_settings|safe}}
+                  </div>
+                </div>
+                <div class="col-auto">
+                  <i class="fas fa-calendar fa-2x text-gray-300"></i>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+
+        <div class="col-xl-8 col-md-4 mb-4">
+          <div class="card shadow h-100 py-2">
+            <div class="card-body">
+              <div class="row no-gutters align-items-center">
+                <div class="col mr-2">
+                  <div class="text-xs font-weight-bold text-primary text-uppercase mb-3">Registration Status Summary - Current Registration Term(s)</div>
+                  <div class="mb-0 font-weight-bold text-gray-800">
+                    <script>
+                      var tbl_registration_summary_by_status;
+                      setInterval(function() {
+                          tbl_registration_summary_by_status.ajax.reload(null, false);
+                      }, 5000 * 60);
+  
+                      $(document).ready(function () {
+                          tbl_registration_summary_by_status = $('#registration_summary_by_status').DataTable(
+                              {                                  
+                                  stateSave: true,
+                                  'paging': false,
+                                  'searching': false,
+                                  'columns': [
+                                      {
+                                          data: 'status',
+                                          'render': function (data, type, row, meta) {
+                                              return row.status.toUpperCase().replaceAll("_", " ")
+                                          }
+                                      },
+                                      null
+                                  ]
+                              }
+                          ); //end registration_summary_by_status
+                      });
+                  </script>
+
+                    <table id="registration_summary_by_status" class="table table-striped" style="width:100%" data-server-side="true" data-ajax="{{registration_summary_api_url}}&records_type=by_registration_status">
+                        <thead>
+                            <tr>
+                                <th searchable="1" data-data="status" data-name="status">Status
+                                </th>
+                                <th searchable="1" data-data="count" data-name='count'>Count</th>
+                            </tr>
+                        </thead>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+      <!-- end row -->
+
+      
+      <div class="row">
+        <div class="col-xl-4 col-md-4 mb-4">
+          <div class="card shadow h-100 py-2">
+            <div class="card-body">
+              <div class="row no-gutters align-items-center">
+                <div class="col mr-2">
+                  <div class="text-xs font-weight-bold text-primary text-uppercase mb-3">Class Applications By Date - Current Registration Term(s)</div>
+                  <div class="mb-0 font-weight-bold text-gray-800">
+                    <script>
+                      var tbl_registration_summary_by_date;
+                      setInterval(function() {
+                          tbl_registration_summary_by_date.ajax.reload(null, false);
+                      }, 5000 * 60);
+  
+                      $(document).ready(function () {
+                          tbl_registration_summary_by_date = $('#registration_summary_by_date').DataTable(
+                              {  
+                                footerCallback: function (row, data, start, end, display) {
+                                    let api = this.api();
+                            
+                                    // Remove the formatting to get integer data for summation
+                                    let intVal = function (i) {
+                                        return typeof i === 'string'
+                                            ? i.replace(/[\$,]/g, '') * 1
+                                            : typeof i === 'number'
+                                            ? i
+                                            : 0;
+                                    };
+                            
+                                    // Total over all pages
+                                    total = api
+                                        .column(1)
+                                        .data()
+                                        .reduce((a, b) => intVal(a) + intVal(b), 0);
+                            
+                                    // Total over this page
+                                    pageTotal = api
+                                        .column(1, { page: 'current' })
+                                        .data()
+                                        .reduce((a, b) => intVal(a) + intVal(b), 0);
+                            
+                                    // Update footer
+                                    api.column(1).footer().innerHTML =
+                                        pageTotal + ' (' + total + ' total)';
+                                },
+                              "info": false,
+                                dom: 'B<"float-left mt-3 mb-3"l><"float-right mt-3"f><"row clear">rt<"row"<"col-6"i><"col-6 float-right"p>>',
+                                buttons: [
+                                    {
+                                        extend: 'csv', className: 'btn btn-sm btn-primary text-white text-light',
+                                        text: '<i class="fas fa-file-csv text-white"></i>&nbsp;CSV',
+                                        titleAttr: 'Export Records in current View to CSV' 
+                                    },
+                                    { 
+                                        extend: 'print', className: 'btn btn-sm btn-primary text-white text-light',
+                                        text: '<i class="fas fa-print text-white"></i>&nbsp;Print',
+                                        titleAttr: 'Print Records in Current View' 
+                                    },
+                                  ],                        
+                                  stateSave: true,
+                                  // 'paging': false,
+                                  'searching': false,
+                                  'columns': [
+                                      {
+                                        'orderable': false,
+                                        'searchable': false,
+                                      },
+                                      {
+                                        // 'orderable': false,
+                                        'searchable': false,
+                                      }
+                                  ]
+                              }
+                          ); //end registration_summary_by_date
+                      });
+                  </script>
+
+                    <table id="registration_summary_by_date" class="table table-striped" style="width:100%" data-server-side="true" data-ajax="{{registration_summary_api_url}}&records_type=by_date">
+                        <thead>
+                            <tr>
+                                <th searchable="1" data-data="created_on" data-name="created_on">Created On
+                                </th>
+                                <th searchable="1" data-data="count" data-name='count'>Count</th>
+                            </tr>
+                        </thead>
+                        <tfoot>
+                          <tr>
+                              <th style="text-align:right">Total:</th>
+                              <th></th>
+                          </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-xl-4 col-md-4 mb-4">
+          <div class="card shadow h-100 py-2">
+            <div class="card-body">
+              <div class="row no-gutters align-items-center">
+                <div class="col mr-2">
+                  <div class="text-xs font-weight-bold text-primary text-uppercase mb-3">Students By Date - Current Registration Term(s)</div>
+                  <p class="alert alert-info">
+                    Distinct students who created class applications on the date
+                  </p>
+                  <div class="mb-0 font-weight-bold text-gray-800">
+                    <script>
+                      var tbl_student_registration_summary_by_date;
+                      setInterval(function() {
+                          tbl_student_registration_summary_by_date.ajax.reload(null, false);
+                      }, 5000 * 60);
+  
+                      $(document).ready(function () {
+                          tbl_student_registration_summary_by_date = $('#student_registration_summary_by_date').DataTable(
+                              {          
+                                footerCallback: function (row, data, start, end, display) {
+                                    let api = this.api();
+                            
+                                    // Remove the formatting to get integer data for summation
+                                    let intVal = function (i) {
+                                        return typeof i === 'string'
+                                            ? i.replace(/[\$,]/g, '') * 1
+                                            : typeof i === 'number'
+                                            ? i
+                                            : 0;
+                                    };
+                            
+                                    // Total over all pages
+                                    total = api
+                                        .column(1)
+                                        .data()
+                                        .reduce((a, b) => intVal(a) + intVal(b), 0);
+                            
+                                    // Total over this page
+                                    pageTotal = api
+                                        .column(1, { page: 'current' })
+                                        .data()
+                                        .reduce((a, b) => intVal(a) + intVal(b), 0);
+                            
+                                    // Update footer
+                                    api.column(1).footer().innerHTML =
+                                        pageTotal + ' (' + total + ' total)';
+                                },        
+                                "info": false,       
+                                dom: 'B<"float-left mt-3 mb-3"l><"float-right mt-3"f><"row clear">rt<"row"<"col-6"i><"col-6 float-right"p>>',
+                                buttons: [
+                                    {
+                                        extend: 'csv', className: 'btn btn-sm btn-primary text-white text-light',
+                                        text: '<i class="fas fa-file-csv text-white"></i>&nbsp;CSV',
+                                        titleAttr: 'Export Records in current View to CSV' 
+                                    },
+                                    { 
+                                        extend: 'print', className: 'btn btn-sm btn-primary text-white text-light',
+                                        text: '<i class="fas fa-print text-white"></i>&nbsp;Print',
+                                        titleAttr: 'Print Records in Current View' 
+                                    },
+                                  ],           
+                                  stateSave: true,
+                                  // 'paging': false,
+                                  'searching': false,
+                                  'columns': [
+                                      {
+                                        'orderable': false,
+                                        'searchable': false,
+                                      },
+                                      {
+                                        // 'orderable': false,
+                                        'searchable': false,
+                                      }
+                                  ]
+                              }
+                          ); //end student_registration_summary_by_date
+                      });
+                  </script>
+
+                    <table id="student_registration_summary_by_date" class="table table-striped" style="width:100%" data-server-side="true" data-ajax="{{registration_summary_api_url}}&records_type=by_students">
+                        <thead>
+                            <tr>
+                                <th searchable="1" data-data="created_on" data-name="created_on">Created On
+                                </th>
+                                <th searchable="1" data-data="count" data-name='count'>Count</th>
+                            </tr>
+                        </thead>
+                        <tfoot>
+                          <tr>
+                              <th style="text-align:right">Total:</th>
+                              <th></th>
+                          </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-xl-4 col-md-4 mb-4">
+          <div class="card shadow h-100 py-2">
+            <div class="card-body">
+              <div class="row no-gutters align-items-center">
+                <div class="col mr-2">
+                  <div class="text-xs font-weight-bold text-primary text-uppercase mb-3">By Student Created On Date - Current Registration Term(s)</div>
+                  <p class="alert alert-info">
+                    Distinct students who created their accounts on the date and have applied for class(es) in the registration term(s)
+                  </p>
+                  <div class="mb-0 font-weight-bold text-gray-800">
+                    <script>
+                      var tbl_student_registration_summary_by_create_date;
+                      setInterval(function() {
+                          tbl_student_registration_summary_by_create_date.ajax.reload(null, false);
+                      }, 5000 * 60);
+  
+                      $(document).ready(function () {
+                          tbl_student_registration_summary_by_create_date = $('#student_registration_summary_by_create_date').DataTable(
+                              {    
+                                footerCallback: function (row, data, start, end, display) {
+                                    let api = this.api();
+                            
+                                    // Remove the formatting to get integer data for summation
+                                    let intVal = function (i) {
+                                        return typeof i === 'string'
+                                            ? i.replace(/[\$,]/g, '') * 1
+                                            : typeof i === 'number'
+                                            ? i
+                                            : 0;
+                                    };
+                            
+                                    // Total over all pages
+                                    total = api
+                                        .column(1)
+                                        .data()
+                                        .reduce((a, b) => intVal(a) + intVal(b), 0);
+                            
+                                    // Total over this page
+                                    pageTotal = api
+                                        .column(1, { page: 'current' })
+                                        .data()
+                                        .reduce((a, b) => intVal(a) + intVal(b), 0);
+                            
+                                    // Update footer
+                                    api.column(1).footer().innerHTML =
+                                        pageTotal + ' (' + total + ' total)';
+                                },
+                                "info": false,       
+                                dom: 'B<"float-left mt-3 mb-3"l><"float-right mt-3"f><"row clear">rt<"row"<"col-6"i><"col-6 float-right"p>>',
+                                buttons: [
+                                    {
+                                        extend: 'csv', className: 'btn btn-sm btn-primary text-white text-light',
+                                        text: '<i class="fas fa-file-csv text-white"></i>&nbsp;CSV',
+                                        titleAttr: 'Export Records in current View to CSV' 
+                                    },
+                                    { 
+                                        extend: 'print', className: 'btn btn-sm btn-primary text-white text-light',
+                                        text: '<i class="fas fa-print text-white"></i>&nbsp;Print',
+                                        titleAttr: 'Print Records in Current View' 
+                                    },
+                                  ],           
+                                  stateSave: true,
+                                  // 'paging': false,
+                                  'searching': false,
+                                  'columns': [
+                                      {
+                                        'orderable': false,
+                                        'searchable': false,
+                                      },
+                                      {
+                                        // 'orderable': false,
+                                        'searchable': false,
+                                      }
+                                  ]
+                              }
+                          ); //end student_registration_summary_by_create_date
+                      });
+                  </script>
+
+                    <table id="student_registration_summary_by_create_date" class="table table-striped" style="width:100%" data-server-side="true" data-ajax="{{registration_summary_api_url}}&records_type=by_student_created">
+                        <thead>
+                            <tr>
+                                <th searchable="1" data-data="created_on" data-name="created_on">Created On
+                                </th>
+                                <th searchable="1" data-data="count" data-name='count'>Count</th>
+                            </tr>
+                        </thead>
+                        <tfoot>
+                          <tr>
+                              <th style="text-align:right">Total:</th>
+                              <th></th>
+                          </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+      
+      <div class="row">
+        <div class="col-xl-6 col-md-6 mb-4">
+          <div class="card shadow h-100 py-2">
+            <div class="card-body">
+              <div class="row no-gutters align-items-center">
+                <div class="col mr-2">
+                  <div class="text-xs font-weight-bold text-primary text-uppercase mb-5">Registration Summary - Current Registration Term(s)</div>
+                  <div class="mb-0 font-weight-bold text-gray-800">
+                    
+                    <div class="table-responsive">
+                      <script>
+                          $(document).ready(function() {
+                              var tbl_registration_summary;
+                              
+                              setInterval(function() {
+                                tbl_registration_summary.ajax.reload(null, false);
+                              }, 5000 * 60);
+                              
+                              tbl_registration_summary = $('#tbl_registrations_summary').DataTable(
+                              {
+                                  'lengthMenu': [5, 10, 30, 50, 100, 200],
+                                  'order': [[0, 'asc'], [1, 'asc']],
+                                  'rowGroup': {
+                                      dataSrc: ['highschool_name'],
+                                      startRender: function (rows, group, level) {
+                                          return '<h5 class="group-header-tab-' + level + '">' + group + '</h5>'
+                                      },
+                                      endRender: function ( rows, group, level ) {
+                                          var total = rows
+                                              .data()
+                                              .pluck('count')
+                                              .reduce( function (a, b) {
+                                                  return a+b
+                                              }, 0);
+                          
+                                          return '<div class="group-footer-tab-'+level+'">Total '+group+' - '+
+                                              $.fn.dataTable.render.number(',', '.', 0, '').display( total ) + '</div>';
+                                      },
+                                  },
+                                  'columnDefs': [
+                                      {
+                                          // 'searchable': false,
+                                          'targets': [0],
+                                          'visible': false,
+                                      }
+                                  ],
+                                  'columns': [
+                                      {
+                                          data: 'highschool_name'
+                                      },
+                                      {
+                                          data: 'course_name'
+                                      },
+                                      {
+                                          data: 'status',
+                                          'render': function (data, type, row, meta) {
+                                              return row.status.toUpperCase().replaceAll("_", " ")
+                                          }
+                                      },
+                                      {
+                                          data: 'count'
+                                      }
+                                  ]
+                              }
+                          );
+                          })
+                      </script>
+                      <table id="tbl_registrations_summary" class="table table-striped responsive grouped_table_2"
+                          style="width:100%" data-ajax="{{registration_summary_api_url}}">
+                          <thead>
+                              <tr>
+                                  <th data-data="highschool_name" data-name="highschool_name">High School</th>
+                                  <th data-data="course_name" data-name="course_name">Course</th>
+                                  <th data-data="status" data-name="status">Status
+                                  </th>
+                                  <th data-data="count" data-name="count">Count
+                                  </th>
+                              </tr>
+                          </thead>
+                      </table>
+                  </div> <!-- end table-responsive -->
+
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- end registration summary by high school -->
+
+        <div class="col-xl-6 col-md-6 mb-4">
+          <div class="card shadow h-100 py-2">
+            <div class="card-body">
+              <div class="row no-gutters align-items-center">
+                <div class="col mr-2">
+                  <div class="text-xs font-weight-bold text-primary text-uppercase mb-5">Registration Summary - Current Registration Term(s)</div>
+                  <div class="mb-0 font-weight-bold text-gray-800">
+                    
+                    <div class="table-responsive">
+                      <script>
+                          $(document).ready(function() {
+                              var tbl_registration_summary_by_course;
+                              
+                              setInterval(function() {
+                                tbl_registration_summary_by_course.ajax.reload(null, false);
+                              }, 5000 * 60);
+                              
+                              tbl_registration_summary_by_course = $('#tbl_registrations_summary_course').DataTable(
+                              {
+                                  'lengthMenu': [5, 10, 30, 50, 100, 200],
+                                  'order': [[0, 'asc'], [1, 'asc']],
+                                  'rowGroup': {
+                                      dataSrc: ['course_name'],
+                                      startRender: function (rows, group, level) {
+                                          return '<h5 class="group-header-tab-' + level + '">' + group + '</h5>'
+                                      },
+                                      endRender: function ( rows, group, level ) {
+                                          var total = rows
+                                              .data()
+                                              .pluck('count')
+                                              .reduce( function (a, b) {
+                                                  return a+b
+                                              }, 0);
+                          
+                                          return '<div class="group-footer-tab-'+level+'">Total '+group+' - '+
+                                              $.fn.dataTable.render.number(',', '.', 0, '').display( total ) + '</div>';
+                                      },
+                                  },
+                                  'columnDefs': [
+                                      {
+                                          'targets': [0],
+                                          'visible': false,
+                                      }
+                                  ],
+                                  'columns': [
+                                      {
+                                          data: 'course_name'
+                                      },
+                                      {
+                                          data: 'highschool_name'
+                                      },
+                                      {
+                                          data: 'status',
+                                          'render': function (data, type, row, meta) {
+                                              return row.status.toUpperCase()
+                                          }
+                                      },
+                                      {
+                                          data: 'count'
+                                      }
+                                  ]
+                              }
+                          );
+                          })
+                      </script>
+                      <table id="tbl_registrations_summary_course" class="table table-striped responsive grouped_table_2"
+                          style="width:100%" data-ajax="{{registration_summary_api_url}}">
+                          <thead>
+                              <tr>
+                                  <th data-data="course_name" data-name="course_name">Course</th>
+                                  <th data-data="highschool_name" data-name="highschool_name">High School</th>
+                                  <th data-data="status" data-name="status">Status
+                                  </th>
+                                  <th data-data="count" data-name="count">Count
+                                  </th>
+                              </tr>
+                          </thead>
+                      </table>
+                  </div> <!-- end table-responsive -->
+
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- end registration summary by course  -->
+      </div>
+
+      <div class="row">
+        <div class="col-xl-12 col-md-12 mb-4">
+          <div class="card shadow h-100 py-2">
+            <div class="card-body">
+              <div class="row no-gutters align-items-center">
+                <div class="col mr-2">
+                  <div class="text-xs font-weight-bold text-primary text-uppercase mb-3">Pending Access Requests</div>
+                  <div class="mb-0 font-weight-bold text-gray-800">
+                    <script>
+                      var table;
+                      setInterval(function() {
+                          table.ajax.reload(null, false);
+                      }, 5000 * 60);
+  
+                      $(document).ready(function () {
+                          table = $('#registration_status_summary').DataTable(
+                              {                                  
+                                  stateSave: true,
+                                  'lengthMenu': [5, 30, 50, 100],
+                                  'order': [[0,'desc']],
+                                  'columns': [
+                                      null,
+                                      null,
+                                      null,
+                                      {
+                                          'searchable': false,
+                                          'orderable': false,
+                                          'render': function (data, type, row, meta) {
+                                              return "<a class='btn record-details btn-sm btn-primary' refresh-target='table' href='" + "/ce/highschool_admin/access_request/" + row.id + "'>View Details</a>"
+                                          }
+                                      }
+                                  ]
+                              }
+                          ); //end registration_status_summary
+  
+  
+                          $('#registration_status_summary thead tr').clone(true).appendTo( '#registration_status_summary thead' );
+                          $('#registration_status_summary thead tr:eq(1) th').each( function (i) {
+                              if($(this).attr('searchable') != '1') {
+                                  $(this).html('')
+                              } else {
+                                  var title = $(this).text();
+                                  $(this).html( '<input type="text" class="form-control" placeholder="Search '+title+'" />' );
+                          
+                                  $( 'input', this ).on( 'keyup change', function () {
+                                      if ( table.column(i).search() !== this.value ) {
+                                          table
+                                              .column(i)
+                                              .search( this.value )
+                                              .draw();
+                                      }
+                                  } );
+                              }
+                          } ); 
+                      });
+                  </script>
+
+                    <table id="registration_status_summary" class="table table-striped responsive" style="width:100%"
+                                    data-server-side="true" data-ajax="{{access_requests_api_url}}?format=datatables&status=submitted">
+                                    <thead>
+                                        <tr>
+                                            <th searchable="1" data-data="name" data-name="name">Name
+                                            </th>
+                                            <th searchable="1" data-data="highschool.name" data-name='highschool.name'>High School</th>
+                                            <th searchable="1" data-data="status">Status</th>
+                                            <th data-data="id" data-name='id'><span class="sr-only">Actions</span></th>
+                                        </tr>
+                                    </thead>
+                                </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </section>
+</main>
+{% endblock %}

@@ -1,0 +1,467 @@
+{% extends "cis/logged-base.html" %}
+{%block title %}{{ page_title }}{% endblock %}
+
+{% load templatehelpers %}
+{% load crispy_forms_tags %}
+
+{% block body %}
+<script>
+    jQuery(function ($) {
+        /* $('.ui.search').search({
+            apiSettings: {
+                url: "{% url 'cis:district_ajax_search' %}?q={query}"
+            },
+            fields: {
+                results: 'items',
+                title: 'name',
+                url: 'html_url'
+            },
+            minCharacters: 3
+        }); */
+
+        $('.dataTable').DataTable();
+    });
+</script>
+<div class="">
+    <div class="row">
+        <div class="col-md-6 col-sm-12">
+            <h1 class="h3 mt-3 text-gray-800 mb-3">{{ record.name }}</h1>
+        </div>
+    </div>
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="#">Home</a></li>
+            <li class="breadcrumb-item"><a
+                    href="{% url urls.all_items %}?{% query_transform %}">{{ labels.all_items }}</a>
+            </li>
+            <li class="breadcrumb-item active" aria-current="page">{{ record.name }}</li>
+        </ol>
+    </nav>
+</div>
+<main>
+    <div class="">
+        <div class="row">
+            <div class="col-md-4 col-sm-12 mb-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Details</h5>
+                        <div class="card-text">
+                            {% if messages %}
+                            <ul class="messages list-group">
+                                {% for message in messages %}
+                                <li{% if message.tags %} class="list-group-item {{ message.tags }}" {% endif %}>
+                                    {{ message }}</li>
+                                    {% endfor %}
+                            </ul>
+                            {% endif %}
+                            <form action="" method="post">
+                                {% csrf_token %}
+                                {{ form | crispy }}
+                                <input type="submit" class="btn btn-primary btn-sm" value="Update">
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-8 col-sm-12">
+                <ul class="nav nav-tabs">
+                    <li class="nav-item">
+                        <a class="nav-link active" data-toggle="tab" href="#speakers">Speaker(s)</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-toggle="tab" href="#cohorts">Cohort(s)</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-toggle="tab" href="#guest_list">Manage Audience</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-toggle="tab" href="#items">Refreshment</a>
+                    </li>
+
+                    <li class="nav-item">
+                        <a class="nav-link" data-toggle="tab" href="#copy_req">Copying</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-toggle="tab" href="#misc_expenses">CIS & Cohort Exp.</a>
+                    </li>
+                    <li class="nav-item d-none">
+                        <a class="nav-link" data-toggle="tab" href="#notes">Notes</a>
+                    </li>
+                </ul>
+
+                <script>
+                    jQuery(document).ready(function ($) {
+                        $(document).on("click", ".delete-record", function () {
+                            if (confirm("Are you sure you want to delete this record?")) {
+                                let ajaxurl = "{% url 'cis:delete_record_from_event' %}";
+                                $.ajax({
+                                    type: "GET",
+                                    url: ajaxurl,
+                                    data: "record_type=" + $(this).attr("data-type") + "&id=" + $(this).attr("data-id"),
+                                    success: function (response) {
+                                        if (response.status == 'success') {
+                                            window.location.reload();
+                                        } else {
+                                            alert("There was an error while deleting record")
+                                        }
+                                    }
+                                });
+                            }
+                        });
+
+                        $(document).on("submit", "form.event_item_frm", function() {
+                            event.preventDefault();
+                            let ajaxurl = "{% url 'cis:edit_event_item' %}";
+                            let form = this;
+
+                                $.ajax({
+                                    type: "GET",
+                                    url: ajaxurl,
+                                    data: $(this).serialize(),
+                                    success: function (response) {
+                                        alert(response.message)
+                                        $(form).replaceWith(response.form_html)
+                                    }
+                                });
+                        });
+                    });
+                </script>
+                <!-- Tab panes -->
+                <div class="tab-content">
+
+
+                    <div class="tab-pane d-none" id="notes">
+                        <div class="row">
+                            <div class="col-12 bg-gray-100">
+                                <div class="card mb-4 border-top-0">
+                                    <div class="card-body ">
+
+                                        <div class="text-right">
+                                            <a href="#notes" class="btn btn-sm btn-primary ajax-add_new"
+                                                data-parent="{{record.id}}" data-id="-1" data-modal="modal-add_new"
+                                                data-model="eventnote" data-updater=""><i
+                                                    class="fa fas-light fa-plus-circle"></i>&nbsp;Add New Note</a>
+                                        </div>
+                                        <div class="clearfix">&nbsp;</div>
+                                        <div class="table-responsive">
+                                            <table class="table ">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Added On</th>
+                                                        <th>Note</th>
+                                                        <th>Added By</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {% for r in notes %}
+                                                    <tr>
+                                                        <td>{{r.createdon|date:'m/d/Y H:i a'}}</td>
+                                                        <td>
+                                                            {{r.note}}
+                                                        </td>
+                                                        <td>{{r.createdby.first_name}} {{r.createdby.last_name}}</td>
+                                                    </tr>
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div> <!-- end #notes -->
+
+                    <div class="tab-pane" id="misc_expenses">
+                        <div class="row">
+                            <div class="col-12 bg-gray-100">
+                                <div class="card mb-4 border-top-0">
+                                    <div class="card-body ">
+                                        <h3 class="mb-3">CIS Expense</h3>
+                                        <form action="" class="event_item_frm" method="get">
+                                            {% csrf_token %}
+                                            {{ cisExpenseForm | crispy }}
+                                            <input type="submit" class="btn btn-primary btn-sm btn-event-item-edit" value="Save">
+                                        </form>
+                                        <div class="clearfix">&nbsp;</div>
+                                        <h3 class="mb-3">Cohort Expense</h3>
+                                        <form action="" class="event_item_frm" method="get">
+                                            {% csrf_token %}
+                                            {{ cohortExpenseForm | crispy }}
+                                            <input type="submit" class="btn btn-primary btn-sm btn-event-item-edit" value="Save">
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div> <!-- end #misc_expenses -->
+
+                    <div class="tab-pane" id="copy_req">
+                        <div class="row">
+                            <div class="col-12 bg-gray-100">
+                                <div class="card mb-4 border-top-0">
+                                    <div class="card-body ">
+                                        <form action="" class="event_item_frm" method="get">
+                                            {% csrf_token %}
+                                            {{ copyReqForm | crispy }}
+                                <input type="submit" class="btn btn-primary btn-sm btn-event-item-edit" value="Save">
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div> <!-- end #copy_req -->
+                    <div class="tab-pane" id="items">
+                        <div class="row">
+                            <div class="col-12 bg-gray-100">
+                                <div class="card mb-4 border-top-0">
+                                    <div class="card-body ">
+                                        <form action="" class="event_item_frm" method="get">
+                                            {% csrf_token %}
+                                            {{ refreshmentForm | crispy }}
+
+                                <input type="submit" class="btn btn-primary btn-sm btn-event-item-edit" value="Save">
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div> <!-- end #items -->
+
+                    <div class="tab-pane active" id="speakers">
+                        <div class="row">
+                            <div class="col-12 bg-gray-100">
+                                <div class="card mb-4 border-top-0">
+                                    <div class="card-body ">
+                                        <div class="text-right">
+                                            <a href="#speakers" class="btn btn-sm btn-primary ajax-add_new"
+                                                data-parent="{{record.id}}" data-id="-1" data-modal="modal-add_new"
+                                                data-model="eventspeaker" data-updater=""><i
+                                                    class="fa fas-light fa-plus-circle"></i>&nbsp;Add New Speaker</a>
+                                        </div>
+                                        <div class="clearfix">&nbsp;</div>
+                                        <div class="table-responsive">
+                                            <table class="table dataTable">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Name</th>
+                                                        <th>Email</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {% for r in speakers %}
+                                                    <tr>
+                                                        <td>
+                                                            <a href="javascript:void(0)" class="ajax-add_new"
+                                                                data-parent="{{record.id}}" data-id="{{r.id}}"
+                                                                data-modal="modal-add_new" data-model="eventspeaker"
+                                                                data-updater="">{{r.speaker.user.first_name}}
+                                                                {{r.speaker.user.last_name}}</a>
+                                                        </td>
+                                                        <td>{{r.speaker.user.email}}</td>
+                                                    </tr>
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div> <!-- end #speakers -->
+
+                    <div class="tab-pane" id="cohorts">
+                        <div class="row">
+                            <div class="col-12 bg-gray-100">
+                                <div class="card mb-4 border-top-0">
+                                    <div class="card-body ">
+                                        <div class="text-right">
+                                            <a href="#cohorts" class="btn btn-sm btn-primary ajax-add_new"
+                                                data-parent="{{record.id}}" data-id="-1" data-modal="modal-add_new"
+                                                data-model="eventcohort" data-updater=""><i
+                                                    class="fa fas-light fa-plus-circle"></i>&nbsp;Add New Cohort</a>
+                                        </div>
+                                        <div class="clearfix">&nbsp;</div>
+                                        <div class="table-responsive">
+                                            <table class="table dataTable">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Cohort</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {% for r in cohorts %}
+                                                    <tr>
+                                                        <td>
+                                                            <a href="javascript:void(0)" class="ajax-add_new"
+                                                                data-parent="{{record.id}}" data-id="{{r.id}}"
+                                                                data-modal="modal-add_new" data-model="eventcohort"
+                                                                data-updater="">{{r.cohort.name}}</a>
+                                                        </td>
+                                                    </tr>
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div> <!-- end #cohorts -->
+
+                    <div class="tab-pane" id="guest_list">
+                        <script>
+                            jQuery(document).ready(function ($) {
+                                function update_counter() {
+                                    $("#remove_guest_btn").html(
+                                        $("#remove_guest_btn").attr("data-default-title") + " (" +
+                                        $('input:checkbox.guest:checked').not(this).length + ") "
+                                    )
+
+                                    $("#mark_attended_btn").html(
+                                        $("#mark_attended_btn").attr("data-default-title") + " (" +
+                                        $('input:checkbox.guest:checked').not(this).length + ") "
+                                    )
+
+                                    $("#mark_optional_btn").html(
+                                        $("#mark_optional_btn").attr("data-default-title") + " (" +
+                                        $('input:checkbox.guest:checked').not(this).length + ") "
+                                    )
+
+                                    $("#mark_required_btn").html(
+                                        $("#mark_required_btn").attr("data-default-title") + " (" +
+                                        $('input:checkbox.guest:checked').not(this).length + ") "
+                                    )                                    
+                                    
+                                }
+
+                                $("input:checkbox.guest").on("click", function () {
+                                    update_counter();
+                                });
+
+                                $("#check_all_guests").click(function () {
+                                    $('input:checkbox.guest').not(this).prop('checked', this.checked);
+
+                                    update_counter();
+                                });
+
+                                $("#remove_guest_btn").click(function () {
+
+                                    event.preventDefault();
+                                    let ajaxurl = "{% url 'cis:delete_record_from_event' %}"
+                                    let prev_mesg = $(this).html();
+                                    let obj = this;
+
+                                    $(this).html("Please wait...")
+
+                                    $.ajax({
+                                        type: "GET",
+                                        url: ajaxurl,
+                                        data: $("#manage_guest_list_frm").serialize(),
+                                        success: function (response) {
+                                            if (response.status == 'ERROR')
+                                                alert(response.message)
+                                            else {
+                                                alert(response.message);
+                                                window.location.reload();
+                                            }
+                                        }
+                                    });
+
+                                });
+
+                                $("#mark_required_btn, #mark_optional_btn").click(function () {
+                                    event.preventDefault();
+                                    let ajaxurl = "{% url 'cis:delete_record_from_event' %}"
+                                    let prev_mesg = $(this).html();
+                                    let obj = this;
+
+                                    $(this).html("Please wait...")
+
+                                    $.ajax({
+                                        type: "GET",
+                                        url: ajaxurl,
+                                        data: $("#manage_guest_list_frm").serialize() + "&action=" +
+                                        $(this).attr("data-action"),
+                                        success: function (response) {
+                                            if (response.status == 'ERROR')
+                                                alert(response.message)
+                                            else {
+                                                alert(response.message);
+                                                window.location.reload();
+                                            }
+                                        }
+                                    });
+
+                                    });
+
+                                $('.dataTable_nosort').DataTable({
+                                    "paging": false,
+                                    'order': [[1, 'asc']]
+                                });
+                            });
+                        </script>
+                        <div class="row">
+                            <div class="col-12 bg-gray-100">
+                                <div class="card mb-4 border-top-0">
+                                    <div class="card-body ">
+                                        <div class="clearfix">&nbsp;</div>
+                                        <form action="" id="manage_guest_list_frm" method="get">
+                                            {% csrf_token %}
+
+                                            <div style="max-height: 800px; overflow-y: scroll; overflow-x:hidden;">
+                                                <div class="table-responsive">
+                                                    <table class="table dataTable_nosort">
+                                                        <thead>
+                                                            <tr>
+                                                                <th><input type="checkbox" name=""
+                                                                        id="check_all_guests"></th>
+                                                                <th>Name</th>
+                                                                <th>Email</th>
+                                                                <th>Participation</th>
+                                                                <th>Status</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {% for r in guest_list %}
+                                                            <tr>
+                                                                <td>
+                                                                    <input type="checkbox" name="guest[]" class="guest"
+                                                                        id="" value="{{r.id}}">
+                                                                </td>
+                                                                <td>
+                                                                    {{r.user.first_name}} {{r.user.last_name}}
+                                                                </td>
+                                                                <td>{{r.user.email}}</td>
+                                                                <td>{{r.participation}}</td>
+                                                                <td>{{r.status}}</td>
+                                                            </tr>
+                                                            {% endfor %}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                                <input type="hidden" name="record_type" value="guest" />
+                                        </form>
+                                    </div>
+                                    <div class="clearfix">&nbsp;</div>
+                                    <button id="remove_guest_btn" data-default-title="Remove Selected"
+                                        class="btn btn-danger">Remove Selected</button>&nbsp;
+                                    <button id="mark_optional_btn" data-action="mark_as_optional"  data-default-title="Mark as Optional"
+                                        class="btn btn-info">Mark as Optional</button>&nbsp;
+                                    <button id="mark_required_btn"  data-action="mark_as_required" data-default-title="Mark as Required"
+                                        class="btn btn-info">Mark as Required</button>&nbsp;                                        
+                                    <button id="mark_attended_btn"  data-default-title="Mark as Attended"
+                                        class="btn btn-info d-none">Mark as Attended</button>
+                                </div>
+                            </div>
+                        </div>
+
+
+                    </div> <!-- end #attendees -->
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+</main>
+{% endblock %}

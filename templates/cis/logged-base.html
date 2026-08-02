@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+<!--   
+  <script>
+    (function(n,i,v,r,s,c,x,z){x=window.AwsRumClient={q:[],n:n,i:i,v:v,r:r,c:c};window[n]=function(c,p){x.q.push({c:c,p:p});};z=document.createElement('script');z.async=true;z.src=s;document.head.insertBefore(z,document.head.getElementsByTagName('script')[0]);})(
+      'cwr',
+      '191718a5-79a7-4d08-822a-b4f92dbba4b0',
+      '1.0.0',
+      'us-east-1',
+      'https://client.rum.us-east-1.amazonaws.com/1.12.0/cwr.js',
+      {
+        sessionSampleRate: 1,
+        guestRoleArn: "arn:aws:iam::712975278960:role/RUM-Monitor-us-east-1-712975278960-7431699889661-Unauth",
+        identityPoolId: "us-east-1:7337389d-545d-4db0-be49-d60cd805958a",
+        endpoint: "https://dataplane.rum.us-east-1.amazonaws.com",
+        telemetries: ["performance","errors","http"],
+        allowCookies: true,
+        enableXRay: false
+      }
+    );
+  </script> -->
+
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
+  {% load static %}
+
+  {% load crispy_forms_tags %}
+  {% load templatehelpers %}
+  
+  {% include 'cis/header-includes.html' %}
+  <style>
+    tfoot{display: table-row-group;}
+  </style>
+  
+  <script>
+
+    jQuery(document).ready(function ($) {
+            // show active tab on reload
+            if (location.hash !== '') $('.nav-tabs a[href="' + location.hash + '"]').tab('show');
+    
+            // remember the hash in the URL without jumping
+            $('a[data-toggle="tab"]').on('shown.bs.tab', function (e) {
+              if (history.pushState) {
+                history.pushState(null, null, '#' + $(e.target).attr('href').substr(1));
+              } else {
+                location.hash = '#' + $(e.target).attr('href').substr(1);
+              }
+            });
+          });
+      </script>
+    
+  <title>{% block title %}123{% endblock %}</title>
+</head>
+
+<body class="bg-light ">
+  <a href="#content" class="sr-only sr-only-focusable">Skip to main content</a>
+
+  <!-- Topbar -->
+  <nav class="navbar navbar-expand navbar-light bg-white topbar static-top shadow">
+    <!-- Sidebar Toggle (Topbar) -->
+    <button id="sidebarToggleTop" class="btn btn-link d-md-none rounded-circle mr-3" style="color: #fff;">
+      <i class="fa fa-bars"></i>
+      <span class="sr-only">Menu Toggle</span>
+    </button>
+
+    <a class="sidebar-brand"  href="{% url 'logged_home' %}">
+      <div class="sidebar-brand-text1">
+        {% if MYCE_SETTINGS.show_logo == 'True' %}
+        <img src="{% static 'images/logo.png' %}" style="height: 60px;" class="img-fluid d-none d-sm-inline-block"
+          alt="Logo">
+
+        {%else%}
+        {{MYCE_SETTINGS.site_name }}
+        {%endif%}
+      </div>
+      </div>
+    </a>
+    <hr class="sidebar-divider my-0">
+
+    <ul class="navbar-nav ml-auto">     
+      {% if user.is_impersonate %}
+      <li class="nav-item">
+        <a target="_parent" href="{% url 'impersonate-stop' %}" class="nav-link">
+          <span class="mr-2 d-none d-lg-inline text-dark small"><span class="fa fa-ghost"
+              aria-hidden="true"></span>&nbsp;&nbsp;Switch back to {{request.impersonator}}</span>
+        </a>
+      </li>
+      {% endif %}
+      <li class="nav-item dropdown no-arrow mx-1 d-none" id="alerts">
+        <a class="nav-link dropdown-toggle" href="#" id="alertsDropdown" role="button" data-toggle="dropdown"
+          aria-haspopup="true" aria-expanded="true">
+          <i class="fas fa-bell fa-fw text-dark"></i>
+          <!-- Counter - Alerts -->
+          <span class="badge badge-danger badge-counter">0</span>
+        </a>
+        <!-- Dropdown - Alerts -->
+        <div class="dropdown-list dropdown-menu dropdown-menu-right shadow animated--grow-in"
+          aria-labelledby="alertsDropdown">
+          <h6 class="dropdown-header">
+            Alerts Center
+            <span class="text-right float-right d-none" title="Mark alerts as read" style="cursor: pointer;" id="mark_alerts_as_read"><i class="fas fa-check"></i></span>
+          </h6>
+          <div class="dropdown-item d-flex align-items-center">
+            <div><span>No new alerts</span></div>
+          </div>
+        </div>
+      </li>
+      <div class="topbar-divider d-none d-sm-block"></div>
+
+      <!-- Nav Item - User Information -->
+      <li class="nav-item dropdown no-arrow">
+        <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-toggle="dropdown"
+          aria-haspopup="true" aria-expanded="false">
+          <span class="mr-2 d-none d-lg-inline text-dark small"><span class="fa fa-user"
+              aria-hidden="true"></span>&nbsp;&nbsp;Logged in as {{user}}</span>
+        </a>
+        <!-- Dropdown - User Information -->
+        <div class="dropdown-menu dropdown-menu-right shadow animated--grow-in" aria-labelledby="userDropdown">
+          <a class="dropdown-item" href="{% url 'logout' %}">
+            <i class="fas fa-sign-out-alt fa-sm fa-fw mr-2 text-gray-400"></i>
+            Logout
+          </a>
+        </div>
+      </li>
+
+    </ul>
+
+  </nav>
+  <!-- end main nav -->
+
+  <div id="wrapper">
+    <!-- Sidebar -->
+    <ul
+      class="navbar-nav bg-gradient-primary sidebar sidebar-dark accordion {% if request.COOKIES.mycis_sidebar_toggled == 'true' %}toggled{% endif %}"
+      id="accordionSidebar">
+
+
+      {{ menu|safe }}
+
+      <hr class="sidebar-divider d-none d-md-block">
+      <div class="text-center d-none d-md-inline">
+        <button class="rounded-circle border-0" id="sidebarToggle"></button>
+      </div>
+
+    </ul>
+
+    <!-- Content Wrapper -->
+    <div id="content-wrapper" class="d-flex flex-column">
+
+      <!-- Main Content -->
+      <div id="content">
+
+        <!-- Begin Page Content -->
+        <div class="container-fluid">
+          <div class="mt-4">
+            <!-- Page Heading -->
+
+            <script src="{% static 'js/action_registry.js' %}"></script>
+            {% block body %}
+            Body content
+            {% endblock %}
+          </div>
+        </div> <!-- end container-fluid -->
+
+
+      </div> <!-- end #content -->
+      
+        <footer class="sticky-footer bg-white">
+        
+          <div class="container my-auto">         
+            <script>
+             
+            </script>
+            <div id="footer">
+            </div>
+  
+            <div class="copyright text-center my-auto">
+              <span>Copyright Canusia Inc.</span>
+            </div>
+          </div>
+        </footer>
+  
+
+    </div> <!-- end #content-wrapper -->
+  </div> <!-- end #wrapper -->
+
+
+  <script>
+      jQuery(document).ready(function ($) {
+        $.ajax({
+          type: "GET",
+          url: "{% url 'cis:footer' 'logged_staff' %}",
+          success: function (response) {
+            $("div#footer").html(response.footer)
+          }
+        });
+      });
+  </script>
+  <div id='details' class='modal fade' role='dialog' tabindex="-1" style="">
+    <div class='modal-dialog  modal-dialog-scrollable' style="">
+        <div class='modal-content'>
+            <div class='modal-body' style="position: relative;">
+              <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                  <span aria-hidden="true">×</span>
+                </button>
+              </div>
+                <iframe id='details_src' width='100%' height='100%'
+                    style="position:  absolute; height: 98%; width: 97%;" frameborder='0' allowfullscreen></iframe>
+            </div>
+            
+            <div class='modal-footer border-top-0'>
+              <button type='button' class='close' style="color: #fff;" data-dismiss='modal'>&times;</button>
+          </div>
+
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="modal-bulk_actions" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog  modal-dialog-scrollable">
+    <div class="modal-content">
+
+      <div class='modal-body' style="position: relative;">
+        <div class="modal-header">
+          <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+            <span aria-hidden="true">×</span>
+          </button>
+        </div>
+        <div id="bulk_modal_content"></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="modal-add_new" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog  modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-body">
+        <div class="modal-header d-none">
+          <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+            <span aria-hidden="true">×</span>
+          </button>
+        </div>
+        <div id="modal_content" class='modal_container'></div>
+    </div>
+
+    <div class='modal-footer border-top-0'>
+    </div>
+  </div>
+  </div>
+</div>
+
+
+<div id='notes_modal' class='modal fade' role='dialog' tabindex="-1">
+  <div class='modal-dialog  modal-dialog-scrollable' style="max-width: 90%;">
+    <div class='modal-content'>
+      <div class="modal-header d-none">
+      <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+        <span aria-hidden="true">×</span>
+      </button>
+    </div>
+      <div class='modal-body' style="position: relative;">
+        <iframe id='notes_modal_src' width='100%' height='100%' style="position:  absolute; height: 98%; width: 97%;"
+          frameborder='0' allowfullscreen></iframe>
+      </div>
+
+      <div class='modal-footer'>
+      </div>
+    </div>
+  </div>
+</div>
+  {% if user.require_password_reset %}
+  {% if form %}
+  <script>
+    jQuery(document).ready(function($) {
+        $("#passwordChangeModal").modal({backdrop: 'static', keyboard: false});
+    })
+    </script>
+<div class="modal fade" id="passwordChangeModal" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog  modal-dialog-scrollable" role="document" style="max-width: 50%;">
+      <div class="modal-content">
+          
+          <div class="modal-body">
+              <div class="mb-3" id="password_reset">
+                  <div class="">
+                      <div class="col-md-12">
+                        
+                        <h4>Please change your password</h4>
+                        
+                        <p class="alert alert-info">Please enter your new password twice so we can verify you typed it in correctly.</p>
+
+                        
+                        {% crispy form %}
+                      </div>
+                  </div>
+              </div>
+              <div class="clearfix">&nbsp;</div>
+          </div>
+      </div>
+  </div>
+</div>
+{% endif %}
+{% endif %}
+
+
+
+{% if user.require_password_reset %}
+{% if form %}
+<script>
+  jQuery(document).ready(function($) {
+      $("#passwordChangeModal").modal({backdrop: 'static', keyboard: false});
+  })
+  </script>
+<div class="modal fade" id="passwordChangeModal" tabindex="-1" role="dialog" aria-hidden="true">
+<div class="modal-dialog  modal-dialog-scrollable" role="document" style="max-width: 50%;">
+    <div class="modal-content">
+        
+        <div class="modal-body">
+            <div class="mb-3" id="password_reset">
+                <div class="">
+                    <div class="col-md-12">
+                      
+                      <h4>Please change your password</h4>
+                      
+                      <p class="alert alert-info">Please enter your new password twice so we can verify you typed it in correctly.</p>
+
+                      
+                      {% crispy form %}
+                    </div>
+                </div>
+            </div>
+            <div class="clearfix">&nbsp;</div>
+        </div>
+    </div>
+</div>
+</div>
+{% endif %}
+{% endif %}
+
+  <script>window.CSRF_TOKEN = "{{ csrf_token }}";</script>
+  <script src="{% static 'js/action_registry.js' %}"></script>
+<script>ActionRegistry.init();</script>
+</body>
+
+</html>

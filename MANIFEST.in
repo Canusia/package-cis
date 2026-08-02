@@ -1,0 +1,9 @@
+include LICENSE
+include README.md
+include CLAUDE.md
+recursive-include templates *
+recursive-include staticfiles *
+recursive-include fixtures *
+recursive-include migrations *
+global-exclude *.py[cod]
+global-exclude __pycache__/*

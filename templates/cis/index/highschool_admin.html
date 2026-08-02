@@ -1,0 +1,26 @@
+{% extends "cis/base.html" %}
+
+{% block title %}{{MYCE_SETTINGS.college_name}} {{ MYCE_SETTINGS.site_name }}{% endblock %}
+{% block body %}
+
+<main role="main" id="content">
+
+    <div id="page_content" data-source="counselor">
+        <div class="text-center mt-4 mb-4 p-3 bg-light">
+            <i class="fa fa-spinner fa-spin fa-3x fa-fw fa-4x"></i>
+            <span class="sr-only">Loading...</span>
+        </div>
+    </div>
+
+    <div>
+        <div class="container">
+            <div class="bg-light p-3">
+                {{ page_body }}
+            </div>
+        </div> <!-- end row -->
+
+    </div> <!-- end container -->
+    </div> <!-- end py-5 -->
+
+</main>
+{% endblock %}

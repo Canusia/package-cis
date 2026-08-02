@@ -1,0 +1,97 @@
+{% extends "cis/logged-base.html" %}
+{%block title %}Access Request{% endblock %}
+
+{% load templatehelpers %}
+{% load crispy_forms_tags %}
+
+{% block body %}
+<script>
+    jQuery(function ($) {
+        $('.dataTable').DataTable();
+    });
+</script>
+<div class="">
+    <div class="row">
+        <div class="col-md-6 col-sm-12">
+            <h1 class="h3 mt-3 text-gray-800 mb-3">{{ record.name }}</h1>
+        </div>
+
+    </div>
+</div>
+<main>
+    <div class="row">
+        <div class="col-12">
+            {% include "cis/messages.html" with messages=messages %}
+        </div>
+        
+        <div class="col-md-4 col-sm-12 mb-4">            
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Details</h5>
+                    <div class="card-text">
+
+                        <form action="" method="post">
+                            {% csrf_token %}
+                            {{ form | crispy }}
+                            <p class="alert alert-info">Approved and Denied requests will be automatically emailed. <br><br>You can configure the email templates in Settings -> High School</p>
+                            <input type="submit" class="btn btn-primary btn-sm" value="Update">
+                            <script>
+                                jQuery(document).ready(function ($) {
+                                    $("a.delete").on("click", function () {
+                                        if (!confirm("Are you sure you want to permanently delete this record and all the related information?"))
+                                            return;
+
+                                        $.blockUI();
+                                        $.ajax({
+                                            type: 'GET',
+                                            url: "{% url 'cis:delete_access_request' record.id%}",
+                                            success: function (response) {
+                                                $.unblockUI();
+                                                swal(
+                                                    "",
+                                                    response.message,
+                                                    response.status
+                                                )
+                                                if (response.status == 'success') {
+                                                   if(response.action == 'redirect') {
+                                                       window.location = response.location
+                                                   }
+                                                }
+                                            }
+                                        });
+                                    });
+                                });
+                            </script>
+                            <a class="btn btn-sm btn-danger delete"><i class="fa fa-trash-alt text-light"></i></a>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-8 col-sm-12">
+            <ul class="nav nav-tabs">
+                {% for slug, tab in detail_tabs.items %}
+                <li class="nav-item">
+                    <a class="nav-link {% if tab.active %}active{% endif %}" data-toggle="tab" href="#{{ tab.slug }}">
+                        {% if tab.icon %}<i class="{{ tab.icon }}"></i> {% endif %}{{ tab.title }}
+                        {% if tab.badge %}<span class="badge badge-pill badge-secondary">{{ tab.badge }}</span>{% endif %}
+                    </a>
+                </li>
+                {% endfor %}
+            </ul>
+            <div class="tab-content">
+                {% for slug, tab in detail_tabs.items %}
+                {% if tab.lazy %}
+                <div class="tab-pane {% if tab.active %}active{% endif %}" id="{{ tab.slug }}" data-tab-url="{{ tab.url }}"></div>
+                {% else %}
+                <div class="tab-pane {% if tab.active %}active{% endif %}" id="{{ tab.slug }}">{{ tab.html|safe }}</div>
+                {% endif %}
+                {% endfor %}
+            </div>
+        </div> <!-- end col-md-8 -->
+
+    </div> <!-- end row -->
+
+
+</main>
+{% endblock %}

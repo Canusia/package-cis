@@ -1,0 +1,61 @@
+{% extends "highschool_admin/logged-base.html" %}
+{%block title %}Course Search{% endblock %}
+
+{% load templatehelpers %}
+{% load crispy_forms_tags %}
+
+{% block body %}
+<main>
+    <!-- <h1 class="display-4 text-center">{{MYCE_SETTINGS.college_name}} {{MYCE_SETTINGS.cep_name}} Classes</h1> -->
+    <div class="row">
+        <div class="col-sm-6 col-xs-12">
+            <h1 class="h3 mb-4 text-gray-800">{{page_title}}&nbsp;
+            </h1>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-12">
+            {% if messages %}
+            <ul class="messages list-group mb-4">
+                {% for message in messages %}
+                <li{% if message.tags %} class="list-group-item {{ message.tags }}" {% endif %}>
+                    {{ message|safe }}</li>
+                    {% endfor %}
+            </ul>
+            {% endif %}
+
+            <!-- Tab panes -->
+            <div class="tab-content">
+                <script>
+                    var student_registrations = $("#student_class_registrations").DataTable();
+
+                    function get_student_registrations() {
+
+                    }
+
+                    jQuery(document).ready(function ($) {
+                        $('#btn_apply_for_selected, #btn_hs_section_apply').hide()
+                    })
+                </script>
+                <style>
+                    input#btn_apply_for_selected,
+                    #class_search_results_wrapper input[type=checkbox] {
+                        height: 0px;
+                        padding: 0px;
+                        border: 0px;
+                        display: none;
+                    }
+                </style>
+                <div class="tab-pane  active" id="classes_available">
+                    <div class="card bg-white">
+                        <div class="card-body pt-3">
+                            {% include "cis/sections/class_section_search.html" %}
+                        </div>
+                    </div>
+                </div> <!-- end classes_available tab -->
+            </div> <!-- end .tab-content -->
+
+            <div class="clearfix">&nbsp;</div>
+        </div>
+</main>
+{% endblock %}

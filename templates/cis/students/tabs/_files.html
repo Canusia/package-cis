@@ -1,0 +1,16 @@
+{% load crispy_forms_tags %}
+<div class="card border-top-0">
+    <div class="card-text mt-2">
+        <div class="col-12">
+            <p class="alert alert-info">The following documents have been uploaded for this student</p>
+            {% include support_docs_table.partial_template with config=support_docs_table %}
+            <hr>
+            <h3 class="card-title">Upload File</h3>
+            <form action="" enctype="multipart/form-data" method="post">
+                {% csrf_token %}
+                {{support_doc_form|crispy}}
+                <input type="submit" class="btn btn-primary btn-sm" value="Upload File">
+            </form>
+        </div>
+    </div>
+</div>

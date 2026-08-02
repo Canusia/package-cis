@@ -1,0 +1,27 @@
+<p class="alert alert-info">Below is the list of other administrators in the high
+    school.</p>
+<div class="table-responsive">
+    <table class="table dataTable table-striped">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Position</th>
+                <th>Email</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in administrators %}
+            <tr>
+                <td>
+                    <a href="{% url 'cis:hs_admin' r.hsadmin.id %}">{{r.hsadmin.user.first_name}}
+                        {{r.hsadmin.user.last_name}}</a>
+                </td>
+                <td>{{r.position.name}}</td>
+                <td>{{r.hsadmin.user.email}}</td>
+                <td>{{r.status}}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>

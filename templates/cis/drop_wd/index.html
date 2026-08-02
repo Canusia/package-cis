@@ -1,0 +1,258 @@
+{% extends "cis/logged-base.html" %}
+{%block title %}{{page_title}}{% endblock %}
+
+{% load templatehelpers %}
+
+{% block body %}
+
+<main>
+    <div class="">
+        <div class="row">
+            <div class="col-sm-6 col-xs-12">
+                <h1 class="h3 mb-4 text-gray-800">{{page_title}}
+                </h1>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <div class="">
+                <ul class="nav nav-tabs d-none">
+                    <li class="nav-item">
+                        <a class="nav-link active" data-toggle="tab" href="#all">All {{page_title}}</a>
+                    </li>
+                    <li class="nav-item d-none">
+                        <a class="nav-link" data-toggle="tab" href="#archived">Archived</a>
+                    </li>
+                </ul>
+
+                <div class="tab-content">
+                    <div class="tab-pane active " id="all">
+                        <div class="bg-white border responsive">
+                            <div class="col-12 pt-3 mb-3">
+                                <div class="row">
+                                    <div class="col-md-12 mb-3">
+                                        <div class="card">
+                                            <div class="card-body bg-gray-200">
+                                                <form id="class_section_filter" class="form-inline float-right filter">
+                                                    <div class="form-row">
+                                                        <div class="col">
+                                                            <div class="float-right">
+                                                                <select class="form-control mt-2" name="status">
+                                                                    <option value="">By Status</option>
+                                                                    {% for c, c_label in registration_status %}
+                                                                    <option value="{{c}}" {% if c == active_term.id %}
+                                                                        selected {% endif %}>{{c_label}}</option>
+                                                                    {% endfor %}
+                                                                </select>
+                                                                &nbsp;
+                                                                <select class="form-control mt-2" name="term">
+                                                                    <option value="">By Term</option>
+                                                                    {% for c in terms %}
+                                                                    <option value="{{c.id}}">{{c.label}} {{c.year}}</option>
+                                                                    {% endfor %}
+                                                                </select>
+                                                                &nbsp;
+                                                                {% include 'snippets/campus.html' with campus=campus default_campus=default_campus %}
+                                                            </div>
+
+                                                        </div>
+                                                    </div>
+                                                </form>
+
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <table id="records_all" class="table table-striped dt-responsive ">
+                                    <thead>
+                                        <tr>
+                                            <th data-data="created_on" data-name="created_on">
+                                                Submitted On
+                                            </th>
+                                            <th data-data="registration.class_section.term"
+                                                data-name="registration.class_section.term">Section Term</th>
+                                            <th data-data="status" data-name="status">Status</th>
+                                            <th data-data="student.user.last_name" data-name="student.user.last_name">
+                                                Student</th>
+                                            <th data-data="registration.class_section.course.title"
+                                                data-name="registration.class_section.course.title">Course
+                                            </th>
+                                            <th data-data="student.highschool.name" data-name="student.highschool.name">High School /
+                                                Reviewer</th>
+                                            <th data-data="ce_url" data-name='ce_url'><span
+                                                    class="sr-only">Actions</span></th>
+                                        </tr>
+                                    </thead>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- end tab # records_active -->
+
+                </div>
+                <!-- end tab-content -->
+
+                <script>
+
+                    $(document).ready(function () {
+                        // $('form.filter').rememberState()
+
+                        let baseURL = '{{api_url}}'
+
+                        var table;
+                        setInterval(function() {
+
+                            if(!table.rows('.selected').any())
+                                table.ajax.reload(null, false);
+                        }, 5000 * 60);
+                        
+                        $(document).on("change", "form.filter :input", function () {
+                            load_data();
+                        })
+
+                        function load_data() {
+                            let form = $('form.filter')
+                            let newURL = baseURL + '&' + $(form).serialize();
+
+                            table.ajax.url(newURL).load()
+                        }
+
+
+                        table = $('#records_all')
+                           .DataTable({
+                                ajax: '{{api_url}}&' + $('form.filter').serialize(),
+                                serverSide: true,
+                                processing: true,
+                                stateSave: true,
+                                language: {
+                                    'loadingRecords': '&nbsp;',
+                                },
+                                'order': [
+                                    [0, 'desc']
+                                ],
+
+                                'lengthMenu': [30, 50, 100],
+                                'columns': [
+                                    {
+                                        'render': function (data, type, row, meta) {
+                                            return row.created_on
+                                        }
+                                    },
+                                    {
+                                        'searchable': false,
+                                        'orderable': false,
+                                        'render': function (data, type, row, meta) {
+                                            return row.registration.class_section.term.label + ' ' + row.registration.class_section.term.year;
+                                        }
+                                    },
+                                    {
+                                        'render': function (data, type, row, meta) {
+                                            return row.status
+
+                                        }
+                                    },
+                                    {
+                                        'render': function (data, type, row, meta) {
+                                            let consent_status = ''
+                                            if (row.registration.has_signed_student_agreement == 'True') {
+                                                consent_status += '<span title="Student Agreement" class="badge badge-success">'
+                                            } else {
+                                                consent_status += '<span title="Student Agreement" class="badge badge-danger">'
+                                            }
+                                            consent_status += 'SA</span>&nbsp;&nbsp;';
+
+                                            if (row.registration.has_signed_parent_consent == 'True') {
+                                                consent_status += '<span title="Parent Consent" class="badge badge-success">'
+                                            } else {
+                                                consent_status += '<span title="Parent Consent" class="badge badge-danger">'
+                                            }
+                                            consent_status += 'PC</span>';
+
+                                            return row.student.user.last_name + ', ' + row.student.user.first_name + '<br>' + '@ ' + "<span class='text-muted'>" + row.student.highschool.name + "</span>" + '<br>' +
+                                                consent_status
+                                        }
+                                    },
+                                    {
+                                        'render': function (data, type, row, meta) {
+                                            return row.registration.class_section.course.cohort.designator + ' ' + row.registration.class_section.course.catalog_number + ' (' + row.registration.class_section.course.credit_hours + ' credits)' + '<br>' +
+                                                row.registration.class_section.class_number + ' / ' + row.registration.class_section.section_number + "<br>" + "<span class='text-muted'>" + row.registration.class_section.course.title + '</span><br>' +
+                                                '<span class="text-muted">Pre-req: ' + row.registration.class_section.prereq + "</span>"
+                                        }
+                                    },
+                                    {
+                                        'render': function (data, type, row, meta) {
+                                            let hs = row.registration.highschool.name
+                                            if (row.reviewer === null) {
+                                                return hs
+                                            }
+
+                                            if (typeof (row.reviewer) === 'undefined')
+                                                return hs
+
+                                            hs += '<br>' + row.registration.reviewer.user.last_name + ', ' + row.registration.reviewer.user.first_name
+                                            return hs
+                                        }
+                                    },
+                                    {
+                                        'searchable': false,
+                                        'orderable': false,
+                                        'render': function (data, type, row, meta) {
+                                            return "<a class='btn btn-sm btn-primary' href='" + row.ce_url + "'>Process</a>"
+                                        }
+                                    }
+                                ]
+                            }
+                        );
+
+                        $(document).on('click', 'a.btn', function () {
+                            var src = $(this).attr('href');
+
+                            $("#details_src").attr('src', src);
+                            $('#details').modal('show');
+                            return false;
+                        });
+
+                        $("#details").on('hide.bs.modal', function () {
+                            $("#details_src").attr('src', '');
+                            table.ajax.reload(null, false);
+                            // table.state.clear()
+                        })
+
+
+                    });
+
+                    window.closeModal = function () {
+                        $('#details').modal('hide');
+                    };
+                </script>
+            </div>
+        </div>
+
+</main>
+
+<style>
+    .modal-dialog,
+    .modal-content {
+        /* 80% of window height */
+        height: 90%;
+    }
+
+    .modal-body {
+        max-height: calc(100vh - 143px);
+        overflow-y: none;
+    }
+</style>
+<div id='details' class='modal fade' role='dialog' tabindex="-1">
+    <div class='modal-dialog  modal-dialog-scrollable' style="max-width: 90%;">
+        <div class='modal-content'>
+            <div class='modal-body' style="position: relative;">
+                <iframe id='details_src' width='100%' height='100%' style="position:  absolute; height: 98%; width: 97%;" frameborder='0' allowfullscreen></iframe>
+            </div>
+            <div class='modal-footer'>
+                <button type='button' class='close' data-dismiss='modal'>&times;</button>
+            </div>
+
+        </div>
+    </div>
+</div>
+{% endblock %}

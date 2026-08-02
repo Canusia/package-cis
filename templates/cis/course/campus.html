@@ -1,0 +1,264 @@
+{% extends "cis/logged-base.html" %}
+{%block title %}{{ page_title }}{% endblock %}
+
+{% load templatehelpers %}
+{% load crispy_forms_tags %}
+
+{% block body %}
+<main>
+    <div class="row">
+        <div class="col-md-12 col-sm-12">
+            <ul class="nav nav-tabs">
+                <li class="nav-item">
+                    <a class="nav-link" data-toggle="tab" href="#details">Details</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link active" data-toggle="tab" href="#highschools">High School(s) Served</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" data-toggle="tab" href="#classes">Registered Classes</a>
+                </li>
+            </ul>
+
+            <!-- Tab panes -->
+            <div class="tab-content">
+                <div class="tab-pane" id="details">
+                    <div class="bg-white border border-top-0">
+                        <div class="col-12 pt-3 mb-3">
+                            <div class="">
+                                <div class="">
+                                    <div class="">
+                                        {% if messages %}
+                                        <ul class="messages list-group">
+                                            {% for message in messages %}
+                                            <li{% if message.tags %} class="list-group-item {{ message.tags }}"
+                                                {% endif %}>
+                                                {{ message }}</li>
+                                                {% endfor %}
+                                        </ul>
+                                        {% endif %}
+                                        <form action="" method="post">
+                                            {% csrf_token %}
+                                            {{ form | crispy }}
+                                            <input type="submit" class="btn btn-primary btn-sm" value="Update">
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- end tab #details -->
+
+                <div class="tab-pane active " id="highschools">
+                    <script>
+                        $(document).ready(function () {
+                            let hs_base_url = '{{highschools_served_api_url}}'
+                            $(document).on("change", "form#campus_term_filter :input", function () {
+                                load_highschool_data();
+                            })
+
+                            function load_highschool_data() {
+                                let form = $('form#campus_term_filter')
+                                let newURL = hs_base_url + '&' + $(form).serialize();
+
+                                hs_table.ajax.url(newURL).load()
+                            }
+
+                            var hs_table = $('#records_highschools').DataTable(
+                                {
+                                    stateSave: true,
+                                    'lengthMenu': [30, 50, 100],
+                                    'columns': [
+                                        null,
+                                        null,
+                                        {
+                                            'render': function (data, type, row, meta) {
+                                                return row.address1 + "<br>" +
+                                                    row.city + ', ' + row.state + ' ' + row.postal_code
+                                            }
+                                        },
+                                        null,
+                                        null,
+                                        {
+                                            'searchable': false,
+                                            'orderable': false,
+                                            'render': function (data, type, row, meta) {
+                                                return "<a class='btn btn-sm btn-primary' href='" + "{{urls.details_prefix}}" + row.id + "'>View Details</a>"
+                                            }
+                                        }
+                                    ]
+                                }
+                            );
+                        });
+                    </script>
+                    <div class="bg-white border border-top-0">
+                        <div class="col-12 pt-3 mb-3">
+                            <div class="row">
+                                <div class="col-md-12 mb-3">
+                                    <div class="card">
+                                        <div class="card-body bg-gray-200">
+                                            <form id="campus_term_filter" class="form-inline float-right filter">
+                                                <div class="form-row">
+                                                    <div class="col">
+                                                        <div class="float-right">
+                                                            <select class="form-control mt-2" name="term_id">
+                                                                <option value="">Filter By Term</option>
+                                                                {% for c in terms %}
+                                                                <option value="{{c.id}}" {% if c.id == active_term.id %}
+                                                                    selected {% endif %}>{{c.label}} {{c.year}}</option>
+                                                                {% endfor %}
+                                                            </select>
+                                                        </div>
+
+                                                    </div>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div> <!-- end row -->
+
+                            <table id="records_highschools" class="table table-striped responsive" style="width:100%"
+                                data-server-side="true" data-ajax="{{highschools_served_api_url}}">
+                                <thead>
+                                    <tr>
+                                        <th data-data="name" data-name="name">Name
+                                        </th>
+                                        <th data-data="code" data-name="code">Code
+                                        </th>
+                                        <th data-data="address1" data-name='city'>Address</th>
+                                        <th data-data="primary_phone">Phone</th>
+                                        <th data-data="status" data-name="status">
+                                            Status
+                                        </th>
+                                        <th data-data="id" data-name='id'><span class="sr-only">Actions</span></th>
+                                    </tr>
+                                </thead>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <!-- end tab #highschools -->
+
+
+                <div class="tab-pane " id="classes">
+                    <script>
+                        $(document).ready(function () {
+                            let class_base_url = '{{classes_registered_api_url}}'
+                            $(document).on("change", "form#class_term_filter :input", function () {
+                                load_classes_data();
+                            })
+
+                            function load_classes_data() {
+                                let form = $('form#class_term_filter')
+                                let newURL = class_base_url + '&' + $(form).serialize();
+
+                                console.log(newURL)
+                                class_table.ajax.url(newURL).load()
+                            }
+
+                            var class_table = $('#records_classes').DataTable(
+                                {
+                                    stateSave: true,
+                                    'lengthMenu': [30, 50, 100],
+                                    'columns': [
+                                        {
+                                            'render': function (data, type, row, meta) {
+                                                return row.term.label
+                                            }
+                                        },
+                                        null,
+                                        {
+                                            'render': function (data, type, row, meta) {
+                                                return row.course.title + ' (' + row.course.cohort.designator + ' ' + row.course.catalog_number + ')'
+                                            }
+                                        },
+                                        {
+                                            'visible': false
+                                        },
+                                        {
+                                            'visible': false
+                                        },
+                                        {
+                                            'render': function (data, type, row, meta) {
+
+                                                if (row.teacher === null)
+                                                    return '';
+                                                return row.teacher.user.last_name + ', ' + row.teacher.user.first_name
+                                            }
+                                        },
+                                        {
+                                            'render': function (data, type, row, meta) {
+                                                return row.class_number + ' / ' + row.section_number
+                                            }
+                                        },
+                                        {
+                                            'searchable': false,
+                                            'orderable': false,
+                                            'render': function (data, type, row, meta) {
+                                                return "<a class='btn btn-sm btn-primary' href='" + row.ce_url + "'>View Details</a>"
+                                            }
+                                        }
+                                    ]
+                                }
+                            );
+                        });
+                    </script>
+                    <div class="bg-white border border-top-0">
+                        <div class="col-12 pt-3 mb-3">
+                            <div class="row">
+                                <div class="col-md-12 mb-3">
+                                    <div class="card">
+                                        <div class="card-body bg-gray-200">
+                                            <form id="class_term_filter" class="form-inline float-right filter">
+                                                <div class="form-row">
+                                                    <div class="col">
+                                                        <div class="float-right">
+                                                            <select class="form-control mt-2" name="term_id">
+                                                                <option value="">Filter By Term</option>
+                                                                {% for c in terms %}
+                                                                <option value="{{c.id}}" {% if c.id == active_term.id %}
+                                                                    selected {% endif %}>{{c.label}} {{c.year}}</option>
+                                                                {% endfor %}
+                                                            </select>
+                                                        </div>
+
+                                                    </div>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div> <!-- end row -->
+
+                            <table id="records_classes" class="table table-striped responsive" style="width:100%"
+                                data-server-side="true" data-ajax="{{classes_registered_api_url}}">
+                                <thead>
+                                    <tr>
+                                        <th data-data="term.code" data-name="term.code">Term
+                                        </th>
+                                        <th data-data="campus.name" data-name="campus.name">Campus</th>
+                                        <th data-data="course.title" data-name="course.title">Course
+                                        </th>
+                                        <th data-name="course.cohort.designator"
+                                            data-data="course.cohort.designator"></th>
+                                        <th data-name="course.catalog_number" data-data="course.catalog_number">
+                                        </th>
+                                        <th data-data="teacher" data-name="teacher.user.last_name">Instructor
+                                        </th>
+                                        <th data-data="class_number" data-name='class_number'>Class No.</th>
+                                        <th data-data="id" data-name='id'><span class="sr-only">Actions</span></th>
+                                    </tr>
+                                </thead>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <!-- end tab #classes -->
+
+            </div>
+        </div>
+    </div>
+</main>
+{%endblock%}

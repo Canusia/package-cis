@@ -1,0 +1,152 @@
+{% extends "cis/logged-base.html" %}
+{% block title %}Failed SIS Mirror{% endblock %}
+
+{% block body %}
+<main>
+  <div class="">
+    <div class="row">
+      <div class="col-sm-12 col-xs-12">
+        <h1 class="h3 mb-2 text-gray-800">Registrations: Failed SIS Mirror</h1>
+        <p class="text-muted mb-3">
+          Registrations whose last <code>mirror_to_sis</code> attempt failed.
+          Click <strong>SIS log</strong> to see the raw Ethos request and response.
+        </p>
+      </div>
+    </div>
+
+    <div class="bg-white border responsive p-3">
+      <div class="table-responsive">
+        <table id="failed-mirror-table"
+               class="table table-striped table-bordered"
+               style="width:100%">
+          <thead>
+            <tr>
+              <th></th>
+              <th>Student</th>
+              <th>PSID</th>
+              <th>Section</th>
+              <th>Term</th>
+              <th>Status</th>
+              <th>Needs Mirroring</th>
+              <th>Last Attempt</th>
+              <th>HTTP</th>
+              <th>Error</th>
+              <th></th>
+            </tr>
+          </thead>
+        </table>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+  jQuery(document).ready(function () {
+    function bulkSetNeedsMirroring(dt) {
+      var rows = dt.rows({ selected: true });
+      if (!rows.any()) {
+        alert('Please select a row and try again.');
+        return;
+      }
+      var ids = rows.ids().toArray();
+      $.ajax({
+        type: 'GET',
+        url: '{% url "cis:registration_bulk_actions" %}',
+        data: { action: 'set_needs_mirroring', ids: ids },
+        success: function (response) {
+          $('#bulk_modal_content').html(response);
+          $('#modal-bulk_actions').modal('show');
+        },
+        error: function () { alert('Something went wrong. Please try again.'); },
+      });
+    }
+
+    window.table = $('#failed-mirror-table').DataTable({
+      processing: true,
+      serverSide: true,
+      ajax: '{{ data_url|safe }}',
+      rowId: 'id',
+      order: [[7, 'desc']],
+      lengthMenu: [25, 50, 100],
+      dom: 'Bfrtip',
+      select: { style: 'multi', selector: 'td:first-child' },
+      buttons: [
+        {
+          text: '<i class="fas fa-sync"></i>&nbsp;Set Needs Mirroring',
+          className: 'btn btn-sm btn-primary text-white',
+          action: function (e, dt) { bulkSetNeedsMirroring(dt); },
+        },
+        {
+          // Client-side: this table is serverSide, so DataTables only holds
+          // the page currently loaded. Exports what you can see.
+          extend: 'csv',
+          text: '<i class="fas fa-file-csv"></i>&nbsp;CSV (this page)',
+          className: 'btn btn-sm btn-primary text-white',
+          titleAttr: 'Export the rows currently shown',
+          filename: 'failed_mirror_registrations_page',
+          exportOptions: { columns: ':not(:first-child):not(:last-child)' },
+        },
+        {
+          extend: 'print',
+          text: '<i class="fas fa-print"></i>&nbsp;Print',
+          className: 'btn btn-sm btn-primary text-white',
+          titleAttr: 'Print the rows currently shown',
+          exportOptions: { columns: ':not(:first-child):not(:last-child)' },
+        },
+        {
+          // Server-side: walks the whole queryset, ignoring paging.
+          text: '<i class="fas fa-download"></i>&nbsp;Export All (CSV)',
+          className: 'btn btn-sm btn-success text-white',
+          titleAttr: 'Export every failed-mirror registration, not just this page',
+          action: function () { window.location = '{{ export_url }}'; },
+        },
+      ],
+      columns: [
+        { data: null, orderable: false, searchable: false,
+          className: 'select-checkbox', defaultContent: '' },
+        // data-* SerializerMethodFields have no ORM field; `name` gives
+        // rest_framework_datatables the real model path to order/search on
+        // (columns[i][name] -> order_by), else FieldError on sort.
+        { data: 'student_name', name: 'student.user.last_name,student.user.first_name',
+          render: function (d, t, row) {
+            if (t !== 'display') return d || '';
+            return row.student_url
+              ? '<a class="record-details" refresh-target="table" href="' + row.student_url + '">' + (d || '') + '</a>'
+              : (d || '');
+        }},
+        { data: 'student_psid', name: 'student.user.psid' },
+        { data: 'class_section_str', name: 'class_section.course.name',
+          render: function (d, t, row) {
+            if (t !== 'display') return d || '';
+            return row.section_url
+              ? '<a class="record-details" refresh-target="table" href="' + row.section_url + '">' + (d || '') + '</a>'
+              : (d || '');
+        }},
+        { data: 'term_code', name: 'class_section.term.code' },
+        { data: 'status', render: function (d, t, row) { return row.status_display || d; } },
+        { data: 'needs_mirroring', render: function (d) { return d ? 'Yes' : 'No'; } },
+        { data: 'last_mirror_at' },
+        // last_log_status comes from the mirror_logs relation (a method field),
+        // not a StudentRegistration column, so it can't be ordered/searched.
+        { data: 'last_log_status', orderable: false, searchable: false },
+        { data: 'last_mirror_error', render: function (d, t) {
+            if (!d) return '';
+            if (t !== 'display') return d;
+            var safe = $('<div>').text(d).html();
+            var trim = d.length > 80 ? d.substring(0, 80) + '…' : d;
+            return '<span title="' + safe + '">' + $('<div>').text(trim).html() + '</span>';
+        }},
+        { data: 'last_log_url', orderable: false, searchable: false,
+          render: function (d) {
+            return d
+              ? '<a class="btn btn-sm btn-outline-secondary record-details" refresh-target="table" href="' + d + '"><i class="fa fa-server"></i> SIS log</a>'
+              : '';
+        }},
+      ],
+    });
+
+    // ajax-base.html's bulk-action success handler calls window.parent.refreshTable()
+    window.refreshTable = function () { window.table.ajax.reload(null, false); };
+  });
+</script>
+{% endblock %}

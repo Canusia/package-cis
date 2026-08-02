@@ -1,0 +1,419 @@
+@import url('https://fonts.googleapis.com/css2?family=Merriweather:ital,opsz,wght@0,18..144,300..900;1,18..144,300..900&display=swap');
+
+body {
+  font-size: 16px;
+  font-family: "Merriweather", arial, sans-serif;
+  color: #333;
+}
+
+.bg {
+  background-color: #eaeaea;
+}
+
+
+a {
+  color: #05233d;
+}
+
+/* a:link, .sidebar .nav-item .collapse .collapse-inner .collapse-item { text-decoration: underline; } */
+
+.sidebar-dark .nav-item .nav-link, .sidebar-dark .nav-item .nav-link i {
+  color: #ffd375 !important;
+}
+.sidebar-dark .nav-item.active, .sidebar-dark .nav-item.active .nav-link, .sidebar-dark .nav-item.active .nav-link i {
+  background: #ffd375;
+  color: #bb0524 !important;
+}
+.sidebar-dark .nav-item .nav-link:hover, .sidebar-dark .nav-item .nav-link i:hover {
+  background: #bb0524;
+  color: #ffd375;
+  text-decoration: underline;
+}
+.sidebar.toggled .sidebar-brand .sidebar-brand-text {
+  display: inline;
+}
+.sidebar .sidebar-brand {
+  text-transform: none;
+}
+
+#wrapper #content-wrapper {
+  background-color: #fafafa;
+}
+.modal-full {
+  min-width: 100%;
+  margin: 0;
+}
+
+.modal-full .modal-content {
+  min-height: 100vh;
+}
+.table {
+  color: #333;
+  width: 100%;
+}
+
+.bg-primary {
+  background-color: #bb0524 !important;
+}
+
+.fas {
+  color: #bb0524;
+}
+
+#alerts .fas {
+  color: white;
+}
+.trans-bg {
+    background-color: rgba(250, 250, 250, 0.7);
+}
+
+.fas-light {
+  color: #ffffff;
+}
+
+.bg-dark {
+  background-color: #bb0524 !important;
+  background-color: #fff !important;
+}
+
+.topbar {
+  height: 5.375rem;
+}
+header .navbar, .bg-light .navbar {
+  background-color: #bb0524 !important;
+}
+
+.btn-outline-secondary {
+  color: #fff;
+	background-color: #bb0524;
+	border-color: #bb0524;
+}
+.btn-outline-secondary:hover {
+  color: #fff;
+	background-color: #05233d;
+	border-color: #05233d;
+}
+
+.bg-gradient-primary {
+  background-color: #bb0524;
+  background-image: linear-gradient(180deg,#bb0524 10%,#bb0524 100%);
+}
+
+.sidebar .nav-item .collapse .collapse-inner .collapse-item.active {
+  color: #000;
+  font-weight: bold;
+}
+
+.sidebar-brand-text, .navbar-dark .navbar-brand {
+  color:#bb0524;
+}
+
+.btn-primary:hover, .btn-primary:active, .show>.btn-primary.dropdown-toggle,
+.btn-primary:not(:disabled):not(.disabled):active, .show>.btn-primary.dropdown-toggle {
+  color: #fff !important; 
+	background-color: #bb0524; 
+	border-color: #bb0524;
+  text-decoration: underline;
+}
+
+
+.btn-primary, btn.text-white, btn.text-light, button > span > i.fas {
+  color: #fff !important; 
+	background-color: #bb0524; 
+	border-color: #bb0524;
+}
+.dropdown-item.active, .dropdown-item:active {
+  background-color: #bb0524;
+}
+.jumbotron {
+  margin-bottom: 0;
+}
+
+  th.sortable::after {
+    font-family: "Font Awesome 5 Free";
+    content: "\f0dc";
+    right: 8px;
+    color: #999;
+  }
+  
+  th.sortable.asc::after {
+    content: "\f0d8";
+  }
+  
+  th.sortable.desc::after {
+    content: "\f0d7";
+  }
+  
+  th.sortable:hover::after {
+    color: #333;
+  }
+
+.alert-warning {
+    background-color: #289062;
+    border-color: #289062;
+    color: #fff;
+}
+
+.list-group-item-success {
+  background-color: #0172CE;
+  color: #fff;
+}
+
+.list-group-item-success a {
+  background-color: #0172CE;
+  color: #fff;
+  text-decoration: underline;
+}
+
+.page-item.active .page-link {
+  background-color: #bb0524;
+  border-color: #bb0524;
+  color: #05233d !important;
+}
+
+.text-primary {
+  color: #05233d !important;
+}
+
+.details .detail_label {
+  text-transform: uppercase;
+  font-size: 0.7em;
+  color: #999;
+}
+
+.ms-parent {
+  padding: 0;
+}
+
+button.ms-choice {
+  height: 36px;
+  border: 1px solid #d1d3e2;
+}
+
+.ms-parent span {
+  margin-top: 5px;
+}
+
+    /* Settings */
+    ul#report-category,
+    ul#report-list {
+        list-style-type: none;
+    }
+
+    #report-category li,
+    #report-list li {
+        cursor: pointer;
+        border-bottom: 1px solid #f0f0f0;
+        padding: 0.4em 0 0.4em 0.5em;
+        margin: 0;
+    }
+
+    #report-category li:nth-child(odd),
+    #report-list li:nth-child(even) {
+        background-color: #f9f9f9;
+    }
+
+    #report-category li.active,
+    #report-list li.active {
+        cursor: text;
+        background-color: #e0e0e0;
+        background-image: background-position: 98% 50%;
+        background-repeat: no-repeat;
+    }
+
+    #report-list li.active {}
+
+    #report-category li:hover,
+    #report-list li:hover {
+        background-color: #eaeaea;
+    }
+
+    #report-category li.processing,
+    #report-list li.processing {
+        background-position: right center;
+        background-repeat: no-repeat;
+    }
+
+    .report-description {
+        background: #f9f9f9;
+        border: 1px solid #eaeaea;
+        margin: 0.2em;
+        padding: 0.5em;
+    }
+
+    .report-description p,
+    .report p {
+        margin: 0;
+        margin-bottom: 1em;
+    }
+
+    .report-description p:last-child {
+        margin: 0;
+    }
+
+    h3.report-title {
+        padding-top: 0;
+    }
+
+    div.report-config {
+        float: left;
+        width: 50%;
+    }
+
+    div.report-description-container {
+        float: left;
+        width: 50%;
+    }
+
+    .report p {
+        margin-bottom: 1em;
+    }
+
+    .report p.watermark {
+        color: #aaa;
+        margin-top: -0.5em;
+        float: left;
+        width: 70%;
+        font-size: 0.8em;
+    }
+
+    .report p.config_report {
+        float: right;
+        width: 30%;
+        margin-top: -0.5em;
+        color: #aaa;
+        cursor: pointer;
+        text-align: right;
+        font-size: 0.8em;
+    }
+
+    .report p.config_report:hover {
+        color: #333;
+    }
+
+    .report div.config_container {
+        display: none;
+        font-size: 0.8em;
+        background: #fff;
+        padding: 1em;
+        margin: 0.5em;
+        border: 1px solid #aaa;
+    }
+
+
+.card-announcement, .bg-primary {
+  background-color:  #ffd375 !important;
+}
+
+.card-announcement .card-title {
+  color: #000;
+}
+
+.card-announcement .alert-success {
+  color: #000;
+  background: white;
+}
+
+.topbar .dropdown-list .dropdown-header {
+  background-color: #bb0524;
+  border-color: #bb0524;
+}
+
+@media(max-width:767px){
+  /* 
+   * Changed selector to `.tab-content > .tab-pane` in order to override `.fade:not(.show)`
+   * In BS4 Beta `.tab-pane`s were rendered hidden by just `.fade`
+   */
+  .nav-link {
+    padding: .75rem 1.25rem;
+    margin-bottom: 0;
+    border-bottom: 1px solid rgba(0,0,0,.125);
+  }
+}
+
+.transaction-credit {
+  color:#289062
+}
+
+.transaction-debit {
+  color:#bb0524;
+}
+
+
+.modal-dialog,
+.modal-content {
+  /* 80% of window height */
+  height: 98%;
+}
+
+.modal-dialog {
+  max-width: 98%;
+}
+.modal-body {
+  max-height: calc(100vh - 65px);
+  overflow-y: none;
+}
+
+
+.selectdatewidget, .graduationmonthyearwidget {
+  width: 30% !important;
+  margin-right: .5em;
+  display: inline-block !important;
+}
+
+
+.breadcrumb-item.active {
+  color: #333;
+}
+
+
+input::placeholder {
+  font-weight: bold;
+  opacity: 0.5;
+  color: #111;
+}
+
+.text-muted {
+  color: #333 !important;
+}
+
+.nav-tabs .nav-item.show .nav-link, .nav-tabs .nav-link.active {
+    color: #333;
+    font-weight: bold;
+    background-color: #fff;
+    border-color: #aaa #aaa #fff;
+}
+
+.border, .card {
+  border: 1px solid #aaa !important;
+}
+.nav-tabs {
+  border-bottom: 1px solid #aaa;
+}
+.border-top-0 {
+  border-top: 0px solid #fff !important;
+}
+
+.form-control {
+  color: #333;
+}
+
+.btn-warning {
+  color: #05233d;
+  background-color: #f6c23e;
+  border-color: #f6c23e;
+}
+.swal-button:not([disabled]):hover {
+  background-color: #05233d;
+  color: #f6c23e;
+}
+
+.swal-button--confirm {
+  background-color: #f6c23e;
+  color: #05233d;
+}
+
+li.list-group-item-danger {
+  color: #78261f;
+  background-color: #f8ccc8;
+}

@@ -1,0 +1,98 @@
+{% extends "cis/logged-base.html" %}
+{%block title %}{{ page_title }}{% endblock %}
+
+{% load templatehelpers %}
+
+{% block body %}
+<main>
+    <div class="">
+        <div class="row">
+            <div class="col-sm-6 col-xs-12">
+                <h1 class="h3 mb-4 text-gray-800">{{ page_title }}&nbsp; 
+                    <small><a href="{% url  urls.add_new %}" class="btn btn-default btn-sm"><i class="fas fa-plus"></i>&nbsp;Add New</a></small>
+                </h1>
+            </div>
+            <div class="col-sm-6 col-xs-12 d-none d-md-block d-sm-block">
+                <div class="justify-content-end">
+                    <form class="form-inline p-2 justify-content-end">
+                        <div class="form-group mx-sm-3 mb-2">
+                            <div class="">
+                                <div class="">
+                                    <label for="search_table" class="sr-only">Search</label>
+                                    <input type="text" class="prompt form-control" name="q" id="search_table" value="{{ q }}"
+                                        placeholder="Search">&nbsp;
+                                </div>
+                            </div>
+                            <input type="submit" class="form-control btn btn-primary hidden-xs" value="Search" />
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="row table-responsive" style="min-height: 500px;">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        {% if order_by == 'name' and order == 'asc' %}
+                        <th class="sortable asc">
+                            <a href="?{% query_transform order_by='name' order='desc' %}">Name</a>
+                        </th>
+                        {% else %}
+                        <th class="sortable {% if order_by == 'name' %}desc{% endif %}">
+                            <a href="?{% query_transform order_by='name' order='asc' %}">Name</a>
+                        </th>
+                        {% endif %}
+
+                        <th>Department</th>
+                        <th>Designator</th>
+                        <th class='text-right'><span class='sr-only'>Actions</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in records %}
+                    <tr>
+                        <td><a href="{% url urls.details r.id %}?{% query_transform %}">{{ r.name }}</a></td>
+                        <td>{{ r.department.name }}</td>
+                        <td>{{ r.designator }}</td>
+                        <td class='text-right'><a class="btn btn-sm btn-default btn-outline-secondary"
+                                href="{% url urls.details r.id %}?{% query_transform %}">View Details</a></td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="4">Your search did not match any records</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if records.has_other_pages %}
+        <ul class="pagination justify-content-end">
+            {% if records.has_previous %}
+            <li class="page-item"><a class="page-link"
+                    href="?{% query_transform page=records.previous_page_number %}">&laquo;</a></li>
+            {% else %}
+            <li class="page-item disabled"><span class="page-link">&laquo;</span></li>
+            {% endif %}
+
+            {% for i in records.paginator.page_range %}
+            {% if records.number == i %}
+            <li class="page-item active"><span class="page-link">{{ i }} <span class="sr-only">(current)</span></span>
+            </li>
+            {% else %}
+            <li class="page-item"><a class="page-link" href="?{% query_transform page=i %}">{{ i }}</a></li>
+            {% endif %}
+            {% endfor %}
+
+            {% if records.has_next %}
+            <li class="page-item"><a class="page-link"
+                    href="?{% query_transform page=records.next_page_number %}">&raquo;</a></li>
+            {% else %}
+            <li class="page-item disabled"><span class="page-link">&raquo;</span></li>
+            {% endif %}
+        </ul>
+        {% endif %}
+    </div>
+
+</main>
+{% endblock %}

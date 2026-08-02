@@ -1,0 +1,61 @@
+{% extends "cis/logged-base.html" %}
+{%block title %}Section Number => Add New{% endblock %}
+
+{% load templatehelpers %}
+{% load crispy_forms_tags %}
+
+{% block body %}
+<script>
+   
+</script>
+<div class="">
+
+    <div class="row">
+        <div class="col">
+            <h1 class="h3 mt-3 text-gray-800 mb-3">Add New</h1>
+        </div>
+    </div>
+
+
+
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="#">Home</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'cis:section_numbers' %}?{% query_transform %}">All Section No.</a>
+            </li>
+            <li class="breadcrumb-item active" aria-current="page">Add New</li>
+        </ol>
+    </nav>
+
+
+
+</div>
+<main>
+    <div class="">
+        <div class="row">
+            <div class="col-md-6 col-sm-12 mb-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Details</h5>
+                        <div class="card-text">
+                            {% if messages %}
+                            <ul class="messages list-group">
+                                {% for message in messages %}
+                                <li{% if message.tags %} class="list-group-item {{ message.tags }}" {% endif %}>{{ message }}</li>
+                                    {% endfor %}
+                            </ul>
+                            {% endif %}
+                            <form action="" method="post">
+                                {% csrf_token %}
+                                {{ form | crispy }}
+                                <input type="submit" class="btn btn-primary btn-sm" value="Add Record">
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</main>
+{% endblock %}

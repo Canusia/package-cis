@@ -1,0 +1,14 @@
+{% extends "cis/logged-base.html" %}
+{% block title %}Not Authorized{% endblock %}
+{% block body %}
+<main>
+    <div class="row">
+        <div class="col-12">
+            <div class="alert alert-danger mt-4" role="alert">
+                <h4 class="alert-heading"><i class="fas fa-ban"></i>&nbsp;Not Authorized</h4>
+                <p class="mb-0">{{ message|default:"You do not have permission to access this campus." }}</p>
+            </div>
+        </div>
+    </div>
+</main>
+{% endblock %}

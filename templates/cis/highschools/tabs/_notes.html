@@ -1,0 +1,67 @@
+<div class="row">
+    <div class="col-12 bg-gray-100">
+        <div class="card mb-4 border-top-0">
+            <div class="card-body ">
+
+                <div class="text-right">
+                    <a href="#notes" class="btn btn-sm btn-primary ajax-add_new"
+                        data-parent="{{ record.id }}" data-id="-1" data-modal="modal-add_new"
+                        data-model="highschoolnote" data-updater=""><i
+                            class="fa fas-light fa-plus-circle"></i>&nbsp;Add New Note</a>
+                </div>
+                <div class="clearfix">&nbsp;</div>
+                <div class="table-responsive">
+                    <table id="highschool_notes" class="table table-striped responsive"
+                        style="width:100%" data-server-side="true" data-ajax="{{ note_api_url }}">
+                        <thead>
+                            <tr>
+                                <th data-data="createdon" data-name="createdon">Added On
+                                </th>
+                                <th data-data="note" data-name="note">Note
+                                </th>
+                                <th data-data="createdby.last_name"
+                                    data-name="createdby.last_name">Added By
+                                </th>
+                            </tr>
+                        </thead>
+                    </table>
+                </div> <!-- end table-responsive -->
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    $(document).ready(function () {
+        $('#highschool_notes').DataTable(
+            {
+                dom: 'B<"float-left mt-3 mb-3"l><"float-right mt-3"f><"row clear">rt<"row"<"col-6"i><"col-6 float-right"p>>',
+                                buttons: [
+                                    {
+                                        extend: 'csv', className: 'btn btn-sm btn-primary text-white text-light',
+                                        text: '<i class="fas fa-file-csv text-white"></i>&nbsp;CSV',
+                                        titleAttr: 'Export results to CSV'
+                                    },
+                                    {
+                                        extend: 'print', className: 'btn btn-sm btn-primary text-white text-light',
+                                        text: '<i class="fas fa-print text-white"></i>&nbsp;Print',
+                                        titleAttr: 'Print'
+                                    },
+                                ],
+                'lengthMenu': [30, 50, 100],
+                'order': [[0, 'desc']],
+                'columns': [
+                    {
+                        'searchable': false,
+                    },
+                    null,
+                    {
+                        'render': function (data, type, row, meta) {
+                            return row.createdby.last_name + ", " +
+                                row.createdby.first_name
+                        }
+                    }
+                ]
+            }
+        );
+    });
+</script>

@@ -1,0 +1,25 @@
+<div class="card border-top-0">
+    <div class="card-body">
+        <div class="card-text">
+            <div class="row">
+                <div class="col-12 p-0 m-0">
+                    <div class="btn-group float-right" role="group" aria-label="">
+                        <a class="btn btn-primary ajax-add_new" href="#"
+                            data-parent="{{record.student.id}}" data-id="{{record.student.id}}"
+                            data-modal="modal-add_new" data-model="student" data-updater=""><i
+                                class="fa fa-pencil-alt"></i>&nbsp;Edit
+                            Record</a>
+                        <a class="btn btn-secondary" target="_parent"
+                            href='{% url 'impersonate-start' record.student.user.id %}'><i
+                                class="fa fa-ghost"></i></a>
+                    </div>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-12 p-0 m-0">
+                    {{record.student.asHTML|safe}}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

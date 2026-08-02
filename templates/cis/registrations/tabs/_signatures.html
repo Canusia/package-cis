@@ -1,0 +1,19 @@
+<div class="card border-top-0">
+    <div class="card-body">
+        <div class="card-text">
+            <h5 class="card-title">Student Signature</h5>
+            {% if student_signature %}
+            {{student_signature.asHTML|safe}}
+            {% else %}
+            <p class="alert alert-danger">Student signature not found</p>
+            {% endif %}
+            <hr>
+            <h5 class="card-title">FERPA</h5>
+            {% if ferpa %}
+            {{ferpa.asHTML|safe}}
+            {% else %}
+            <p class="alert alert-danger">No FERPA consent found</p>
+            {% endif %}
+        </div>
+    </div>
+</div>

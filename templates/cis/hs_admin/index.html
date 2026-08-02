@@ -1,0 +1,104 @@
+{% extends "cis/logged-base.html" %}
+{%block title %}{{page_title}}{% endblock %}
+
+{% load templatehelpers %}
+
+{% block body %}
+
+<main>
+    <div class="">
+        <div class="row">
+            <div class="col-sm-6 col-xs-12">
+                <h1 class="h3 mb-4 text-gray-800">{{page_title}}&nbsp;
+                    <div class="btn-group btn-group-sm">
+                        <button type="button" class="btn btn-primary btn-sm dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                            Actions
+                        </button>
+                        <div class="dropdown-menu">
+                            <a href="{% url urls.add_new %}" class="dropdown-item"><i class="fas fa-plus"></i>&nbsp;&nbsp;Add New</a>
+                        </div>
+                    </div>
+                </h1>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <div class="">
+
+                {% include "cis/messages.html" with messages=messages %}
+
+                <ul class="nav nav-tabs">
+                    <li class="nav-item">
+                        <a class="nav-link active" data-toggle="tab" href="#all">All Administrators</a>
+                    </li>
+                </ul>
+
+                <div class="tab-content">
+                    <div class="tab-pane active" id="all">
+                        <div class="bg-white border border-top-0">
+                            <div class="col-12 pt-3 mb-3">
+                                {% include hs_admins_table.partial_template with config=hs_admins_table %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- end tab-content -->
+                <script>
+                    let bulk_action_url = "{%url 'cis:hs_admin_do_bulk_action'%}";
+
+                    function do_bulk_action(url, action, dt) {
+                        if (!dt.rows('.selected').any()) {
+                            alert("Please select a row and try again.");
+                            return;
+                        }
+
+                        var selectedRows = dt.rows({ selected: true });
+
+                        if (action == 'toggle_status' || action == 'toggle_student_recommendation') {
+                            if (!confirm('Are you sure you want to toggle status on the ' + selectedRows.count() + ' selected records?'))
+                                return;
+                        }
+
+                        let data = {
+                            'action': action,
+                            'ids': Array()
+                        };
+                        selectedRows.every(function () {
+                            data.ids.push(this.id());
+                        });
+
+                        $(dt).block();
+                        let modal = "modal-bulk_actions";
+
+                        $.ajax({
+                            type: "GET",
+                            url: url,
+                            data: data,
+                            success: function (response) {
+                                $(dt).unblock();
+
+                                if (response.status == 'success') {
+                                    swal({
+                                        title: 'Success',
+                                        text: response.message,
+                                        icon: response.status
+                                    }).then(
+                                        (value) => {
+                                            selectedRows.deselect();
+                                            dt.ajax.reload();
+                                        }
+                                    );
+                                } else {
+                                    $("#bulk_modal_content").html(response);
+                                    $("#" + modal).modal('show');
+                                }
+                            }
+                        });
+                    }
+                </script>
+        </div>
+    </div>
+
+</main>
+
+{% endblock %}

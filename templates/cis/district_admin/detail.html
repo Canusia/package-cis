@@ -1,0 +1,101 @@
+{% extends "cis/logged-base.html" %}
+{%block title %}District Adminitrator => {{ record.user.first_name }}{% endblock %}
+
+{% load templatehelpers %}
+{% load crispy_forms_tags %}
+
+{% block body %}
+<script>
+    jQuery(function ($) {
+        $('.dataTable').DataTable();
+    });
+</script>
+<div class="">
+    <div class="row">
+        <div class="col-md-6 col-sm-12">
+            <h1 class="h3 mt-3 text-gray-800 mb-3">{{ record.user.first_name }} {{ record.user.last_name }}</h1>
+        </div>
+        <!-- <div class="col-md-6 col-sm-12">
+            <div class="justify-content-end">
+                <form class="form-inline p-2 justify-content-end">
+                    <div class="ui search category focus">
+                        <div class="ui left icon input">
+                            <input class="prompt" type="text" placeholder="Search by name" autocomplete="off">
+                        </div>
+                        <div class="results"></div>
+                    </div>
+                </form>
+            </div>
+        </div> -->
+    </div>
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="#">Home</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'cis:district_admins' %}?{% query_transform %}">All Administrators</a>
+            </li>
+            <li class="breadcrumb-item active" aria-current="page">{{ record.user.first_name }}</li>
+        </ol>
+    </nav>
+</div>
+<main>
+    <div class="row">
+        <div class="col-md-4 col-sm-12 mb-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Administrator Details</h5>
+                    <div class="card-text">
+                        {% if messages %}
+                        <ul class="messages list-group">
+                            {% for message in messages %}
+                            <li{% if message.tags %} class="list-group-item {{ message.tags }}" {% endif %}>
+                                {{ message }}
+                            </li>
+                            {% endfor %}
+                        </ul>
+                        {% endif %}
+                        <form action="" method="post">
+                            {% csrf_token %}
+                            {{ form | crispy }}
+                            <input type="submit" class="btn btn-primary btn-sm" value="Update">
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-8 col-sm-12">
+            <div class="card mb-4">
+                <div class="card-header">
+                    Administrator Roles <div class="float-right"><a href="#" class="ajax-add_new" data-parent="{{record.id}}" data-id="-1" data-modal="modal-add_new" data-model="districtadministratorrole" data-updater=""><i class="fa fa-plus-circle"></i>&nbsp;Add New Role</a></div>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table dataTable">
+                            <thead>
+                                <tr>
+                                    <th>District</th>
+                                    <th>Position</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for r in roles %}
+                                <tr>
+                                    <td>
+                                        <a href="#" class="ajax-add_new" data-parent="{{record.id}}" data-id="{{r.id}}" data-modal="modal-add_new" data-model="districtadministratorrole" data-updater="">{{r.district.name}}</a>
+                                    </td>
+                                    <td>{{r.position.name}}</td>
+                                    <td>{{r.status}}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div> <!-- end table-responsive -->
+                </div> <!-- end card-body -->
+            </div> <!-- end card -->
+        </div> <!-- end col-md-8 -->
+
+    </div> <!-- end row -->
+
+
+</main>
+{% endblock %}

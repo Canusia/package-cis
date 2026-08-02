@@ -1,0 +1,72 @@
+{% extends "cis/logged-base.html" %}
+{%block title %}{{ page_title }}{% endblock %}
+
+{% load templatehelpers %}
+{% load crispy_forms_tags %}
+
+{% block body %}
+<script>
+    jQuery(function ($) {
+       
+        $('.dataTable').DataTable();
+    });
+</script>
+<div class="">
+    <div class="row">
+        <div class="col-md-6 col-sm-12">
+            <h1 class="h3 mt-3 text-gray-800 mb-3">{{page_title}}</h1>
+        </div>
+
+    </div>
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="#">Home</a></li>
+            <li class="breadcrumb-item"><a
+                    href="{% url urls.all_items %}?{% query_transform %}">{{ labels.all_items }}</a>
+            </li>
+            <li class="breadcrumb-item active" aria-current="page">Data Export</li>
+        </ol>
+    </nav>
+</div>
+<main>
+    <div class="">
+        <div class="row">
+            <div class="col-md-4 col-sm-12 mb-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Export Data</h5>
+                        <p class="alert alert-info">
+                            Use the form below to generate PeopleSoft export file. <br><br>Eg: For the following sample inputs, From - 10/10/2010 and To - 11/10/2010 the export will contain students who created their accounts on or after
+                            10/10/2010 00:00 and until 11/10/2010 00:00
+                        </p>
+                        <div class="card-text">
+                            {% if messages %}
+                            <ul class="messages list-group">
+                                {% for message in messages %}
+                                <li{% if message.tags %} class="list-group-item {{ message.tags }}" {% endif %}>
+                                    {{ message }}</li>
+                                    {% endfor %}
+                            </ul>
+                            {% endif %}
+                            <form action="" method="post">
+                                {% csrf_token %}
+                                {{ export_form | crispy }}
+                                <input type="submit" name='export_data' class="btn btn-primary btn-sm" value="Export Data">
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div> <!-- end col-md-4 -->
+            <div class="col-md-8 col-sm-12 mb-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title"></h5>
+                        <div class="card-text"></div>
+                    </div>
+                </div>
+            </div> <!-- end col-md-8 -->
+        </div>
+    </div>
+
+</main>
+{% endblock %}

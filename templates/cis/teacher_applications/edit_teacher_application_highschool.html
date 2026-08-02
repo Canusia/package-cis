@@ -1,0 +1,35 @@
+{% extends 'cis/ajax-base.html' %}
+
+{%block title %}Update Status{% endblock %}
+
+{% load templatehelpers %}
+{% load crispy_forms_tags %}
+
+{% block body %}
+
+
+<div class="card">
+    <div class="card-body">
+        <h3 class="card-title">{{title}}</h3>
+        <div class="card-text">
+            <div class="form_status">
+                {% if messages %}
+                <ul class="messages list-group">
+                    {% for message in messages %}
+                    <li{% if message.tags %} class="list-group-item {{ message.tags }}" {% endif %}>{{ message }}</li>
+                        {% endfor %}
+                </ul>
+                {% endif %}
+            </div>
+            <form action="{{form_action|safe}}" method="post" class="frm_bulk_action" enctype="multipart/form-data">
+                <p class="alert alert-info">Review and confirm update</p>
+                {% csrf_token %}
+                {{ form | crispy }}
+                <input type="submit" class="btn btn-primary btn-sm" value="Update Status"><input type="button" class="btn btn-sm" onclick="window.closeBulkActionModal()" value="Cancel & Close">
+            </form>
+        </div>
+    </div> 
+</div> <!-- end card -->
+
+
+{% endblock %}

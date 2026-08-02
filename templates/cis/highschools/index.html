@@ -1,0 +1,435 @@
+{% extends "cis/logged-base.html" %}
+{%block title %}{{page_title}}{% endblock %}
+
+{% load templatehelpers %}
+
+{% block body %}
+
+<main>
+    <div class="">
+        <div class="row">
+            <div class="col-sm-6 col-xs-12">
+                <h1 class="h3 mb-4 text-gray-800">{{page_title}}&nbsp;
+                    <div class="btn-group btn-group-sm">
+                        <button type="button" class="btn btn-primary btn-sm dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                            Actions
+                        </button>
+                        <div class="dropdown-menu">
+                            <a href="{% url urls.add_new %}" class="dropdown-item"><i class="fas fa-plus"></i>&nbsp;&nbsp;Add New</a>
+                        </div>
+                    </div>
+                </h1>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <div class="">
+                {% include "cis/messages.html" with messages=messages %}
+
+                <ul class="nav nav-tabs">
+                    <li class="nav-item">
+                        <a class="nav-link active" data-toggle="tab" href="#all_active">Active High Schools</a>
+                    </li>
+
+                    <li class="nav-item">
+                        <a class="nav-link" data-toggle="tab" href="#all">All High Schools</a>
+                    </li>
+
+                    <li class="nav-item">
+                        <a class="nav-link" data-toggle="tab" href="#map_view">
+                            <i class="fas fa-map-marker-alt"></i> Map View
+                        </a>
+                    </li>
+                </ul>
+
+                <div class="tab-content">
+
+                    <div class="tab-pane active" id="all_active">
+                        <div class="bg-white border border-top-0">
+                            <div class="col-12 pt-3 mb-3">
+                                {% include highschools_table_active.partial_template with config=highschools_table_active %}
+                            </div>
+                        </div>
+                    </div>
+                    <!-- end tab # records_active -->
+
+                    <div class="tab-pane " id="all">
+                        <div class="bg-white border border-top-0">
+                            <div class="col-12 pt-3 mb-3">
+                                {% include highschools_table_all.partial_template with config=highschools_table_all %}
+                            </div>
+                        </div>
+                    </div>
+                    <!-- end tab # records_all -->
+
+                    <div class="tab-pane" id="map_view">
+                        <div class="bg-white border border-top-0 p-3">
+                            <div class="row">
+                                <div class="col-md-8">
+                                    <div id="highschool-map" style="height: 90vh; width: 100%;"></div>
+                                    <p class="text-muted mt-2 mb-0">
+                                        <small>Showing active high schools with geocoded addresses. Click a marker for details.</small>
+                                    </p>
+                                    
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="card">
+                                        <div class="card-body">
+                                            <form id="map-filter-form" class="form-inline filter">
+                                        <div class="form-row">
+                                            <div class="col">
+                                                <select id="map-term-filter" name="term_ids" multiple="multiple" class="form-control">
+                                                    {% for term in terms %}
+                                                    <option value="{{ term.id }}">{{ term.label }}</option>
+                                                    {% endfor %}
+                                                </select>
+                                                &nbsp;
+                                                <select id="map-course-filter" name="course_ids" multiple="multiple" class="form-control mt-2" disabled>
+                                                </select>
+                                                &nbsp;
+                                                <select id="map-status-filter" name="statuses" multiple="multiple" class="form-control mt-2">
+                                                    {% for status in registration_statuses %}
+                                                    <option value="{{ status.0 }}" selected>{{ status.1 }}</option>
+                                                    {% endfor %}
+                                                </select>
+                                                &nbsp;
+                                                <button type="button" id="clear-map-filters" class="btn btn-secondary mt-2">
+                                                    Clear Filters
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </form>
+                                        </div>
+                                    </div>
+                                    <div class="card mt-3">
+                                        <div class="card-body">
+<h4 class="card-title">By State</h4>
+                                    <table id="state-summary" class="table table-sm table-striped" style="width:100%">
+                                        <thead>
+                                            <tr>
+                                                <th>State</th>
+                                                <th class="text-right"># of High Schools</th>
+                                                <th class="text-right"># of Students</th>
+                                                <th class="text-right"># of Sections</th>
+                                                <th class="text-right"># of Courses</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody></tbody>
+                                    </table>
+
+                                        </div>
+                                    </div>
+                     
+                                    <div class="card mt-3">
+                                        <div class="card-body">
+<h4 class="card-title">By District</h4>
+                                    <div style="max-height: 250px; overflow-y: auto;">
+                                        <table id="district-summary" class="table table-sm table-striped">
+                                            <thead>
+                                                <tr>
+                                                    <th>District</th>
+                                                    <th class="text-right">Count</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody></tbody>
+                                        </table>
+                                        </div>
+                                    </div>
+                                    
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- end tab # map_view -->
+
+                </div>
+                <!-- end tab-content -->
+                {% if google_maps_api_key %}
+                <script src="https://maps.googleapis.com/maps/api/js?key={{ google_maps_api_key }}"></script>
+                <script>
+                    let map = null;
+                    let markers = [];
+
+                    function initHighSchoolMap() {
+                        // Default center (will be adjusted to fit markers)
+                        map = new google.maps.Map(document.getElementById('highschool-map'), {
+                            zoom: 8,
+                            center: { lat: 40.0, lng: -76.0 }
+                        });
+                        loadSchoolMarkers();
+                    }
+
+                    function loadSchoolMarkers(url = '/ce/api/highschool-map/') {
+                        fetch(url)
+                            .then(response => response.json())
+                            .then(data => {
+                                const bounds = new google.maps.LatLngBounds();
+                                const stateCounts = {};
+                                const districtCounts = {};
+
+                                data.schools.forEach(school => {
+                                    const marker = new google.maps.Marker({
+                                        position: { lat: school.latitude, lng: school.longitude },
+                                        map: map,
+                                        title: school.name
+                                    });
+
+                                    // Build course table if courses exist
+                                    let courseTable = '';
+                                    if (school.courses && school.courses.length > 0) {
+                                        courseTable = `
+                                            <table class="table table-sm table-bordered mt-2 mb-2" style="font-size: 11px;">
+                                                <thead class="thead-light">
+                                                    <tr>
+                                                        <th>Course</th>
+                                                        <th class="text-center">Sections</th>
+                                                        <th class="text-center">Students</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    ${school.courses.map(c => `
+                                                        <tr>
+                                                            <td>${c.name}</td>
+                                                            <td class="text-center">${c.sections}</td>
+                                                            <td class="text-center">${c.students}</td>
+                                                        </tr>
+                                                    `).join('')}
+                                                </tbody>
+                                            </table>
+                                        `;
+                                    }
+
+                                    const infoContent = `
+                                        <div style="max-width: 350px;">
+                                            <strong>${school.name}</strong><br>
+                                            ${school.address1}<br>
+                                            ${school.city}, ${school.state} ${school.postal_code}
+                                            ${courseTable}
+                                            <a href="/ce/highschool/${school.id}" class="btn btn-sm btn-primary mt-2">View Details</a>
+                                        </div>
+                                    `;
+
+                                    const infoWindow = new google.maps.InfoWindow({
+                                        content: infoContent
+                                    });
+
+                                    marker.addListener('click', () => {
+                                        infoWindow.open(map, marker);
+                                    });
+
+                                    bounds.extend(marker.getPosition());
+                                    markers.push(marker);
+
+                                    // Count by state - include students, sections, and courses
+                                    const state = school.state || 'Unknown';
+                                    if (!stateCounts[state]) {
+                                        stateCounts[state] = { schools: 0, students: 0, sections: 0, courses: new Set() };
+                                    }
+                                    stateCounts[state].schools += 1;
+                                    if (school.courses) {
+                                        school.courses.forEach(c => {
+                                            stateCounts[state].students += c.students;
+                                            stateCounts[state].sections += c.sections;
+                                            stateCounts[state].courses.add(c.name);
+                                        });
+                                    }
+
+                                    // Count by district
+                                    const district = school.district || 'No District';
+                                    districtCounts[district] = (districtCounts[district] || 0) + 1;
+                                });
+
+                                if (markers.length > 0) {
+                                    map.fitBounds(bounds);
+                                }
+
+                                // Populate state summary table
+                                const stateTableBody = document.querySelector('#state-summary tbody');
+                                stateTableBody.innerHTML = '';
+                                Object.entries(stateCounts)
+                                    .sort((a, b) => b[1].schools - a[1].schools)
+                                    .forEach(([state, data]) => {
+                                        stateTableBody.innerHTML += `<tr>
+                                            <td>${state}</td>
+                                            <td class="text-right">${data.schools}</td>
+                                            <td class="text-right">${data.students}</td>
+                                            <td class="text-right">${data.sections}</td>
+                                            <td class="text-right">${data.courses.size}</td>
+                                        </tr>`;
+                                    });
+
+                                // Initialize or refresh state summary DataTable with export
+                                if ($.fn.DataTable.isDataTable('#state-summary')) {
+                                    $('#state-summary').DataTable().destroy();
+                                }
+                                $('#state-summary').DataTable({
+                                    dom: 'Bfrtip',
+                                    buttons: [
+                                        {
+                                            extend: 'csv',
+                                            className: 'btn btn-sm btn-primary text-white',
+                                            text: '<i class="fas fa-file-csv"></i> CSV',
+                                            titleAttr: 'Export to CSV',
+                                            title: 'High Schools by State'
+                                        },
+                                        {
+                                            extend: 'pdf',
+                                            className: 'btn btn-sm btn-primary text-white',
+                                            text: '<i class="fas fa-file-pdf"></i> PDF',
+                                            titleAttr: 'Export to PDF',
+                                            title: 'High Schools by State'
+                                        }
+                                    ],
+                                    paging: false,
+                                    searching: false,
+                                    info: false,
+                                    order: [[1, 'desc']]
+                                });
+
+                                // Populate district summary table
+                                const districtTableBody = document.querySelector('#district-summary tbody');
+                                districtTableBody.innerHTML = '';
+                                Object.entries(districtCounts)
+                                    .sort((a, b) => b[1] - a[1])
+                                    .forEach(([district, count]) => {
+                                        districtTableBody.innerHTML += `<tr><td>${district}</td><td class="text-right">${count}</td></tr>`;
+                                    });
+
+                                if (markers.length === 0) {
+                                    document.getElementById('highschool-map').innerHTML =
+                                        '<div class="alert alert-info m-3">No high schools with geocoded addresses found. Run the geocode_highschools management command to geocode existing schools.</div>';
+                                }
+                            })
+                            .catch(error => {
+                                console.error('Error loading map data:', error);
+                            });
+                    }
+
+                    // Function to reload markers with current filters
+                    function reloadMapMarkers() {
+                        // Clear existing markers
+                        markers.forEach(m => m.setMap(null));
+                        markers = [];
+
+                        // Build URL with filters
+                        let url = '/ce/api/highschool-map/';
+                        const termIds = $('#map-term-filter').val() || [];
+                        const courseIds = $('#map-course-filter').val() || [];
+                        const statuses = $('#map-status-filter').val() || [];
+
+                        const params = new URLSearchParams();
+                        termIds.forEach(id => params.append('term_ids', id));
+                        courseIds.forEach(id => params.append('course_ids', id));
+                        statuses.forEach(status => params.append('statuses', status));
+
+                        if (params.toString()) {
+                            url += '?' + params.toString();
+                        }
+
+                        // Fetch and display markers
+                        loadSchoolMarkers(url);
+                    }
+
+                    // Initialize map when tab is shown (Google Maps needs visible container)
+                    $('a[href="#map_view"]').on('shown.bs.tab', function() {
+                        if (!map) {
+                            initHighSchoolMap();
+
+                            // Initialize multiple-select for terms
+                            $('#map-term-filter').multipleSelect({
+                                selectAll: false,
+                                filter: true,
+                                dropWidth: 300,
+                                placeholder: 'Filter By Term...'
+                            });
+
+                            // Initialize multiple-select for courses
+                            $('#map-course-filter').multipleSelect({
+                                selectAll: false,
+                                filter: true,
+                                dropWidth: 300,
+                                placeholder: 'Filter By Course...'
+                            });
+
+                            // Initialize multiple-select for statuses
+                            $('#map-status-filter').multipleSelect({
+                                selectAll: true,
+                                filter: false,
+                                dropWidth: 250,
+                                placeholder: 'Registration Status...'
+                            });
+                        } else {
+                            google.maps.event.trigger(map, 'resize');
+                            if (markers.length > 0) {
+                                const bounds = new google.maps.LatLngBounds();
+                                markers.forEach(m => bounds.extend(m.getPosition()));
+                                map.fitBounds(bounds);
+                            }
+                        }
+                    });
+
+                    // Term change handler - load courses and reload markers
+                    $('#map-term-filter').on('change', function() {
+                        const termIds = $(this).val() || [];
+                        const courseSelect = $('#map-course-filter');
+
+                        // Clear and disable course dropdown
+                        courseSelect.empty().prop('disabled', true);
+                        courseSelect.multipleSelect('refresh');
+
+                        if (termIds.length > 0) {
+                            // Load courses for selected terms
+                            const params = new URLSearchParams();
+                            termIds.forEach(id => params.append('term_ids', id));
+
+                            fetch('/ce/api/highschool-map-courses/?' + params.toString())
+                                .then(response => response.json())
+                                .then(data => {
+                                    data.courses.forEach(course => {
+                                        courseSelect.append(
+                                            $('<option>').val(course.id).text(course.name)
+                                        );
+                                    });
+                                    courseSelect.prop('disabled', false);
+                                    courseSelect.multipleSelect('refresh');
+                                });
+                        }
+
+                        // Reload map markers
+                        reloadMapMarkers();
+                    });
+
+                    // Course change handler
+                    $('#map-course-filter').on('change', function() {
+                        reloadMapMarkers();
+                    });
+
+                    // Status change handler
+                    $('#map-status-filter').on('change', function() {
+                        reloadMapMarkers();
+                    });
+
+                    // Clear filters button
+                    $('#clear-map-filters').on('click', function() {
+                        $('#map-term-filter').multipleSelect('uncheckAll');
+                        $('#map-course-filter').empty().prop('disabled', true);
+                        $('#map-course-filter').multipleSelect('refresh');
+                        $('#map-status-filter').multipleSelect('checkAll');
+                        reloadMapMarkers();
+                    });
+                </script>
+                {% else %}
+                <script>
+                    $('a[href="#map_view"]').on('shown.bs.tab', function() {
+                        document.getElementById('highschool-map').innerHTML =
+                            '<div class="alert alert-warning m-3">Google Maps API key not configured. Add GOOGLE_MAPS_API_KEY to your settings.</div>';
+                    });
+                </script>
+                {% endif %}
+        </div>
+    </div>
+
+</main>
+
+{% endblock %}

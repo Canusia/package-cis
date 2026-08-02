@@ -1,0 +1,131 @@
+{% extends "cis/logged-base.html" %}
+{%block title %}{{ page_title }}{% endblock %}
+
+{% load templatehelpers %}
+{% load static %}
+{% load crispy_forms_tags %}
+
+{% block body %}
+
+<script>
+    var student_delete_url = "{% url 'cis:student_delete' record.id%}"
+    var student_bulk_actions_url = "{%url 'cis:student_bulk_actions' %}"
+    var student_delete_note_url = "{% url 'cis:delete_student_note'%}"
+</script>
+
+<script src="{% static 'js/change_history.js' %}"></script>
+<script>
+jQuery(document).ready(function () {
+    $(document).on("click", "a.delete_student_note", function () {
+        if (!confirm("Are you sure you want to permanently delete this record and all the related information?"))
+            return;
+        $.blockUI();
+        $.ajax({
+            type: 'GET',
+            url: student_delete_note_url,
+            data: { 'note_id': $(this).attr('data-id') },
+            success: function(response) {
+                $.unblockUI();
+                swal("", response.message, response.status);
+                if (response.status == 'success') {
+                    if (window._tbl_student_notes) window._tbl_student_notes.ajax.reload();
+                }
+            }
+        });
+    });
+
+    $("a.delete").on("click", function () {
+        if (!confirm("Are you sure you want to permanently delete this record and all the related information?"))
+            return;
+        $.blockUI();
+        $.ajax({
+            type: 'GET',
+            url: student_delete_url,
+            success: function(response) {
+                $.unblockUI();
+                swal("", response.message, response.status);
+                if (response.status == 'success') { window.parent.closeModal(); }
+            }
+        });
+    });
+});
+
+function onActionComplete(args) {
+    if (args && args.message) {
+        var span = document.createElement('span');
+        span.innerHTML = args.message;
+        swal({ title: args.title || 'Done', content: span, icon: args.status || 'success' }).then(function () {
+            location.reload();
+        });
+    } else {
+        location.reload();
+    }
+}
+</script>
+
+<main>
+    <div class="row">
+        <div class="col-12">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="/">Home</a></li>
+                    <li class="breadcrumb-item"><a href='#' onClick="javscript:window.history.back()">Back</a>
+                    </li>
+                    <li class="breadcrumb-item active" aria-current="page">Student</li>
+                </ol>
+            </nav>
+        </div>
+        <div class="col-md-12 col-sm-12">
+            <h4 class="float-right">{{record}}</h4>
+            <div class="clearfix"></div>
+            <div class="btn-group btn-group-sm float-right mb-3">
+                <button type="button" class="btn btn-primary dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Actions</button>
+                <div class="dropdown-menu" x-placement="bottom-start" style="position: absolute; transform: translate3d(0px, 37px, 0px); top: 0px; left: 0px; will-change: transform;">
+                    {% for group_key, group in detail_actions.items %}
+                        {% if not forloop.first %}<div class="dropdown-divider"></div>{% endif %}
+                        {% for slug, action in group.actions.items %}
+                            <a class="dropdown-item" onclick="ActionRegistry.doAction(student_bulk_actions_url, '{{ slug }}', '{{ record.id }}')" href="#"><i class="{{ action.icon }} text-dark"></i>&nbsp;{{ action.label }}</a>
+                        {% endfor %}
+                    {% endfor %}
+                </div>
+              </div>
+            <div class="btn-group btn-group-sm float-right mb-3" role="group" aria-label="">
+                <a class="btn btn-primary ajax-add_new" href="#details" data-parent="{{record.id}}"
+                    data-id="{{record.id}}" data-modal="modal-add_new" data-model="student"
+                    data-updater=""><i class="fa fa-pencil-alt"></i>&nbsp;Edit Record</a>                
+                <a class="btn btn-secondary" target="_parent"
+                    href='{% url 'impersonate-start' record.user.id %}'><i class="fa fa-ghost"></i></a>
+            </div>
+            
+            <div class="clearfix"></div>
+
+            {% include "cis/messages.html" with messages=messages %}
+            
+            <ul class="nav nav-tabs">
+              {% for slug, tab in detail_tabs.items %}
+              <li class="nav-item">
+                <a class="nav-link {% if tab.active %}active{% endif %}" data-toggle="tab" href="#{{ tab.slug }}">
+                  {% if tab.icon %}<i class="{{ tab.icon }}"></i> {% endif %}{{ tab.title }}
+                  {% if tab.badge %}<span class="badge badge-pill badge-secondary">{{ tab.badge }}</span>{% endif %}
+                </a>
+              </li>
+              {% endfor %}
+            </ul>
+
+            <!-- Tab panes -->
+            <div class="tab-content">
+              {% for slug, tab in detail_tabs.items %}
+              {% if tab.lazy %}
+              <div class="tab-pane {% if tab.active %}active{% endif %}" id="{{ tab.slug }}" data-tab-url="{{ tab.url }}"></div>
+              {% else %}
+              <div class="tab-pane {% if tab.active %}active{% endif %}" id="{{ tab.slug }}">{{ tab.html|safe }}</div>
+              {% endif %}
+              {% endfor %}
+            </div>
+        </div> <!-- end col-md-8 -->
+
+    </div> <!-- end row -->
+
+
+</main>
+{% endblock %}

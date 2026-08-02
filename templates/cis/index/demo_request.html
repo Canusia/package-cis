@@ -1,0 +1,68 @@
+{% extends "cis/base.html" %}
+
+{% load templatehelpers %}
+{% load crispy_forms_tags %}
+
+{% block title %}{{MYCE_SETTINGS.college_name}} {{ MYCE_SETTINGS.site_name }}{% endblock %}
+{% block body %}
+
+<main role="main" id="content">
+
+    <div id="page_content" data-source="demo_request">
+        <div class="text-center mt-4 mb-4 p-3 bg-light">
+            <i class="fa fa-spinner fa-spin fa-3x fa-fw fa-4x"></i>
+            <span class="sr-only">Loading...</span>
+        </div>
+    </div>
+
+    <div class="">
+        <div class="container">
+
+            <div class="row ">
+                <div class="col-12 mb-3">
+                    <nav aria-label="breadcrumb">
+                        <ol class="breadcrumb">
+                            <li class="breadcrumb-item"><a href="{% url 'index' %}">Home</a></li>
+                            <li class="breadcrumb-item active" aria-current="page">Request Access</li>
+                        </ol>
+                    </nav>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-12">
+
+                    {% if messages %}
+                    <ul class="messages list-group">
+                        {% for message in messages %}
+                        <li{% if message.tags %} class="list-group-item {{ message.tags }}" {% endif %}>
+                            {{ message }}</li>
+                            {% endfor %}
+                    </ul>
+                    {% endif %}
+
+                    <!-- Tab panes -->
+                        <div id="current" class="">
+                            <div class="row">
+                                <div class="col-md-12 col-sm-12">
+                                    <div class="card">
+                                        <div class="card-body">
+                                            <h3 class="mb-4 card-title">Please complete the form to submit your access request</h3>
+                                            <form method="POST">
+                                                    {% csrf_token %}
+                                                    {{ form | crispy }}
+                                                    <button type="submit" class="btn btn-primary">Submit Request</button>
+                                                </form>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                    </div>
+                </div>
+            </div>
+        </div> <!-- end row -->
+    </div> <!-- end container -->
+    </div> <!-- end py-5 -->
+
+</main>
+{% endblock %}

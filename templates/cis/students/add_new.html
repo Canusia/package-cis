@@ -1,0 +1,146 @@
+{% extends base_template %}
+
+{%block title %}{{ page_title }}{% endblock %}
+
+{% load templatehelpers %}
+{% load crispy_forms_tags %}
+
+{% block body %}
+<script>
+
+</script>
+{% if ajax != '1' %}
+<div class="">
+    <div class="row">
+        <div class="col">
+            <h1 class="h3 mt-3 text-gray-800 mb-3">Add New</h1>
+        </div>
+    </div>
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="#">Home</a></li>
+            <li class="breadcrumb-item"><a
+                    href="{% url urls.all_items %}?{% query_transform %}">{{ labels.all_items }}</a>
+            </li>
+            <li class="breadcrumb-item active" aria-current="page">Add New</li>
+        </ol>
+    </nav>
+</div>
+{% else %}
+<script>
+</script>
+{% endif %}
+
+{% if ajax != '1' %}
+<main>
+    <div class="row">
+        <div class="col-12">
+            <div class="form_status">
+                {% if messages %}
+                <ul class="messages list-group mb-4">
+                    {% for message in messages %}
+                    <li{% if message.tags %} class="list-group-item {{ message.tags }}" {% endif %}>{{ message }}</li>
+                        {% endfor %}
+                </ul>
+                {% endif %}
+            </div>
+        </div>
+        <div class="col-md-4 col-sm-12 mb-4 d-none">
+            {% endif %}
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Add a New Section</h5>
+                    <div class="card-text">
+
+                        <form action="" id="form_class_section_add_new" method="post">
+                            {% csrf_token %}
+                            {{ form | crispy }}
+
+                            {% if ajax == '1' %}
+                            <input type="hidden" name="ajax" value="1">
+                            <input type="hidden" name="model" value="classsection">
+                            {% endif %}
+                            <input type="submit" class="btn btn-primary btn-sm" value="Add Record">
+                        </form>
+                    </div>
+                </div>
+            </div> <!-- end card -->
+            {% if ajax != '1' %}
+        </div> <!-- end col-md-4 -->
+
+        <div class="col-md-12 col-sm-12 mb-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Student Importer</h5>
+                    <div class="card-text">
+                        <p class="alert alert-info">
+                            Upload a CSV of students. You'll preview each row and
+                            confirm before anything is created.
+                            <a href="{% url 'cis:student_import_template' %}">Download the template</a>.
+                        </p>
+                        <form action="{% url 'cis:student_import_upload' %}" method="post" enctype="multipart/form-data">
+                            {% csrf_token %}
+                            {{ student_upload_form | crispy }}
+                            <input type="submit" class="btn btn-primary btn-sm" value="Upload &amp; Preview">
+                        </form>
+                    </div>
+                </div>
+            </div>
+            <div class="clearfix">&nbsp;</div>
+        </div>
+
+        <div class="col-md-12 col-sm-12 mb-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Registration Importer</h5>
+                    <div class="card-text">
+                        <p class="alert alert-info">
+                            Upload a 'CSV' file with Student Information and Application Numbers.
+                            <br><br>
+                            The required columns are 'banner_id', 'term', 'crn', 'status', 'description'
+                        </p>
+
+                        <form action="" method="post" enctype="multipart/form-data">
+                            {% csrf_token %}
+                            {{ upload_form | crispy }}
+
+                            <input type="hidden" name="action" value="import_registrations">
+                            <input type="submit" class="btn btn-primary btn-sm" name="upload_file"
+                                value="Import Student Registration">
+                        </form>
+                    </div>
+                </div>
+            </div>
+            <div class="clearfix">&nbsp;</div>
+        </div>
+
+        <div class="col-md-12 col-sm-12 mb-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Student EMPLID Importer</h5>
+                    <div class="card-text">
+                        <p class="alert alert-info">
+                            Upload a 'CSV' file with Student EMPLIDs and Application Numbers.
+                            <br><br>
+                            File Format: The first column has to be 'canusia_id', second column 'bannerid'.
+                        </p>
+
+                        <form action="" method="post" enctype="multipart/form-data">
+                            {% csrf_token %}
+                            {{ upload_form | crispy }}
+
+                            <input type="hidden" name="action" value="import_emplid">
+                            <input type="submit" class="btn btn-primary btn-sm" name="upload_file"
+                                value="Import Student IDs">
+                        </form>
+                    </div>
+                </div>
+            </div>
+            <div class="clearfix">&nbsp;</div>
+            
+        </div>
+    </div> <!-- end row -->
+</main>
+{% endif %}
+
+{% endblock %}

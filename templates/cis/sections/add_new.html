@@ -1,0 +1,229 @@
+{% extends base_template %}
+
+{%block title %}{{ page_title }}{% endblock %}
+
+{% load templatehelpers %}
+{% load crispy_forms_tags %}
+
+{% block body %}
+<script>
+
+</script>
+{% if ajax != '1' %}
+<div class="">
+    <div class="row">
+        <div class="col">
+            <h1 class="h3 mt-3 text-gray-800 mb-3"><i class="fa fa-edit "></i>&nbsp;Manage</h1>
+        </div>
+    </div>
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="#">Home</a></li>
+            <li class="breadcrumb-item"><a
+                    href="{% url urls.all_items %}?{% query_transform %}">{{ labels.all_items }}</a>
+            </li>
+            <li class="breadcrumb-item active" aria-current="page">Manage</li>
+        </ol>
+    </nav>
+</div>
+{% else %}
+<script>
+</script>
+{% endif %}
+
+{% if ajax != '1' %}
+<main>
+    <div class="row">
+        <div class="col-12">
+            <div class="form_status">
+                {% if messages %}
+                <ul class="messages list-group mb-4">
+                    {% for message in messages %}
+                    <li{% if message.tags %} class="list-group-item {{ message.tags }}" {% endif %}>{{ message }}</li>
+                        {% endfor %}
+                </ul>
+                {% endif %}
+            </div>
+        </div>
+        <div class="col-md-4 col-sm-12 mb-4 d-none">
+            {% endif %}
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Add a New Section</h5>
+                    <div class="card-text">
+
+                        <form action="" id="form_class_section_add_new" method="post">
+                            {% csrf_token %}
+                            {{ form | crispy }}
+
+                            {% if ajax == '1' %}
+                            <input type="hidden" name="ajax" value="1">
+                            <input type="hidden" name="model" value="classsection">
+                            {% endif %}
+                            <input type="submit" class="btn btn-primary btn-sm" value="Add Record">
+                        </form>
+                    </div>
+                </div>
+            </div> <!-- end card -->
+            {% if ajax != '1' %}
+        </div> <!-- end col-md-4 -->
+
+        <div class="col-md-5 col-sm-12 mb-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Import Sections from CSV File</h5>
+                    <div class="card-text">
+                        <p class="alert alert-info">
+                            Upload a CSV file to create or update class sections. Use the template
+                            below to ensure your file has the correct format.
+                            Once processed, the system will generate a CSV report with the results.
+                        </p>
+
+                        <a href="{% url 'cis:section_download_template' %}" class="btn btn-outline-secondary btn-sm mb-3">
+                            <i class="fa fa-download"></i> Download Template
+                        </a>
+
+                        <form action="" method="post" enctype="multipart/form-data">
+                            {% csrf_token %}
+                            {{ upload_form | crispy }}
+
+                            <input type="submit" class="btn btn-primary btn-sm" name="upload_file"
+                                value="Import Sections">
+                        </form>
+                    </div>
+                </div>
+            </div>
+            <div class="clearfix">&nbsp;</div>
+            <div class="card d-none">
+                <div class="card-body">
+                    <div class="card-title">Import from S3</div>
+                    <div class="card-text">
+                        <p class="alert alert-info">
+                            <a href="{% url 'cis:import_sections_from_s3' %}" target="_blank"
+                                rel="noopener noreferrer">Import Now</a>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-7 col-sm-12 mb-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">CSV Field Reference</h5>
+                    <div class="card-text">
+                        <p class="small text-muted mb-2">
+                            Fields marked with <span class="badge badge-danger">Required</span> must be present in every row.
+                            Column names are case-sensitive.
+                        </p>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-bordered table-striped mb-0" style="font-size: 0.85rem;">
+                                <thead class="thead-light">
+                                    <tr>
+                                        <th>Column Name</th>
+                                        <th>Description</th>
+                                        <th>Type</th>
+                                        <th>Required</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for field in schema_fields %}
+                                    <tr>
+                                        <td><code>{{ field.name }}</code></td>
+                                        <td>{{ field.description }}</td>
+                                        <td><small>{{ field.type }}</small></td>
+                                        <td>
+                                            {% if field.required %}
+                                                <span class="badge badge-danger">Required</span>
+                                            {% else %}
+                                                <span class="badge badge-secondary">Optional</span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        <hr>
+                        <h6>Notes</h6>
+                        <ul class="small text-muted mb-0">
+                            <li><strong>course_name</strong> must include the cohort and catalog number separated by a space (e.g. <code>BIO 101</code>).</li>
+                            <li><strong>cancel_flag</strong> accepts <code>Y</code> (cancelled) or <code>N</code> (active).</li>
+                            <li>If a section with the same <strong>term_code</strong> and <strong>reference_number</strong> already exists, it will be updated.</li>
+                            <li>Dates must be in <code>YYYY-MM-DD</code> format. <strong>start_date</strong> must be before <strong>end_date</strong>.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div> <!-- end row -->
+</main>
+{% endif %}
+
+<script>
+    jQuery(document).ready(function ($) {
+        $("#id_highschool").on("change", function () {
+            let data = {
+                'action': 'get_teachers_in_highschool',
+                'highschool': $(this).val()
+            }
+
+            $("#id_course").empty();
+            $.ajax({
+                type: "GET",
+                url: "{% url 'cis:section_ajax' %}",
+                data: data,
+                success: function (response) {
+                    $("#id_teacher").empty()
+                    if (response.status == 'success') {
+                        $("#id_teacher").append("<option value=''>Select</option>");
+
+                        $.each(response.records, function (index, val) {
+                            $("#id_teacher").append(
+                                "<option value='" + val.id + "'>" + val.name + "</option>"
+                            );
+                        });
+                    } else {
+                        alert("There was an error processing your request " + response.message);
+                    }
+                },
+                error: function (response) {
+
+                }
+            });
+        });
+
+        //get courses for instructors
+        $("#id_teacher").on("change", function () {
+            if ($(this).val() == '')
+                return;
+
+            let data = {
+                'action': 'get_courses_for_teacher',
+                'teacher': $(this).val(),
+                'highschool': $("#id_highschool").val()
+            }
+            $.ajax({
+                type: "GET",
+                url: "{% url 'cis:section_ajax' %}",
+                data: data,
+                success: function (response) {
+                    $("#id_course").empty()
+                    if (response.status == 'success') {
+                        $.each(response.records, function (index, val) {
+                            $("#id_course").append(
+                                "<option value='" + val.id + "'>" + val.name + "</option>"
+                            );
+                        });
+                    } else {
+                        alert("There was an error processing your request " + response.message);
+                    }
+                },
+                error: function (response) {
+
+                }
+            });
+        });
+    });
+</script>
+{% endblock %}

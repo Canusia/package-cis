@@ -1,0 +1,16 @@
+{% load crispy_forms_tags %}
+<div class="">
+    <div class="card border-top-0">
+        <div class="card-body">
+            <h5 class="card-title">Details</h5>
+            <div class="card-text">
+                <form action="" method="post">
+                    {% csrf_token %}
+                    {{ form | crispy }}
+                    <input type="submit" class="btn btn-primary btn-sm" value="Update">
+                    <a data-url="{% url 'cis:delete_term' record.id %}" class="btn btn-sm btn-danger delete-record"><i class="fa fa-trash-alt text-light"></i></a>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>

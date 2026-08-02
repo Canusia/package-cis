@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en" style="height: 100%;">
+
+<head>
+  
+  <meta charset="utf-8">
+
+  {% load static %}
+
+
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css"
+    integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+
+  <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.8.1/css/all.css"
+    integrity="sha384-50oBUHEmvpQ+1lW4y57PTFmhCaXp0ML5d60M1M7uH2+nqUivzIebhndOJK28anvf" crossorigin="anonymous">
+  <title>{% block title %}123{% endblock %}</title>
+
+  <link rel="stylesheet" href="{% static 'css/style.css'%}">
+
+  <link rel="stylesheet" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+  <!-- <script src="https://code.jquery.com/jquery-3.2.1.min.js" crossorigin="anonymous"></script> -->
+  <script src="https://code.jquery.com/jquery-1.12.4.min.js"
+    integrity="sha256-ZosEbRLbNQzLpnKIkEdrPv7lOy9C27hHQ+Xp8a4MxAQ=" crossorigin="anonymous"></script>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js"
+    integrity="sha384-UO2eT0CpHqdSJQ6hJty5KVphtPhzWj9WO1clHTMGa3JDZwrnQq4sF86dIHNDz0W1"
+    crossorigin="anonymous"></script>
+  <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"
+    integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM"
+    crossorigin="anonymous"></script>
+
+    <style>
+
+      .bg {
+        background-image: url("{% static 'images/bg.jpg'%}");
+        height: 100%;
+
+        background-position: center;
+        background-repeat: no-repeat;
+        background-size: cover;
+        background-attachment: fixed;
+      }
+
+      /* reCAPTCHA styling - ensure proper layout in all forms */
+      #div_id_captcha,
+      .form-group:has(.g-recaptcha) {
+        display: flow-root;  /* Creates block formatting context to contain the widget */
+        width: 100%;
+        clear: both;
+        margin-top: 1rem;
+        margin-bottom: 1rem;
+      }
+    </style>
+</head>
+
+<body class="bg-light bg">
+  <a href="#content" class="sr-only sr-only-focusable">Skip to main content</a>
+  <header>
+    <div class="navbar navbar-dark bg-dark shadow-sm">
+      <div class="container d-flex justify-content-between">
+        <a href="{% url 'index' %}" class="navbar-brand mr-0 d-flex align-items-center">
+          {% if MYCE_SETTINGS.show_logo == 'True' %}
+          <img class="img-fluid" src="{% static 'images/logo.png' %}"
+            style="padding-right: 15px; border-right: 0px solid #9f9f9f; height: 60px;" alt="College Logo">
+          {%else%}
+          {{MYCE_SETTINGS.site_name }}
+          {%endif%}
+        </a>
+      </div>
+    </div>
+  </header>
+  {% block body %}
+  Body content
+  {% endblock %}
+
+  <footer class="container">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.mask/1.14.16/jquery.mask.min.js"
+      integrity="sha256-Kg2zTcFO9LXOc7IwcBx1YeUBJmekycsnTsq2RuFHSZU=" crossorigin="anonymous"></script>
+    <div class="bg-white bg-gray-100 rounded mt-4">
+      <script>
+        jQuery(document).ready(function ($) {
+          $.ajax({
+            type: "GET",
+            url: "{%url 'cis:footer' 'non_logged' %}",
+            success: function (response) {
+              $("div#footer").html(response.footer)
+            }
+          });
+          
+          $.ajax({
+            type: "GET",
+            url: "{%url 'cis:landing_page_content' %}",
+            data: {
+              'page': $('div#page_content').attr('data-source')
+            },
+            success: function (response) {
+              $("div#page_content").html(response.text)
+            }
+          });
+
+        });
+      </script>
+      <div id="footer">
+        
+      </div>
+
+      <div class="text-center pt-3 bg-light">
+        <small>Copyright Canusia Inc.</small>
+      </div>
+    </div>
+  </footer>
+</body>
+
+</html>

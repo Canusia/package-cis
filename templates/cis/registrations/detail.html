@@ -1,0 +1,97 @@
+{% extends "cis/logged-base.html" %}
+{%block title %}{{ page_title }}{% endblock %}
+
+{% load templatehelpers %}
+{% load crispy_forms_tags %}
+{% load static %}
+
+{% block body %}
+<script src="{% static 'js/change_history.js' %}"></script>
+<main>
+<script>
+    var registration_bulk_actions_url = "{% url 'cis:registration_bulk_actions' %}";
+    function onActionComplete(args) {
+        if (args && args.message) {
+            var span = document.createElement('span');
+            span.innerHTML = args.message;
+            swal({ title: args.title || 'Done', content: span, icon: args.status || 'success' })
+                .then(function () { location.reload(); });
+        } else {
+            location.reload();
+        }
+    }
+</script>
+{% if detail_actions %}
+<div class="row">
+    <div class="col-12 text-right">
+        <div class="btn-group btn-group-sm mt-2 mb-2">
+            <button type="button" class="btn btn-primary dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Actions</button>
+            <div class="dropdown-menu">
+                {% for group_key, group in detail_actions.items %}
+                    {% if not forloop.first %}<div class="dropdown-divider"></div>{% endif %}
+                    {% for slug, action in group.actions.items %}
+                        <a class="dropdown-item" onclick="ActionRegistry.doAction(registration_bulk_actions_url, '{{ slug }}', '{{ record.id }}')" href="#"><i class="{{ action.icon }} text-dark"></i>&nbsp;{{ action.label }}</a>
+                    {% endfor %}
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+    <div class="row">
+        <div class="col-12">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="/">Home</a></li>
+                    <li class="breadcrumb-item"><a href='#' onClick="javscript:window.history.back()">Back</a></li>
+                    <li class="breadcrumb-item active" aria-current="page">Registration Details</li>
+                </ol>
+            </nav>
+        </div>
+        <div class="col-md-5 col-sm-12 mb-4">
+            <ul class="nav nav-tabs">
+                {% for slug, tab in left_tabs.items %}
+                <li class="nav-item">
+                    <a class="nav-link {% if tab.active %}active{% endif %}" data-toggle="tab" href="#{{ tab.slug }}">
+                        {% if tab.icon %}<i class="{{ tab.icon }}"></i> {% endif %}{{ tab.title }}
+                        {% if tab.badge %}<span class="badge badge-pill badge-secondary">{{ tab.badge }}</span>{% endif %}
+                    </a>
+                </li>
+                {% endfor %}
+            </ul>
+            <div class="tab-content">
+                {% for slug, tab in left_tabs.items %}
+                {% if tab.lazy %}
+                <div class="tab-pane {% if tab.active %}active{% endif %}" id="{{ tab.slug }}" data-tab-url="{{ tab.url }}"></div>
+                {% else %}
+                <div class="tab-pane {% if tab.active %}active{% endif %}" id="{{ tab.slug }}">{{ tab.html|safe }}</div>
+                {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="col-md-7 col-sm-12">
+            <ul class="nav nav-tabs">
+                {% for slug, tab in right_tabs.items %}
+                <li class="nav-item{% if tab.slug == 'campus_id' %} d-none{% endif %}">
+                    <a class="nav-link {% if tab.active %}active{% endif %}" data-toggle="tab" href="#{{ tab.slug }}">
+                        {% if tab.icon %}<i class="{{ tab.icon }}"></i> {% endif %}{{ tab.title }}
+                        {% if tab.badge %}<span class="badge badge-pill badge-secondary">{{ tab.badge }}</span>{% endif %}
+                    </a>
+                </li>
+                {% endfor %}
+            </ul>
+            <div class="tab-content">
+                {% for slug, tab in right_tabs.items %}
+                {% if tab.lazy %}
+                <div class="tab-pane {% if tab.active %}active{% endif %}" id="{{ tab.slug }}" data-tab-url="{{ tab.url }}"></div>
+                {% else %}
+                <div class="tab-pane {% if tab.active %}active{% endif %}" id="{{ tab.slug }}">{{ tab.html|safe }}</div>
+                {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+
+    </div>
+</main>
+{% endblock %}

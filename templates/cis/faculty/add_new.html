@@ -1,0 +1,109 @@
+{% extends base_template %}
+
+{%block title %}{{ page_title }}{% endblock %}
+
+{% load templatehelpers %}
+{% load crispy_forms_tags %}
+
+{% block body %}
+<script>
+   
+</script>
+{% if ajax != '1' %}
+<div class="">
+    <div class="row">
+        <div class="col">
+            <h1 class="h3 mt-3 text-gray-800 mb-3">Add New</h1>
+        </div>
+    </div>
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="#">Home</a></li>
+            <li class="breadcrumb-item"><a href="{% url urls.all_items %}?{% query_transform %}">{{ labels.all_items }}</a>
+            </li>
+            <li class="breadcrumb-item active" aria-current="page">Add New</li>
+        </ol>
+    </nav>
+</div>
+{% else %}
+<script>
+</script>
+{% endif %}
+
+{% if ajax != '1' %}
+<main>
+    <div class="row">
+        <div class="col-12 mb-4">
+            <div class="card mb-4">
+              <div class="card-header">Bulk Import Faculty (CSV)</div>
+              <div class="card-body">
+                <p>
+                  <a class="btn btn-sm btn-outline-secondary" href="{% url 'cis:faculty_coordinator_download_template' %}">
+                    <i class="fa fa-download"></i> Download CSV Template
+                  </a>
+                </p>
+                <form action="{% url 'cis:faculty_coordinator_add_new' %}" method="post" enctype="multipart/form-data">
+                  {% csrf_token %}
+                  {{ upload_form | crispy }}
+                  <button type="submit" class="btn btn-primary btn-sm" name="upload_file" value="Import Faculty">
+                    Import Faculty
+                  </button>
+                </form>
+                <hr>
+                <details>
+                  <summary>CSV Field Reference</summary>
+                  <table class="table table-sm mt-2">
+                    <thead><tr><th>Column</th><th>Description</th><th>Required</th></tr></thead>
+                    <tbody>
+                    {% for f in schema_fields %}
+                      <tr>
+                        <td><code>{{ f.name }}</code></td>
+                        <td>{{ f.description }}</td>
+                        <td>{% if f.required %}<span class="badge badge-danger">Required</span>{% else %}Optional{% endif %}</td>
+                      </tr>
+                    {% endfor %}
+                    </tbody>
+                  </table>
+                  <p class="small text-muted">Course assignment columns repeat as <code>course_1, role_1, course_2, role_2, …</code>.
+                  <code>role</code> = <code>faculty</code> or <code>visitor</code>. Courses are matched by name (Active only).</p>
+                </details>
+              </div>
+            </div>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-md-6 col-sm-12 mb-4">
+{% endif %}
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Details</h5>
+                    <div class="card-text">
+                        <div class="form_status">
+                            {% if messages %}
+                            <ul class="messages list-group">
+                                {% for message in messages %}
+                                <li{% if message.tags %} class="list-group-item {{ message.tags }}" {% endif %}>{{ message }}</li>
+                                    {% endfor %}
+                            </ul>
+                            {% endif %}
+                        </div>
+                        <form action="" id="form_teacher_add_new" method="post">
+                            {% csrf_token %}
+                            {{ form | crispy }}
+
+                            {% if ajax == '1' %}
+                                <input type="hidden" name="ajax" value="1">
+                                <input type="hidden" name="model" value="teacher">
+                            {% endif %}
+                            <input type="submit" class="btn btn-primary btn-sm" value="Add Record">
+                        </form>
+                    </div>
+                </div> 
+            </div> <!-- end card -->
+{% if ajax != '1' %}
+        </div> <!-- end col-md-6 -->
+    </div> <!-- end row -->
+</main>
+{% endif %}
+
+{% endblock %}

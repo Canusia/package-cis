@@ -1,0 +1,93 @@
+{% extends "cis/logged-base.html" %}
+{%block title %}{{page_title}}{% endblock %}
+
+{% load templatehelpers %}
+
+{% block body %}
+
+<main>
+    <div class="">
+        <div class="row">
+            <div class="col-sm-6 col-xs-12">
+                <h1 class="h3 mb-4 text-gray-800">{{page_title}}&nbsp;
+                </h1>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <div class="">
+                {% include "cis/messages.html" with messages=messages %}
+                <ul class="nav nav-tabs">
+                    <li class="nav-item">
+                        <a class="nav-link active" data-toggle="tab" href="#all">All {{page_title}}</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-toggle="tab" href="#missing">Missing {{page_title}}</a>
+                    </li>
+                </ul>
+
+                <div class="tab-content">
+                    <div class="tab-pane active " id="all">
+                        <div class="card border-top-0">
+                            <div class="card-body">
+                              
+                                <div class="card mb-3">
+                                    <div class="card-body bg-gray-200">
+                                        
+                        <form id="recommendations_filter" class="form-inline filter mb-3">
+                            {% include 'snippets/campus.html' with campus=accessible_campuses default_campus=default_campus %}
+                        </form>
+
+                                    </div>
+                                </div>
+                        {% include recommendations_table.partial_template with config=recommendations_table %}
+
+                            </div>
+                        </div>
+                    </div>
+                    <!-- end tab # records_active -->
+
+
+                    <div class="tab-pane" id="missing">
+                        <div class="bg-white border border-top-0">
+                            <div class="col-12 pt-3 mb-3">
+                                <div class="row">
+                                    <div class="col-md-12 mb-3">
+                                        <div class="card">
+                                            <div class="card-body bg-gray-200">
+                                                <form id="missing_filter" class="form-inline filter">
+                                                    <div class="form-row">
+                                                        <div class="col">
+                                                            <div class="float-right">
+                                                                <select class="form-control mt-2" name="registration_term_id">
+                                                                    <option value="">By Grading Term</option>
+                                                                    {% for c in terms %}
+                                                                    <option value="{{c.id}}"
+                                                                        {% if c.id == active_term.id %} selected
+                                                                        {% endif %}>{{c}}</option>
+                                                                    {% endfor %}
+                                                                </select>
+                                                                &nbsp;
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% include missing_recommendation_table.partial_template with config=missing_recommendation_table %}
+                            </div>
+                        </div>
+                    </div>
+                    <!-- end tab # records_active -->
+
+                </div>
+                <!-- end tab-content -->
+
+            </div>
+        </div>
+
+</main>
+
+{% endblock %}

@@ -1,0 +1,299 @@
+{% load templatehelpers %}
+{% load crispy_forms_tags %}
+
+{% block body %}
+<style>
+    div.profile span.profile_label,
+    div.profile .detail_label {
+        text-transform: uppercase;
+        font-size: 0.7em;
+    }
+    @media print {
+    .col-md-1, .col-md-2, .col-md-3, .col-md-4, .col-md-5, .col-md-6, .col-md-7, .col-md-8, .col-md-9, .col-md-10, .col-md-11, .col-md-12 {
+          float: left;
+    }
+    .col-md-12 {
+          width: 100%;
+    }
+    .col-md-11 {
+          width: 91.66666667%;
+    }
+    .col-md-10 {
+          width: 83.33333333%;
+    }
+    .col-md-9 {
+          width: 75%;
+    }
+    .col-md-8 {
+          width: 66.66666667%;
+    }
+    .col-md-7 {
+          width: 58.33333333%;
+    }
+    .col-md-6 {
+          width: 50%;
+    }
+    .col-md-5 {
+          width: 41.66666667%;
+    }
+    .col-md-4 {
+          width: 33.33333333%;
+    }
+    .col-md-3 {
+          width: 25%;
+    }
+    .col-md-2 {
+          width: 16.66666667%;
+    }
+    .col-md-1 {
+          width: 8.33333333%;
+    }
+  }
+</style>
+<main>
+    <div class="row">
+        <div class="col-md-12 col-sm-12">
+            <h4 class="float-right">{{record}}</h4>
+            <div class="clearfix"></div>
+            
+            <!-- Tab panes -->
+            <div class="tab-content border-0">
+
+
+                <div class="tab-pane active" id="details">
+                    <div class="card border-top-0 border-0">
+                        <div class="card-body profile">
+                            <h3>Student Detail</h3>
+                            {{record.asTable|safe}}
+                        </div>
+                    </div>
+                </div> <!-- end tab # details -->
+
+                <div class="tab-pane active" id="ferpa">
+                    <div class="card border-top-0">
+                        <div class="card-body">
+                            <div class="row ">
+                                <div class="col-12">
+                                    <h3>Student Information Release</h3>
+                                    {% if ferpa %}
+                                    {{ferpa.asHTML|safe}}
+                                    {% else %}
+                                    <p class="alert alert-danger">Information Release form has not been completed</p>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div> <!-- end tab # ferpa -->
+
+                <div class="tab-pane active" id="state_q">
+                    <div class="card border-top-0">
+                        <div class="card-body">
+                            <div class="row ">
+                                <div class="col-12">
+
+                                    <h3>Student State Questions</h3>
+                                    <form action="" method="post" class="frm_ajax">
+                                        
+                                        {{ state_q_form | crispy }}
+
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div> <!-- end tab # ferpa -->
+
+                <div class="tab-pane active" id="classes">
+                    <div class="card border-top-0 border-0">                        
+                        <div class="card-body">
+                            <h3>Classes</h3>
+                            <div class="row ">
+                                <div class="col-12">
+                                    <div class="row">
+                                        <div class="col-md-12 mb-3">
+                    
+                                        </div>
+                                    </div>
+
+                                    <table  style="width: 100%;" id="tbl_student_registrations" class="table table-striped dt-responsive ">
+                                        <thead>
+                                            <tr>
+                                                <th data-data="class_section.term.code"
+                                                    data-name="class_section.term.code">Term
+                                                </th>
+                                                <th data-data="created_on" data-name="created_on">
+                                                    Applied On
+                                                </th>
+                                                <th data-data="reviewed_on" data-name="reviewed_on">Reviewed On</th>
+                                                <th data-data="status" data-name="status">Status</th>
+                                                <th data-data="class_section.course.title"
+                                                    data-name="class_section.course.title">Course
+                                                </th>
+                                                <th data-data="highschool.name" data-name="highschool.name">High School</th>
+                                                <th data-data="ce_url" data-name='ce_url'><span
+                                                        class="sr-only">Actions</span></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% if not registrations %}
+                                            <tr>
+                                                <td colspan="7">No records found</td>
+                                            </tr>
+                                            {% endif %}
+                                            
+                                            {% for r in registrations %}
+                                            <tr>
+                                                <td>{{r.class_section.term}}</td>
+                                                <td>{{r.created_on}}</td>
+                                                <td>{{r.reviewed_on}}</td>
+                                                <td>{{r.status}}</td>
+                                                <td>
+                                                    {{r.class_section.course.cohort.designator}} {{r.class_section.course.catalog_number}}<br>
+                                                    {{r.class_section.class_number}} / {{r.class_section.section_number}}<br>{{r.class_section.course.title}}</td>
+                                                <td>{{r.highschool.name}}</td>
+                                                <td></td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div> <!-- end tab # classes -->
+
+                <div class="tab-pane active" id="recommendations">
+                    <div class="card border-top-0 border-0">
+                        <div class="card-body">
+                            <h3>Recommendations</h3>
+                            <div class="row ">
+                                <div class="col-12">
+
+                                    <table style="width: 100%;" id="tbl_student_recommendations"
+                                        class="table table-striped dt-responsive ">
+                                        
+                                        <tbody>
+                                            {% if not recommendations %}
+                                            <tr>
+                                                <td colspan="1">No records found</td>
+                                            </tr>
+                                            {% endif %}
+                                            
+                                            {% for r in recommendations %}
+                                            <tr>
+                                                <td>
+                                                    {{r.asTable|safe}}
+                                                </td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+
+
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div> <!-- end tab # recommendations -->
+
+                <div class="tab-pane active" id="agreements">
+                    <div class="card border-top-0 border-0">
+                        <div class="card-body">
+                            <h3>Student Agreements</h3>
+                            <div class="row ">
+                                <div class="col-12">
+
+                                    <table style="width: 100%;" id="tbl_student_agreements"
+                                        class="table table-striped dt-responsive " style="width: 100%;">
+                                        <tbody>
+                                            {% if not agreements %}
+                                            <tr>
+                                                <td colspan="1">No records found</td>
+                                            </tr>
+                                            {% endif %}
+                                            
+                                            {% for r in agreements %}
+                                                {{r.asTable|safe}}
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div> <!-- end tab # agreements -->
+
+                <div class="tab-pane active" id="files">
+                    <div class="card border-top-0 border-0">
+                        <div class="card-text mt-2">
+                            <div class="col-12">
+                                <h3>Supporting Documents</h3>
+                            {{record.supporting_docs_asHTML}}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tab-pane active" id="notes">
+                    
+                    <div class="row">
+                        <div class="col-12 bg-gray-100">
+                            <div class="card mb-4 border-top-0 border-0">
+                                <div class="card-body ">
+                                    <h3>Notes</h3>
+                                    <div class="table-responsive">
+                                        <table style="width: 100%;" id="student_notes" class="table table-striped responsive"
+                                            style="width:100%" data-server-side="true" data-ajax="{{note_api_url}}">
+                                            <thead>
+                                                <tr>
+                                                    <th data-data="createdon" data-name="createdon">Added On
+                                                    </th>
+                                                    <th data-data="note" data-name="note">Note
+                                                    </th>
+                                                    <th data-data="meta" data-name="meta">Type
+                                                    </th>
+                                                    <th data-data="createdby.last_name" data-name="createdby.last_name">
+                                                        Added By
+                                                    </th>
+                                                    <th data-data="id" data-name="id"></th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% if not notes %}
+                                                <tr>
+                                                    <td colspan="5">
+                                                        No notes found
+                                                    </td>
+                                                </tr>
+                                                {% endif %}
+                                                {% for r in notes %}
+                                                <tr>
+                                                    <td>{{r.createdon}}</td>
+                                                    <td>{{r.note}}</td>
+                                                    <td>{{r.meta}}</td>
+                                                    <td>{{r.createdby}}</td>
+                                                    <td></td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div> <!-- end table-responsive -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div> <!-- end #notes -->
+
+
+            </div>
+        </div> <!-- end col-md-8 -->
+
+    </div> <!-- end row -->
+
+
+</main>
+{% endblock %}

@@ -1,0 +1,93 @@
+{% extends "cis/base.html" %}
+{%block title %}{{ page_title }}{% endblock %}
+
+{% load templatehelpers %}
+{% load crispy_forms_tags %}
+
+{% block body %}
+<script>
+    jQuery(function ($) {
+        $('.dataTable').DataTable();
+    });
+
+    jQuery(document).ready(function ($) {
+        $('#id_date_of_birth').mask('00/00/0000');
+        $('#id_ssn').mask('000-00-0000');
+        $('#id_primary_phone, #id_alt_phone, #id_secondary_phone').mask('0000000000');
+
+        /* $(".dateinput").datepicker() */
+    });
+</script>
+<main>
+    <div class="container ">
+        <div class="">
+            <div class="col-12 bg-white">
+                
+                <div class="row pt-3">
+                    {% if messages %}
+                    <div class="col-12 mb-3">
+                        <ul class="messages list-group">
+                            {% for message in messages %}
+                            <li{% if message.tags %} class="list-group-item {{ message.tags }}" {% endif %}>
+                                {{ message }}
+                                </li>
+                                {% endfor %}
+                        </ul>
+                    </div>
+                    {% endif %}
+
+                    <div class="col-md-4 col-sm-12 mb-4">
+                        <div class="card">
+                            <div class="card-body">
+
+                            <h4 class="card-title">
+                                Reply to Note
+                            </h4>
+                                <div class="card-text">
+                                    <form action="" method="post">
+                                        {% csrf_token %}
+                                        {{ form | crispy }}
+                                        <input type="submit" class="btn btn-primary btn-sm" value="Submit">
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+
+                    <div class="col-8 mb-4">
+                        <div class="card border-info">
+                            <div class="card-body">
+                                <div class="card-text">
+                                    {{note.note|safe}}
+                                </div>
+                            </div>
+                            <div class="card-footer bg-light text-dark float-right text-right">
+                                Added by {{note.createdby}} on {{note.createdon}}
+                            </div>
+                        </div>
+
+                        {% if replies %}
+                            <h5 class="mt-3">Replies</h5>
+                            {% for reply in replies %}
+                            <div class="card mb-3">
+                                <div class="card-body">
+                                    <div class="card-text">
+                                        {{reply.note|safe}}
+                                    </div>
+                                </div>
+                                <div class="card-footer bg-light {% if reply.meta.type == 'response' %} text-left {% else %} text-right {% endif %} text-dark">
+                                    Added by {{reply.createdby}} on {{reply.createdon}}
+                                </div>
+                            </div>
+                            {% endfor %}
+                        {% endif %}
+                    </div>
+
+                </div> <!-- end row -->
+            </div>
+        </div>
+    </div>
+
+</main>
+{% endblock %}

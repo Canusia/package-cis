@@ -1,0 +1,41 @@
+
+{% load templatehelpers %}
+
+<div class="row">
+   <div class="col-6">
+         <ul class="pagination justify-content">
+            <li class="page-item active">
+               <span class="page-link">Showing {{records.start_index}} - {{records.end_index}} of {{count}}</span>
+            </li>
+         </ul>            
+   </div>
+
+{% if records.has_other_pages %}
+<div class="col-6">
+   <ul class="pagination justify-content-end">
+         {% if records.has_previous %}
+         <li class="page-item"><a class="page-link"
+            href="?{% query_transform page=1 %}">First</a></li>
+         <li class="page-item"><a class="page-link"
+            href="?{% query_transform page=records.previous_page_number %}">&laquo;</a></li> 
+         {% else %}
+         <li class="page-item disabled"><span class="page-link">First</span></li>
+            <li class="page-item disabled"><span class="page-link">&laquo;</span></li>
+         {% endif %}
+
+         <li class="page-item active">
+            <span class="page-link">Page {{ records.number }} of {{ records.paginator.num_pages }}</span>
+         </li>
+
+         {% if records.has_next %}
+         <li class="page-item"><a class="page-link"
+               href="?{% query_transform page=records.next_page_number %}">&raquo;</a></li>
+         <li class="page-item"><a class="page-link"
+                     href="?{% query_transform page=records.paginator.num_pages %}">Last</a></li>
+            
+         {% endif %}
+   </ul>
+</div>
+{% endif %}
+
+</div>

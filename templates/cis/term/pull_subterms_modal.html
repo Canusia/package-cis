@@ -1,0 +1,38 @@
+{% extends 'cis/ajax-base.html' %}
+{% block title %}Pull &amp; Create Sub-Terms{% endblock %}
+{% block body %}
+<div class="card">
+    <div class="card-body">
+        <h3 class="card-title">{{ title }}</h3>
+        <div class="card-text">
+            <p>Select the sub-terms to create or update under
+               <strong>{{ term }}</strong>.</p>
+            <form action="{{ form_action }}" method="post" class="frm_ajax">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="pull_sub_terms">
+                <input type="hidden" name="action_confirmed" value="1">
+                <input type="hidden" name="ids[]" value="{{ term.id }}">
+                <div class="mb-2">
+                    <a href="#" onclick="$('.subterm-check').prop('checked', true); return false;">Select all</a>
+                    &nbsp;|&nbsp;
+                    <a href="#" onclick="$('.subterm-check').prop('checked', false); return false;">Select none</a>
+                </div>
+                <ul class="list-group mb-3">
+                    {% for c in candidates %}
+                    <li class="list-group-item">
+                        <label class="mb-0">
+                            <input type="checkbox" class="subterm-check"
+                                   name="subterm_ids[]" value="{{ c.guid }}" checked>
+                            {{ c.label }} &mdash; {{ c.code }}
+                            {% if c.exists %}<span class="badge badge-secondary">already linked</span>{% endif %}
+                        </label>
+                    </li>
+                    {% endfor %}
+                </ul>
+                <input type="submit" class="btn btn-primary btn-sm" value="Create Selected">
+                <button type="button" class="btn btn-sm" data-dismiss="modal">Cancel &amp; Close</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

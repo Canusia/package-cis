@@ -1,0 +1,56 @@
+{% extends "cis/base.html" %}
+
+{% load static %}
+
+{% load templatehelpers %}
+{% load crispy_forms_tags %}
+
+{% block title %}{{MYCE_SETTINGS.college_name}} {{ portal.site_name }}{% endblock %}
+{% block body %}
+<style>
+
+</style>
+
+<main role="main" id="content" class="">
+
+    <div id="page_content" data-source="homepage">
+        <div class="text-center mt-4 mb-4 p-3 bg-light">
+            <i class="fa fa-spinner fa-spin fa-3x fa-fw fa-4x"></i>
+            <span class="sr-only">Loading...</span>
+        </div>
+    </div>
+
+    <div class="">
+        <div class="container">
+
+            <div class="row bg-light">
+                {% if messages %}
+                <div class="col-md-12 mb-3 text-center">
+                    <ul class="messages list-group">
+                        {% for message in messages %}
+                        <li{% if message.tags %} class="list-group-item {{ message.tags }}" {% endif %}>
+                            {{ message }}
+                            </li>
+                            {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+<button class="btn btn-block btn-primary" id="pay">Pay $50</button>
+<script src="https://js.stripe.com/v3/"></script>
+<script>
+  const stripe = Stripe("{{ STRIPE_PUBLISHABLE_KEY }}");
+  document.getElementById("pay").onclick = async () => {
+    const resp = await fetch("{% url 'create_checkout_session' %}", {method:"POST", headers:{'X-CSRFToken': '{{ csrf_token }}'}});
+    const data = await resp.json();
+    await stripe.redirectToCheckout({ sessionId: data.id });
+  };
+</script>
+
+            </div> <!-- end row -->
+        </div> <!-- end container -->
+    </div> <!-- end py-5 -->
+
+</main>
+
+
+{% endblock %}

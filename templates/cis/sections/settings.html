@@ -1,0 +1,168 @@
+{% extends "cis/logged-base.html" %}
+{%block title %}{{ page_title }}{% endblock %}
+
+{% load templatehelpers %}
+{% load crispy_forms_tags %}
+
+{% block body %}
+<script>
+    jQuery(function ($) {
+        /* $('.ui.search').search({
+            apiSettings: {
+                url: "{% url 'cis:district_ajax_search' %}?q={query}"
+            },
+            fields: {
+                results: 'items',
+                title: 'name',
+                url: 'html_url'
+            },
+            minCharacters: 3
+        }); */
+
+        $('.dataTable').DataTable();
+    });
+</script>
+<div class="">
+    <div class="row">
+        <div class="col-md-6 col-sm-12">
+            <h1 class="h3 mt-3 text-gray-800 mb-3">Edit Settings</h1>
+        </div>
+
+    </div>
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="#">Home</a></li>
+            <li class="breadcrumb-item"><a
+                    href="{% url urls.all_items %}?{% query_transform %}">{{ labels.all_items }}</a>
+            </li>
+            <li class="breadcrumb-item active" aria-current="page">Settings</li>
+        </ol>
+    </nav>
+</div>
+<main>
+    <div class="">
+        <div class="row">
+            <div class="col-md-4 col-sm-12 mb-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Manage Settings</h5>
+                        <div class="card-text">
+                            {% if messages %}
+                            <ul class="messages list-group">
+                                {% for message in messages %}
+                                <li{% if message.tags %} class="list-group-item {{ message.tags }}" {% endif %}>
+                                    {{ message }}</li>
+                                    {% endfor %}
+                            </ul>
+                            {% endif %}
+                            <form action="" method="post">
+                                {% csrf_token %}
+                                {{ form | crispy }}
+                                <input type="submit" class="btn btn-primary btn-sm" value="Update">
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div> <!-- end col-md-4 -->
+            <div class="col-md-8 col-sm-12 mb-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Send Emails</h5>
+                        <div class="card-text">
+                            <p class="alert alert-secondary">Use the form to search for instructors by cohort. You can
+                                then email them the course schedule survey.<br><br>
+                                ONLY instructors who have not completed the survey, and have a course status that is
+                                selected in the 'Settings' will appear in the list.</p>
+                            <form action="" method="post">
+                                {% csrf_token %}
+                                {{ search_form | crispy }}
+
+                                <input type="submit" name="get_instructors" class="btn btn-primary btn-sm"
+                                    value="Get Instructors">
+                            </form>
+
+                            {% if instructors %}
+                            <script>
+                                jQuery(document).ready(function($) {
+                                    
+                                    $("#check_all_instructors").click(function(){
+                                        $('input:checkbox.instructor').not(this).prop('checked', this.checked);
+                                    });
+
+                                    $("#send_survey_btn").click(function() {
+
+                                        event.preventDefault();
+                                        let ajaxurl = "{% url 'cis:future_section_settings' %}"
+                                        //$("#frm_send_course_schedule_survey").blockUI();
+                                        let prev_mesg = $(this).html();
+                                        let obj = this;
+
+                                        $(this).html("Please wait...")
+
+                                        $.ajax({
+                                            type: "POST",
+                                            url: ajaxurl,
+                                            data: $( "#frm_send_course_schedule_survey" ).serialize(),
+                                            success: function(response) {
+                                                alert(response.message);
+                                                $(obj).html(prev_mesg)
+ 
+                                            }
+                                        });
+
+                                    });
+                                });
+                            </script>
+                            <div class="mt-4" id="instructor_list">
+                                <p class="alert alert-info">Below are the instructors in the cohort who have not
+                                    completed the course schedule survey for selected academic year.</p>
+                                <form action="" id="frm_send_course_schedule_survey">
+                                    {% csrf_token %}
+                                    <div style="max-height: 800px; overflow-y: scroll;">
+                                        <table class="table">
+                                            <thead>
+                                                <tr>
+                                                    <th><input type="checkbox" name="" id="check_all_instructors"></th>
+                                                    <th>Instructor</th>
+                                                    <th>High School</th>
+                                                    <th></th>
+                                                </tr>
+                                            </thead>
+                                            <tbody style="">
+                                                {% for r in instructors %}
+                                                <tr>
+                                                    <td>
+                                                        <input type="checkbox" name="send_to[]" class="instructor" id=""
+                                                            value="{{ r.teacher_highschool.teacher.id }}">
+                                                    </td>
+                                                    <td>
+                                                        {{r.teacher_highschool.teacher}}<br>
+                                                        <small><a target="_blank"
+                                                                href="{{request.scheme}}://{{request.get_host}}{% url 'instructor:course_schedule' r.teacher_highschool.teacher.id %}">{{request.scheme}}://{{request.get_host}}{% url 'instructor:course_schedule' r.teacher_highschool.teacher.id %}</a></small>
+                                                    </td>
+                                                    <td>{{r.teacher_highschool.highschool}}</td>
+                                                    <td>
+
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+
+                                    </div>
+                                    <div class="clearfix">&nbsp;</div>
+                                    <p class="alert alert-warning">Depending on the number of recipients this process can take some time to finish.</p>
+                                    <button id="send_survey_btn" class="btn btn-primary">Send To Selected</button>
+                                    <input type="hidden" name="action" value="send_course_schedule_survey">
+                                </form>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div> <!-- end col-md-8 -->
+        </div>
+    </div>
+
+</main>
+{% endblock %}

@@ -1,0 +1,67 @@
+{% extends "cis/logged-base.html" %}
+{%block title %}Term => {{ record.label }} {{record.year}}{% endblock %}
+
+{% load templatehelpers %}
+{% load crispy_forms_tags %}
+
+{% load static %}
+{% block body %}
+
+<script src="{% static 'js/common_methods.js' %}"></script>
+<script>
+    var term_bulk_actions_url = "{% url 'cis:term_bulk_actions' %}";
+</script>
+<div class="">
+    <div class="row">
+        <div class="col-md-6 col-sm-12">
+            <h1 class="h3 mt-3 text-gray-800 mb-3">{{ record.label }} {{ record.year }}</h1>
+        </div>
+        {% if detail_actions %}
+        <div class="col-md-6 col-sm-12 text-right">
+            <div class="btn-group btn-group-sm mt-3 mb-3">
+                <button type="button" class="btn btn-primary dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Actions</button>
+                <div class="dropdown-menu">
+                    {% for group_key, group in detail_actions.items %}
+                        {% if not forloop.first %}<div class="dropdown-divider"></div>{% endif %}
+                        {% for slug, action in group.actions.items %}
+                            <a class="dropdown-item" onclick="ActionRegistry.doAction(term_bulk_actions_url, '{{ slug }}', '{{ record.id }}')" href="#"><i class="{{ action.icon }} text-dark"></i>&nbsp;{{ action.label }}</a>
+                        {% endfor %}
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+<main>
+    <div class="">
+        <div class="row">
+            
+            <div class="col-md-12 col-sm-12">
+                <ul class="nav nav-tabs">
+                    {% for slug, tab in detail_tabs.items %}
+                    <li class="nav-item">
+                        <a class="nav-link {% if tab.active %}active{% endif %}" data-toggle="tab" href="#{{ tab.slug }}">
+                            {% if tab.icon %}<i class="{{ tab.icon }}"></i> {% endif %}{{ tab.title }}
+                            {% if tab.badge %}<span class="badge badge-pill badge-secondary">{{ tab.badge }}</span>{% endif %}
+                        </a>
+                    </li>
+                    {% endfor %}
+                </ul>
+
+                <div class="tab-content">
+                    {% for slug, tab in detail_tabs.items %}
+                    {% if tab.lazy %}
+                    <div class="tab-pane {% if tab.active %}active{% endif %}" id="{{ tab.slug }}" data-tab-url="{{ tab.url }}"></div>
+                    {% else %}
+                    <div class="tab-pane {% if tab.active %}active{% endif %}" id="{{ tab.slug }}">{{ tab.html|safe }}</div>
+                    {% endif %}
+                    {% endfor %}
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+</main>
+{% endblock %}

@@ -1,0 +1,177 @@
+{% extends "cis/logged-base.html" %}
+{%block title %}High School => {{ record.name }}{% endblock %}
+
+{% load templatehelpers %}
+{% load crispy_forms_tags %}
+
+{% load static %}
+{% block body %}
+
+<script src="{% static 'js/common_methods.js' %}"></script>
+
+<script>
+    jQuery(function ($) {
+        $('.dataTable').DataTable();
+    });
+</script>
+<div class="">
+    <div class="row">
+        <div class="col-md-6 col-sm-12">
+            <h1 class="h3 mt-3 text-gray-800 mb-3">{{ record.name }}</h1>
+        </div>
+    </div>
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="#">Home</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'cis:districts' %}?{% query_transform %}">All Districts</a>
+            </li>
+            <li class="breadcrumb-item active" aria-current="page">{{ record.name }}</li>
+        </ol>
+    </nav>
+</div>
+<main>
+    <div class="">
+        <div class="row">
+
+            <div class="col-md-12">
+                {% include "cis/messages.html" with messages=messages %}
+            </div>
+            
+            <div class="col-md-4 col-sm-12 mb-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">District Details</h5>
+                        <div class="card-text">
+                            
+                            <form action="" method="post">
+                                {% csrf_token %}
+                                {{ form | crispy }}
+                                <input type="submit" class="btn btn-primary btn-sm" value="Update">
+                                <a data-url="{% url 'cis:delete_district' record.id%}" class="btn btn-sm btn-danger delete-record"><i class="fa fa-trash-alt text-light"></i></a>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-8 col-sm-12">
+                <ul class="nav nav-tabs">
+                    <li class="nav-item">
+                        <a class="nav-link active" data-toggle="tab" href="#highschools">High Schools</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-toggle="tab" href="#administrators">Administrators</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-toggle="tab" href="#migrate">Migrate Record</a>
+                    </li>
+                </ul>
+
+                <div class="tab-content">
+                    <div class="tab-pane" id="migrate">
+                        <div class="card border-top-0">
+                            <div class="card-text mt-2">
+                                <div class="col-12">
+                                <p class="alert alert-info">Use the form to move current records over to a different district. This is helpful when trying to merge duplicate records.</p>
+                                
+                                <div class="row">
+                                    <div class="col-4">
+                                        
+                                        {{migration_form.media}}
+
+                                        <form action="" enctype="multipart/form-data" method="post">
+                                        {% csrf_token %}
+                                        {{migration_form|crispy}}
+                                        <input type="submit" class="btn btn-primary btn-sm" value="Submit">
+                                        </form>
+                                    </div>
+                                    <div class="col-8">
+                                        <div class="card">
+                                            <div class="card-body">
+                                            <div class="p2">
+                                                <div id="migrate_student_info" class="">
+                                                    
+                                                </div>
+                                            </div>
+                                        </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            </div>
+                        </div>
+                    </div>
+
+                <div class="tab-pane active" id="highschools">
+                    <div class="card mb-4 border-top-0">
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table dataTable">
+                                    <thead>
+                                        <tr>
+                                            <th>High School</th>
+                                            <th>City</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for hs in highschools %}
+                                        <tr>
+                                            <td>
+                                                <a href="{% url 'cis:hs_detail' hs.id %}">{{hs.name}}</a>
+                                            </td>
+                                            <td>{{hs.city}}</td>
+                                            <td>{{hs.status}}</td>
+                                        </tr>
+                                        </a>
+                                        
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tab-pane" id="administrators">
+                    <div class="card mb-4">
+                        <div class="card-body">
+                                <div class="table-responsive">
+                                        <table class="table dataTable">
+                                            <thead>
+                                                <tr>
+                                                    <th>Name</th>
+                                                    <th>Position</th>
+                                                    <th>Phone</th>
+                                                    <th>Status</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for r in administrators %}
+                                                <tr>
+                                                    <td>
+                                                        <a href="{% url 'cis:district_admin_detail' r.district_admin.id %}">{{r.district_admin.user.first_name}} {{r.district_admin.user.last_name}}</a>
+                                                        <br>
+                                                        {{r.district_admin.user.email}}
+                                                    </td>
+                                                    <td>{{r.position.name}}</td>
+                                                    <td>{{r.district_admin.user.primary_phone}}</td>
+                                                    <td>{{r.status}}</td>
+                                                </tr>
+                                                </a>
+                                                
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                        </div>
+                    </div>
+                </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+</main>
+{% endblock %}

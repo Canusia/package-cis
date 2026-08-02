@@ -1,0 +1,72 @@
+{%  %}
+{% load crispy_forms_tags %}
+
+{% if messages %}
+{% for message in messages %}
+<p class="alert alert-success">{{ message }}</p>
+{% endfor %}
+{% endif %}
+
+<div class="row">
+    <div class="col-12">
+        {{teaching_message|safe}}
+
+        <h3 class="ml-4 mr-4">{{teacher_course.teacher_highschool.teacher}} - {{teacher_course.course}}</h3>
+        <form method="post" action="{% url 'cis:future_sections_actions' %}" class="frm_ajax">
+            {% csrf_token %}
+
+            {{teacher_course_teaching_form.teacher_course_certificate_id|as_crispy_field}}
+            {{teacher_course_teaching_form.academic_year_id|as_crispy_field}}
+
+            {{teaching_formset.management_form}}
+
+            {% if teaching_formset.non_form_errors %}
+            <p class="alert alert-danger mt-2">
+                {% for error in teaching_formset.non_form_errors %}
+                {{ error|escape }}
+                {% endfor %}
+            </p>
+            {% endif %}
+
+            <div class="ml-4 mr-4">
+                <div class="card bg-light">
+                    <div class="card-body">
+                        {% for teaching_form in teaching_formset %}
+                        <div class="course-formset mb-2 p-3 border-bottom">
+                            <div class="col-8">
+                                <div class="row">
+                                    <div class="col-6">
+                                        {{teaching_form.term|as_crispy_field}}
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>s
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            <div class="clearfix">&nbsp;</div>
+            <div class="ml-4 mr-4">
+                <div class="col-12">
+                    <input type="hidden" name="action" value="teaching-section">
+                    <input type="submit" value="Save Course Section Info" class="btn btn-primary">
+                    <input type="button" class="btn btn-sm" onclick="window.closeTeachingModal()"
+                        value="Cancel & Close">
+                    <a title="Delete course info" class="float-right course-action"
+                        data-course-certificate="{{teacher_course.certificate_id}}" data-confirm="1"
+                        data-academic_year="{{academic_year.id}}" data-action="remove-not-teaching-section" href="#"><i
+                            class="fas fa fa-trash"></i></a>
+                </div>
+            </div>
+        </form>
+
+    </div>
+</div>
+<script>
+    $('.course-formset').formset({
+        addText: '<div class="col-12 mt-3">Add Section <i class="fa faw fas fa-plus"></i></div>',
+        deleteText: '<div class="col-2">Remove <i class="fa faw fas fa-trash"></i></div>'
+    });
+
+</script>

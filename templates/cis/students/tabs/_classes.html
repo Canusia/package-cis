@@ -1,0 +1,100 @@
+<div class="card border-top-0">
+    <div class="card-body">
+        <div class="row">
+            <div class="col-12">
+                {% include registrations_table.partial_template with config=registrations_table %}
+                <div class="row">
+                    <script>
+                        jQuery(document).ready(function ($) {
+                            $(document).on("click", "#btn_delete", function (event) {
+                                let ajaxurl = "{{ add_new_ajax_url }}"
+                                let form = "form#form_edit_registration";
+                                $(form).block({ message: 'Please wait...' });
+                                $.ajax({
+                                    type: "POST",
+                                    url: ajaxurl,
+                                    data: $(form).serialize() + "&action=delete_registration&model=studentregistration",
+                                    success: function(response) {
+                                        $(form).unblock();
+                                        if (response.status == 'error') { alert(response.message) }
+                                        else { alert(response.message); window.location.reload(); }
+                                    }
+                                });
+                                event.preventDefault();
+                            });
+
+                            $(document).on("submit", "form#frm_add_registration", function (event) {
+                                let ajaxurl = "{{ add_new_ajax_url }}"
+                                let form = this;
+                                $("form#frm_add_registration").block({ message: 'Please wait...' });
+                                $.ajax({
+                                    type: "POST",
+                                    url: ajaxurl,
+                                    data: $("form#frm_add_registration").serialize() + "&action=add_new_registration&model=studentregistration",
+                                    success: function(response) {
+                                        if (response.status == 'error') {
+                                            alert(response.message);
+                                            $(form).replaceWith(response.form_html);
+                                        } else {
+                                            alert(response.message);
+                                            window.location.reload();
+                                        }
+                                    }
+                                });
+                                event.preventDefault();
+                            });
+
+                            $(document).on("change1", "select#id_term, select#id_highschool", function (event) {
+                                let ajaxurl = "{{ add_new_ajax_url }}"
+                                let form = this;
+                                $("form#frm_add_registration").block({ message: 'Please wait...' });
+                                $.ajax({
+                                    type: "POST",
+                                    url: ajaxurl,
+                                    data: $("form#frm_add_registration").serialize() + "&action=refresh_registration_form&model=studentregistration",
+                                    success: function(response) {
+                                        $("form#frm_add_registration").unblock();
+                                        $("form#frm_add_registration").replaceWith(response.form_html);
+                                    }
+                                });
+                                event.preventDefault();
+                            });
+                        });
+                    </script>
+
+                    <div class="col mt-3">
+                        <div id="addNewClassSection">
+                            <div class="card card-body bg-gray-100">
+                                <h5 class="card-title">Add New Class Section</h5>
+                                {% include 'cis/sections/class_section_search.html' %}
+                                <script>
+                                    $(document).ready(function () {
+                                        $('#btn_apply_for_selected').on('click', function () {
+                                            var form = $(this).closest('form');
+                                            $.blockUI();
+                                            $.post({
+                                                url: '{{ register_for_class_url }}',
+                                                data: $(form).serialize(),
+                                                dataType: 'json',
+                                                success: function(response) {
+                                                    $.unblockUI();
+                                                    swal('', response.message, response.status === 'success' ? 'success' : 'warning');
+                                                    if (typeof window.refreshTable === 'function') { window.refreshTable(); }
+                                                },
+                                                error: function() {
+                                                    $.unblockUI();
+                                                    swal('', 'Something went wrong. Please try again.', 'warning');
+                                                }
+                                            });
+                                            return false;
+                                        });
+                                    });
+                                </script>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

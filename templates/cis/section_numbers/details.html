@@ -1,0 +1,290 @@
+{% extends "cis/logged-base.html" %}
+{%block title %}Section Number => {{ record.name }}{% endblock %}
+
+{% load templatehelpers %}
+{% load crispy_forms_tags %}
+
+{% block body %}
+<script>
+    jQuery(function ($) {
+        $('.dataTable').DataTable();
+    });
+</script>
+<div class="">
+
+    <div class="row">
+        <div class="col-md-6 col-sm-12">
+            <h1 class="h3 mt-3 text-gray-800 mb-3">{{ record.name }}</h1>
+        </div>
+        <!-- <div class="col-md-6 col-sm-12">
+            <div class="justify-content-end">
+                <form class="form-inline p-2 justify-content-end">
+                    <div class="ui search category focus">
+                        <div class="ui left icon input">
+                            <input class="prompt" type="text" placeholder="Search by name" autocomplete="off">
+                        </div>
+                        <div class="results"></div>
+                    </div>
+                </form>
+            </div>
+        </div> -->
+    </div>
+
+
+
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="#">Home</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'cis:section_numbers' %}?{% query_transform %}">All Section
+                    No.</a>
+            </li>
+            <li class="breadcrumb-item active" aria-current="page">{{ record.name }}</li>
+        </ol>
+    </nav>
+
+
+
+</div>
+<main>
+    <div class="">
+        <div class="row">
+            <div class="col-md-4 col-sm-12 mb-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Record Details</h5>
+                        <div class="card-text">
+                            {% if messages %}
+                            <ul class="messages list-group">
+                                {% for message in messages %}
+                                <li{% if message.tags %} class="list-group-item {{ message.tags }}" {% endif %}>
+                                    {{ message }}</li>
+                                    {% endfor %}
+                            </ul>
+                            {% endif %}
+                            <form action="" method="post">
+                                {% csrf_token %}
+                                {{ form | crispy }}
+                                <input type="submit" class="btn btn-primary btn-sm" value="Update">&nbsp;
+                                <input type="button" value="Delete" class="btn btn-danger btn-sm delete">
+                                <script>
+                                    jQuery(document).ready(function ($) {
+                                        $("input.delete").on("click", function () {
+                                            if (!confirm("Are you sure you want to permanently delete this record?"))
+                                                return;
+                                            window.location = "{% url 'cis:delete_section_number' record.id%}";
+                                        });
+                                    });
+                                </script>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-8 col-sm-12 d-none">
+                <ul class="nav nav-tabs">
+                    <li class="nav-item">
+                        <a class="nav-link active" data-toggle="tab" href="#instructors">Instructors</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-toggle="tab" href="#class_sections">Course History</a>
+                    </li>
+                    <li class="nav-item d-none">
+                        <a class="nav-link" data-toggle="tab" href="#future_courses">Future Courses</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-toggle="tab" href="#administrators">Administrators</a>
+                    </li>
+                    <li class="nav-item d-none">
+                        <a class="nav-link" data-toggle="tab" href="#applicants">Applicants</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-toggle="tab" href="#notes">Notes</a>
+                    </li>
+                </ul>
+                <div class="tab-content">
+                    <div class="tab-pane" id="class_sections">
+                        <div class="row">
+                            <div class="col-12 bg-gray-100">
+                                <div class="card mb-4 border-top-0">
+                                    <div class="card-body ">
+
+                                        <div class="table-responsive">
+                                            <table class="table ">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Term</th>
+                                                        <th>Course</th>
+                                                        <th>Class #</th>
+                                                        <th>Instructor</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {% for r in sections %}
+                                                    <tr>
+                                                        <td>{{r.term}}</td>
+                                                        <td>
+                                                            {{r.course}}
+                                                        </td>
+                                                        <td>{{r.class_number}} / {{r.section_number}}</td>
+                                                        <td>{{r.teacher}}</td>
+                                                    </tr>
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div> <!-- end #class_sections -->
+
+                    <div class="tab-pane" id="notes">
+                        <div class="row">
+                            <div class="col-12 bg-gray-100">
+                                <div class="card mb-4 border-top-0">
+                                    <div class="card-body ">
+
+                                        <div class="text-right">
+                                            <a href="#notes" class="btn btn-sm btn-primary ajax-add_new"
+                                                data-parent="{{record.id}}" data-id="-1" data-modal="modal-add_new"
+                                                data-model="highschoolnote" data-updater=""><i
+                                                    class="fa fas-light fa-plus-circle"></i>&nbsp;Add New Note</a>
+                                        </div>
+                                        <div class="clearfix">&nbsp;</div>
+                                        <div class="table-responsive">
+                                            <table class="table ">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Added On</th>
+                                                        <th>Note</th>
+                                                        <th>Added By</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {% for r in notes %}
+                                                    <tr>
+                                                        <td>{{r.createdon|date:'m/d/Y H:i a'}}</td>
+                                                        <td>
+                                                            {{r.note}}
+                                                        </td>
+                                                        <td>{{r.createdby.first_name}} {{r.createdby.last_name}}
+                                                        </td>
+                                                    </tr>
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div> <!-- end #notes -->
+
+                    <div class="tab-pane  active" id="instructors">
+                        <div class="card mb-4  border-top-0">
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table class="table dataTable">
+                                        <thead>
+                                            <tr>
+                                                <th>Name</th>
+                                                <th>Email</th>
+                                                <th>Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for r in instructors %}
+                                            <tr>
+                                                <td>
+                                                    <a href="{% url 'cis:instructor' r.teacher.id %}">{{r.teacher.user.first_name}}
+                                                        {{r.teacher.user.last_name}}</a>
+                                                </td>
+                                                <td>{{r.teacher.user.email}}</td>
+                                                <td>{{r.status}}</td>
+                                            </tr>
+                                            </a>
+
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div> <!-- end table-responsive -->
+                            </div>
+                        </div> <!-- end card -->
+                    </div>
+
+                    <div class="tab-pane" id="future_courses">
+                        <div class="card mb-4  border-top-0">
+
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table class="table dataTable">
+                                        <thead>
+                                            <tr>
+                                                <th>Academic Year</th>
+                                                <th>Instructor</th>
+                                                <th>Course</th>
+                                                <th>Teaching</th>
+                                                <th>Added On</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for r in future_courses %}
+                                            <tr>
+                                                <td>{{r.future_course.academic_year}}</td>
+                                                <td>
+                                                    {{r.teacher_course.teacher_highschool.teacher}}
+                                                </td>
+                                                <td>{{r.teacher_course.course}}</td>
+                                                <td>{{r.section_info.teaching}}</td>
+                                                <td>{{r.added_on|date:'m/d/Y'}}</td>
+                                            </tr>
+
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div> <!-- end table-responsive -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="tab-pane" id="administrators">
+                        <div class="card mb-4 border-top-0">
+
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table class="table dataTable">
+                                        <thead>
+                                            <tr>
+                                                <th>Name</th>
+                                                <th>Position</th>
+                                                <th>Email</th>
+                                                <th>Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for r in administrators %}
+                                            <tr>
+                                                <td>
+                                                    <a href="{% url 'cis:hs_admin' r.hsadmin.id %}">{{r.hsadmin.user.first_name}}
+                                                        {{r.hsadmin.user.last_name}}</a>
+                                                </td>
+                                                <td>{{r.position.name}}</td>
+                                                <td>{{r.hsadmin.user.email}}</td>
+                                                <td>{{r.status}}</td>
+                                            </tr>
+                                            </a>
+
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div> <!-- end table-responsive -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+</main>
+{% endblock %}

@@ -1,0 +1,45 @@
+{% extends "cis/logged-base.html" %}
+{%block title %}{{page_title}}{% endblock %}
+
+{% load templatehelpers %}
+
+{% block body %}
+
+<main>
+    <div class="">
+        <div class="row">
+            <div class="col-sm-6 col-xs-12">
+                <h1 class="h3 mb-4 text-gray-800">{{page_title}}
+                </h1>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <div class="">
+                <ul class="nav nav-tabs">
+                    <li class="nav-item">
+                        <a class="nav-link active" data-toggle="tab" href="#added_by_me">All Notes</a>
+                    </li>
+                </ul>
+
+                <div class="tab-content">
+                    <div class="tab-pane active " id="added_by_me">
+                        <div class="bg-white border border-top-0 responsive">
+                            <div class="col-12 pt-3 mb-3">
+                                <form id="notes_filter" class="form-inline filter mb-3">
+                                    {% include 'snippets/campus.html' with campus=accessible_campuses default_campus=default_campus %}
+                                </form>
+                                {% include student_notes_table.partial_template with config=student_notes_table %}
+                            </div>
+                        </div>
+                    </div>
+                    <!-- end tab # records_active -->
+
+                </div>
+                <!-- end tab-content -->
+            </div>
+        </div>
+
+</main>
+
+{% endblock %}

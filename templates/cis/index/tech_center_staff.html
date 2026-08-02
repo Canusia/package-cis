@@ -1,0 +1,79 @@
+{% extends "cis/base.html" %}
+
+{% block title %}{{MYCE_SETTINGS.college_name}} {{ MYCE_SETTINGS.site_name }}{% endblock %}
+{% block body %}
+
+<main role="main" id="content">
+
+    <section class="jumbotron text-center bg-transparent">
+        <div class="container">
+
+            <div class="trans-bg rounded p-2">
+                <h1 class="jumbotron-heading">Welcome {{label}}</h1>
+            </div>
+
+        </div>
+    </section>
+
+    <div>
+        <div class="container">
+            <div class="bg-light p-3">
+                <div class="row ">
+                    <div class="col-12">
+                        <nav aria-label="breadcrumb">
+                            <ol class="breadcrumb">
+                                <li class="breadcrumb-item"><a href="{% url 'index' %}">Home</a></li>
+                                <li class="breadcrumb-item active" aria-current="page">{{label}}</li>
+                            </ol>
+                        </nav>
+                    </div>
+                </div>
+
+                <div class="row ">
+                    <div class="col-12">
+                        {% if messages %}
+                        <ul class="messages list-group">
+                            {% for message in messages %}
+                            <li{% if message.tags %} class="list-group-item {{ message.tags }}" {% endif %}>
+                                {{ message }}</li>
+                                {% endfor %}
+                        </ul>
+                        {% endif %}
+                        <!-- Tab panes -->
+                        <div id="current" class="bg-light p-3">
+                            <div class="">
+                                <h3 class="mb-4">Please login below</h3>
+                                <div class="row">
+
+                                    <div class="col-md-6 col-sm-12">
+                                        <div class="card">
+                                            <div class="card-body">
+                                                <div class="card-body">
+                                                    <h5 class="card-title mb-3">Please click below to login with your
+                                                        University login information</h5>
+    
+                                                    <a href="{% url 'cas_login' %}" class="btn btn-primary btn-block">Login
+                                                        Now</a>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="col-md-6">
+                                        <p class="alert alert-info">If you do not have access to
+                                            {{MYCE_SETTINGS.site_name}}
+                                            please contact an Early College Coordinator in your campus</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div> <!-- end row -->
+
+    </div> <!-- end container -->
+    </div> <!-- end py-5 -->
+
+</main>
+{% endblock %}

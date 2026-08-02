@@ -1,0 +1,91 @@
+{% load crispy_forms_tags %}
+<div class="card border-top-0">
+    <div class="card-body">
+        <div class="row">
+            <div class="col-12">
+
+                <table id="tbl_student_campus_id" class="table table-striped dt-responsive "
+                    style="width: 100%;">
+                    <thead>
+                        <tr>
+                            <th data-data="campus.name" data-name="campus.name">Campus</th>
+                            <th data-data="user_id" data-name="user_id">User ID</th>
+                            <th data-data="username" data-name="username">Username</th>
+                            <th data-data="email" data-name="email">Email</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                </table>
+
+                <script>
+                    $(document).ready(function () {
+                        let baseURL = '{{student_id_url}}'
+                        var table = $('#tbl_student_campus_id').DataTable(
+                            {
+                                dom: 'B<"float-left mt-3 mb-3"l><"float-right mt-3"f><"row clear">rt<"row"<"col-6"i><"col-6 float-right"p>>',
+                                buttons: [
+                                    {
+                                        extend: 'csv', className: 'btn btn-sm btn-primary text-white text-light',
+                                        text: '<i class="fas fa-file-csv text-white"></i>&nbsp;CSV',
+                                        titleAttr: 'Export results to CSV'
+                                    },
+                                    {
+                                        extend: 'print', className: 'btn btn-sm btn-primary text-white text-light',
+                                        text: '<i class="fas fa-print text-white"></i>&nbsp;Print',
+                                        titleAttr: 'Print'
+                                    },
+                                ],
+                                ajax: '{{student_id_url}}',
+                                serverSide: true,
+                                processing: true,
+                                stateSave: true,
+                                language: {
+                                    'loadingRecords': '&nbsp;',
+                                },
+                                'lengthMenu': [30, 50, 100],
+                                'columns': [
+                                    {'width': '30%'},
+                                    {'width': '20%'},
+                                    {'width': '20%'},
+                                    {'width': '20%'},
+                                    {
+                                        'width': '10%',
+                                        'searchable': false,
+                                        'orderable': false,
+                                        'render': function (data, type, row, meta) {
+                                            return "<a class='ajax-add_new' href='#' data-id='" + row.id + "' data-modal='modal-add_new' data-model='studentcampusid' data-parent=''>Edit</a>"
+                                        }
+                                    }
+                                ]
+                            }
+                        );
+                    });
+                </script>
+
+                <div class="card mt-4">
+                    <div class="card-body">
+                        <h5 class="card-title">Add New Campus ID</h5>
+                        <div class="card-text">
+                            {% if messages %}
+                            <ul class="messages list-group">
+                                {% for message in messages %}
+                                <li{% if message.tags %} class="list-group-item {{ message.tags }}"
+                                    {% endif %}>
+                                    {{ message }}</li>
+                                    {% endfor %}
+                            </ul>
+                            {% endif %}
+                            <form action="" method="post">
+                                {% csrf_token %}
+                                {{ student_id_form | crispy }}
+                                <input type="hidden" name="action" value="edit_campus">
+                                <input type="submit" class="btn btn-primary btn-sm" value="Add">
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>

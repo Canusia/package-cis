@@ -1,0 +1,108 @@
+{% extends "cis/logged-base.html" %}
+{%block title %}{{ page_title }}{% endblock %}
+
+{% load templatehelpers %}
+{% load crispy_forms_tags %}
+{% load static %}
+
+{% block body %}
+<script src="{% static 'js/change_history.js' %}"></script>
+<main>
+    <div class="row">
+        <div class="col-md-4 col-sm-12 mb-4 d-none">
+            <div class="card">
+                <div class="card-body">
+                    <h5>Section Details</h5>
+                    <div class="card-text">
+                        {% if messages %}
+                        <ul class="messages list-group">
+                            {% for message in messages %}
+                            <li{% if message.tags %} class="list-group-item {{ message.tags }}" {% endif %}>
+                                {{ message }}
+                                </li>
+                                {% endfor %}
+                        </ul>
+                        {% endif %}
+                        <form action="" method="post" enctype="multipart/form-data">
+                            {% csrf_token %}
+                            {{ form | crispy }}
+                            <input type="submit" class="btn btn-primary btn-sm" value="Update">
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-12 col-sm-12">
+
+            <h4 class="float-right">{{record}}, {{record.term}}</h4>
+            <div class="clearfix"></div>
+            <div class="btn-group float-right mb-3" role="group" aria-label="">
+                {% if record.teacher %}
+                <a target="_parent" class="btn btn-default" href='{% url 'impersonate-start' record.teacher.user.id %}'><i
+                    class="fa fa-ghost"></i></a>
+                {% endif %}
+                
+                <a class="btn btn-primary ajax-add_new" href="#" data-parent="{{record.id}}"
+                    data-id="{{record.id}}" data-modal="modal-add_new" data-model="classsection"
+                    data-updater=""><i class="fa fa-pencil-alt"></i>&nbsp;Edit Class Section</a>
+                
+                    <a class="btn btn-info ajax-add_new" href="?action=download_roster_pdf" 
+                    data-updater=""><i class="fa fa-file-pdf"></i>&nbsp;Export Roster</a>
+
+                <a class="btn btn-danger delete"><i class="fa fa-trash-alt text-light"></i></a>
+                    
+
+            <script>
+                jQuery(document).ready(function ($) {
+                    $("a.delete").on("click", function () {
+                        if (!confirm("Are you sure you want to permanently delete this record and all the related information?"))
+                            return;
+
+                        $.blockUI();
+                        $.ajax({
+                            type: 'GET',
+                            url: "{% url 'cis:delete_class_section' record.id%}",
+                            success: function (response) {
+                                $.unblockUI();
+                                swal(
+                                    "",
+                                    response.message,
+                                    response.status
+                                )
+                                if (response.status == 'success') {
+                                    window.parent.closeModal();
+                                }
+                            }
+                        });
+                    });
+                });
+            </script>
+            </div>
+            <div class="clearfix"></div>
+            
+            <ul class="nav nav-tabs">
+              {% for slug, tab in detail_tabs.items %}
+              <li class="nav-item">
+                <a class="nav-link {% if tab.active %}active{% endif %}" data-toggle="tab" href="#{{ tab.slug }}">
+                  {% if tab.icon %}<i class="{{ tab.icon }}"></i> {% endif %}{{ tab.title }}
+                  {% if tab.badge %}<span class="badge badge-pill badge-secondary">{{ tab.badge }}</span>{% endif %}
+                </a>
+              </li>
+              {% endfor %}
+            </ul>
+            <div class="tab-content">
+              {% for slug, tab in detail_tabs.items %}
+              {% if tab.lazy %}
+              <div class="tab-pane {% if tab.active %}active{% endif %}" id="{{ tab.slug }}" data-tab-url="{{ tab.url }}"></div>
+              {% else %}
+              <div class="tab-pane {% if tab.active %}active{% endif %}" id="{{ tab.slug }}">{{ tab.html|safe }}</div>
+              {% endif %}
+              {% endfor %}
+            </div>
+        </div> <!-- end col-md-8 -->
+
+    </div> <!-- end row -->
+
+
+</main>
+{% endblock %}

@@ -1,0 +1,13 @@
+<div class="card border-top-0">
+    <div class="card-body">
+        <div class="card-text">
+            {% if recommendation %}
+            {{recommendation.asHTML|safe}}
+            {% else %}
+            <p class="alert alert-danger">No recommendation found for
+                {{record.class_section.term}}
+            </p>
+            {% endif %}
+        </div>
+    </div>
+</div>

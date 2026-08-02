@@ -1,0 +1,28 @@
+{% extends 'cis/ajax-base.html' %}
+
+{%block title %}Update Status{% endblock %}
+
+{% load templatehelpers %}
+{% load crispy_forms_tags %}
+
+{% block body %}
+
+<div class="card">
+    <div class="card-body">
+        <h3 class="card-title">{{title}}</h3>
+        <div class="card-text">
+            <form action="{{ form_action|safe }}" method="post" class="frm_ajax">
+                <p class="alert alert-info">Review and confirm update</p>
+                {% csrf_token %}
+                <input type="hidden" name="action" value="{{ action_slug }}">
+                <input type="hidden" name="action_confirmed" value="1">
+                {% for id in ids %}<input type="hidden" name="ids[]" value="{{ id }}">{% endfor %}
+                {{ form | crispy }}
+                <input type="submit" class="btn btn-primary btn-sm" value="Submit">
+                <button type="button" class="btn btn-sm" data-dismiss="modal">Cancel &amp; Close</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

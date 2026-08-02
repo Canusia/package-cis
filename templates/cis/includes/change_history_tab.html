@@ -1,0 +1,29 @@
+<div class="tab-pane" id="change_history">
+    <div class="row">
+        <div class="col-12 bg-gray-100">
+            <div class="card mb-4 border-top-0">
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table id="{{ history_table_id }}" class="table table-striped responsive" style="width:100%">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Changed By</th>
+                                    <th>Action</th>
+                                    <th>Value</th>
+                                </tr>
+                            </thead>
+                        </table>
+                    </div>
+                    <script>
+                        initChangeHistoryTable(
+                            '{{ history_table_id }}',
+                            '{{ history_api_url }}',
+                            { showSourceBadge: {{ history_show_source_badge|yesno:"true,false" }} }
+                        );
+                    </script>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

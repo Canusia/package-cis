@@ -1,0 +1,56 @@
+{% extends 'cis/ajax-base.html' %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block body %}
+<div class="card">
+    <div class="card-body">
+        <h3 class="card-title">{{ title }}</h3>
+        <div class="card-text">
+            <p class="text-muted">
+                Ethos returned the following record for
+                <strong>{{ student.user.first_name }} {{ student.user.last_name }}</strong>
+                ({{ student.user.email }}).
+            </p>
+
+            <table class="table table-sm table-bordered">
+                <thead>
+                    <tr>
+                        <th style="width: 25%;">Field</th>
+                        <th>Current</th>
+                        <th>From Ethos</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for field, current, new in rows %}
+                    <tr{% if new and current != new %} class="table-warning"{% endif %}>
+                        <th>{{ field }}</th>
+                        <td>{{ current|default:"—" }}</td>
+                        <td>{{ new|default:"—" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            <form action="{{ form_action|safe }}" method="post" class="frm_ajax">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="{{ action_slug }}">
+                <input type="hidden" name="action_confirmed" value="1">
+                {% for id in ids %}<input type="hidden" name="ids[]" value="{{ id }}">{% endfor %}
+                <input type="hidden" name="new_sis_id" value="{{ new_sis_id }}">
+                <input type="hidden" name="new_psid" value="{{ new_psid }}">
+                <input type="hidden" name="new_username" value="{{ new_username }}">
+
+                {% if has_changes %}
+                    <p>Update the student record with these values?</p>
+                    <input type="submit" class="btn btn-primary btn-sm" value="Yes, update">
+                    <button type="button" class="btn btn-sm" data-dismiss="modal">Cancel</button>
+                {% else %}
+                    <p class="text-muted">No changes — all fields already match.</p>
+                    <button type="button" class="btn btn-sm btn-primary" data-dismiss="modal">Close</button>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

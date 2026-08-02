@@ -1,0 +1,65 @@
+{% load crispy_forms_tags %}
+
+<div class="card mb-4 border-top-0">
+    <div class="card-body">
+        {% if record.syllabi_status != 'pending review' %}
+        <p class="alert alert-info">
+            Marked as {{ record.syllabi_status }} {{ record.syllabi_note|safe }}
+        </p>
+        {% endif %}
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Added On</th>
+                        <th>Description</th>
+                        <th>File</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if not syllabi %}
+                    <tr>
+                        <td colspan="4">None found</td>
+                    </tr>
+                    {% endif %}
+                    {% for r in syllabi %}
+                    <tr>
+                        <td>{{ r.uploaded_on|date:'m/d/Y' }}</td>
+                        <td>{{ r.description }}</td>
+                        <td><a target="_blank" href="{{ r.media.url }}">{{ r.media.name }}</a></td>
+                        <td><a href='#syllabi' class='delete-upload' data-url="{{ r.ce_delete_url }}" id='{{ r.id }}'>Delete</a></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <hr>
+            <h4>Add New File</h4>
+            <form action="" method="post" enctype="multipart/form-data">
+                {% csrf_token %}
+                {{ syllabi_form | crispy }}
+                <input type="submit" class="btn btn-primary btn-sm" name="add_syllabi"
+                    value="Add File">
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    $(document).on("click", ".delete-upload", function () {
+        if (confirm("Are you sure you want to delete this record?")) {
+            let ajaxurl = $(this).attr('data-url')
+            $.ajax({
+                type: "GET",
+                url: ajaxurl,
+                success: function (response) {
+                    if (response.status == 'success') {
+                        window.location.reload()
+                    } else {
+                        alert("There was an error while deleting record")
+                    }
+                }
+            });
+        }
+    });
+</script>

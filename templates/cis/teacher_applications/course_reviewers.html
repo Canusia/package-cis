@@ -1,0 +1,33 @@
+{% load templatehelpers %}
+{% load crispy_forms_tags %}
+
+
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <td>Assigned On</td>
+            <td>Reviewer</td>
+            <td>Recommendation</td>
+            <td>Comment</td>
+            <td></td>
+        </tr>
+    </thead>
+    <tbody>
+        {%if reviewers %}
+            {%for r in reviewers %}
+            <tr>
+                <td>{{r.assigned_on|date:'m/d/Y'}}</td>
+                <td>{{r.reviewer.first_name}} {{r.reviewer.last_name}}</td>
+                <td>{{r.status|safe}}</td>
+                <td>{{r.misc_info.reviewer_note|safe}}</td>
+                <td class="text-right">
+                    <a title="Email Reviewer" class="remind_reviewer" href="#" data-id="{{r.id}}"><i class="fa fa-envelope fa-w"></i></a>&nbsp;&nbsp;&nbsp;&nbsp;
+                    <a title="Delete Reviewer" href="?action=delete_reviewer&reviewer={{r.id}}"><i class="fa fa-trash fa-w"></i></a>
+                </td>
+            </tr>
+            {%endfor%}
+        {%else%}
+            <td colspan="5">None found</td>
+        {%endif%}
+    </tbody>
+</table>

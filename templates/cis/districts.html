@@ -1,0 +1,29 @@
+{% extends "cis/logged-base.html" %}
+{%block title %}Districts{% endblock %}
+
+{% load templatehelpers %}
+
+{% block body %}
+<main>
+    <div class="">
+        <div class="row">
+            <div class="col-sm-6 col-xs-12">
+                <h1 class="h3 mb-4 text-gray-800">Districts&nbsp;
+                    <div class="btn-group btn-group-sm">
+                        <button type="button" class="btn btn-primary btn-sm dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                            Actions
+                        </button>
+                        <div class="dropdown-menu">
+                            <a href="{% url 'cis:district_add_new' %}" class="dropdown-item"><i class="fas fa-plus"></i>&nbsp;&nbsp;Add New District</a>
+                        </div>
+                    </div>
+                </h1>
+            </div>
+        </div>
+
+        <div class="table-responsive" style="min-height: 500px;">
+            {% include districts_table.partial_template with config=districts_table %}
+        </div>
+    </div>
+</main>
+{% endblock %}

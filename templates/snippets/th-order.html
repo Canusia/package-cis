@@ -1,0 +1,12 @@
+
+{% load templatehelpers %}
+
+{% if order_by == ordering_by and order == 'asc' %}
+<th class="sortable asc">
+    <a href="?{% query_transform order_by=ordering_by order='desc' %}">{{title}}</a>
+</th>
+{% else %}
+<th class="sortable {% if order_by == ordering_by %}desc{% endif %}">
+    <a href="?{% query_transform order_by=ordering_by order='asc' %}">{{title}}</a>
+</th>
+{% endif %}

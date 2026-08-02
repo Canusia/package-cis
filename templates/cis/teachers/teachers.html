@@ -1,0 +1,360 @@
+{% extends "cis/logged-base.html" %}
+{%block title %}{{page_title}}{% endblock %}
+
+{% load templatehelpers %}
+
+{% block body %}
+
+<main>
+    <div class="">
+        <div class="row">
+            <div class="col-sm-6 col-xs-12">
+                <h1 class="h3 mb-4 text-gray-800">{{page_title}}&nbsp; 
+                    <div class="btn-group btn-group-sm">
+                        <button type="button" class="btn btn-primary btn-sm dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                            Actions
+                        </button>
+                        <div class="dropdown-menu">
+                            <a href="{% url urls.add_new %}" class="dropdown-item"><i class="fas fa-plus"></i>&nbsp;&nbsp;Add New</a>
+                        </div>
+                    </div>
+                </h1>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <div class="">
+                <ul class="nav nav-tabs">
+                    <li class="nav-item">
+                        <a class="nav-link active" data-toggle="tab" href="#all">All  Instructors</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-toggle="tab" href="#by_highschool">By High School</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-toggle="tab" href="#files">Files</a>
+                    </li>
+                </ul>
+
+                <div class="tab-content">
+
+                    <div class="tab-pane active " id="all">
+                        <div class="bg-white border border-top-0">
+                            <div class="col-12 pt-3 mb-3">
+                                <form id="instructors_filter" class="form-inline filter mb-3">
+                                    {% include 'snippets/campus.html' with campus=accessible_campuses default_campus=default_campus %}
+                                </form>
+                                {% include instructors_table.partial_template with config=instructors_table %}
+                            </div>
+                        </div>
+                    </div>
+                    <!-- end tab # records_active -->
+
+                    <div class="tab-pane" id="by_highschool">
+                        <div class="bg-white border border-top-0">
+                            <div class="col-12 pt-3 mb-3">
+                                <form id="instructors_hs_filter" class="form-inline filter mb-3">
+                                    {% include 'snippets/campus.html' with campus=accessible_campuses default_campus=default_campus %}
+                                </form>
+                                <table id="records_teacher_hs" class="table table-striped responsive grouped_table_2" style="width:100%"
+                                    data-server-side="true" data-ajax="{{teacher_hs_api_url}}">
+                                    <thead>
+                                        <tr>
+                                            <th></th>
+                                            <th data-data="highschool.name" data-name="highschool.name">High School</th>
+                                            <th data-data="teacher.user.last_name" data-name="teacher.user.last_name">Last Name
+                                            </th>
+                                            <th data-data="teacher.user.first_name" data-name="teacher.user.first_name">First Name
+                                            </th>
+                                            <th data-data="status" data-name="status">Status</th>
+                                            <th data-data="teacher.user.email" data-name="teacher.user.email">Email
+                                            </th>
+                                            <th data-data="teacher.user.last_login" data-name="teacher.user.last_login">Last Login</th>
+                                            <th data-data="id" data-name='id'><span class="sr-only">Actions</span></th>
+                                        </tr>
+                                    </thead>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- end tab # records_active -->
+
+                    <div class="tab-pane" id="files">
+                        <div class="bg-white border border-top-0">
+                            <div class="col-12 pt-3 mb-3">
+                                <table id="records_teacher_uploads" class="table table-striped responsive" style="width:100%"
+                                    data-server-side="true" data-ajax="{{teacher_uploads_api_url}}">
+                                    <thead>
+                                        <tr>
+                                            <th data-data="teacher_last_name" data-name="teacher.user.last_name">Last Name</th>
+                                            <th data-data="teacher_first_name" data-name="teacher.user.first_name">First Name</th>
+                                            <th data-data="teacher_email" data-name="teacher.user.email">Email</th>
+                                            <th data-data="media_type" data-name="media_type">Type</th>
+                                            <th data-data="file_name" data-name="file_name">File</th>
+                                            <th data-data="description" data-name="description">Description</th>
+                                            <th data-data="uploaded_on" data-name="uploaded_on">Uploaded On</th>
+                                        </tr>
+                                    </thead>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- end tab # files -->
+                </div>
+                <!-- end tab-content -->
+                <script>
+                    var table_teacher_highschool;
+                    var table_teacher_uploads;
+                    setInterval(function() {
+                        if(table_teacher_highschool && !table_teacher_highschool.rows('.selected').any())
+                            table_teacher_highschool.ajax.reload(null, false);
+                    }, 5000 * 60);
+                    
+                    let bulk_action_url = "{%url 'cis:teacher_bulk_actions'%}"
+
+                    function do_bulk_action(url, action, dt) {
+                            
+                            if(!dt.rows('.selected').any()) {
+                                    alert("Please select a row and try again.")
+                                    return
+                                }
+    
+                                var selectedRows = dt.rows({ selected: true });
+    
+                                if(action == 'toggle_status' || action == 'toggle_student_recommendation') {
+                                    if(!confirm('Are you sure you want to toggle status on the ' + selectedRows.count() + ' selected records?'))
+                                        return
+                                }
+    
+                                let data = {
+                                    'action': action,
+                                    'ids': Array()
+                                }
+                                selectedRows.every(function() {
+                                    data.ids.push(this.id())
+                                })
+    
+                                $(dt).block()
+                                let modal = "modal-bulk_actions"
+    
+                                $.ajax({
+                                    type: "GET",
+                                    url: url,
+                                    data: data,
+                                    success: function(response) {
+                                        $(dt).unblock();
+    
+                                        if(response.status == 'success') {
+                                            swal({
+                                                title: 'Success',
+                                                text: response.message,
+                                                icon: response.status
+                                            }).then(
+                                                (value) => {
+                                                    selectedRows.deselect();
+                                                    dt.ajax.reload();
+                                                }
+                                            )
+                                        } else {
+                                            $("#bulk_modal_content").html(response);
+                                            $("#" + modal).modal('show');
+                                        }
+                                    }
+                                });
+                            }
+
+                    $(document).ready(function () {
+                        $('tfoot').each(function () {
+                            $(this).insertAfter($(this).siblings('thead'));
+                        });
+
+                        table_teacher_highschool = $('#records_teacher_hs')
+                           .DataTable({
+                                ajax: {
+                                    url: "{{teacher_hs_api_url}}",
+                                    data: function (d) {
+                                        d.campus = $('#instructors_hs_filter [name=campus]').val() || '';
+                                    }
+                                },
+                                "fnDrawCallback": function( oSettings ) {
+                                    $.unblockUI();
+                                },
+                                
+                                select: {
+                                    style: 'os',
+                                    selector: 'td:first-child'
+                                },
+                                rowId: 'id',
+                                dom: 'B<"float-left mt-3 mb-3"l><"float-right mt-3"f><"row clear">rt<"row"<"col-6"i><"col-6 float-right"p>>',
+                                buttons: [
+                                    {
+                                        extend: 'csv', className: 'btn btn-sm btn-primary text-white text-light',
+                                        text: '<i class="fas fa-file-csv text-white"></i>&nbsp;CSV',
+                                        titleAttr: 'Export results to CSV' 
+                                    },
+                                    { 
+                                        extend: 'print', className: 'btn btn-sm btn-primary text-white text-light',
+                                        text: '<i class="fas fa-print text-white"></i>&nbsp;Print',
+                                        titleAttr: 'Print' 
+                                    },
+                                    {
+                                        className: 'btn btn-sm btn-primary text-white text-light',
+                                        text: '<i class="fas fa-edit text-white"></i>&nbsp;Change Password',
+                                        titleAttr: 'Change Password',
+                                        action: function ( e, dt, node, config ) {
+                                            do_bulk_action(bulk_action_url, 'change_password_by_hs', dt)
+                                        }
+                                    },
+                                ],
+                                stateSave: true,
+                                /*'rowGroup': {
+                                    dataSrc: ['highschool.name'],
+                                    startRender: function (rows, group, level) {
+                                        return '<h5 class="group-header-tab-' + level + '">' + group + '</h5>'
+                                    },
+                                    endRender: function ( rows, group, level ) {
+                                        var total = rows
+                                            .data()
+                                            .reduce( function (a, b) {
+                                                return a+1
+                                            }, 0);
+                        
+                                        return '<div class="group-footer-tab-'+level+'">Total '+group+' - '+
+                                        $.fn.dataTable.render.number(',', '.', 0, '').display( total ) + '</div>';
+                                    }
+                                },*/
+
+                                'order': [
+                                    [1, 'asc']
+                                ],
+                                'columnDefs': [
+                                    {
+                                        orderable: false,
+                                        className: 'select-checkbox',
+                                        targets: 0
+                                    }
+                                    /*,
+                                    {
+                                        'targets': 1,
+                                        'visible': false,
+                                    }*/
+                                ],
+                                'lengthMenu': [30, 50, 100],
+                                'columns': [
+                                {
+                                        'searchable': false,
+                                        'orderable': false,
+                                        'render': function (data, type, row, meta) {
+                                            return ''
+                                        }
+                                    },
+                                    null,
+                                    null,
+                                    null,
+                                    null,
+                                    null,
+                                    null,
+                                    {
+                                        'searchable': false,
+                                        'orderable': false,
+                                        'render': function (data, type, row, meta) {
+                                            return "<a class='btn btn-sm btn-primary record-details' refresh-target='table_teacher_highschool' href='" + "{{urls.details_prefix}}" + row.teacher.id + "'>View Details</a>"
+                                        }
+                                    }
+                                ]
+                            }
+                        );
+
+                        // Reload the by-highschool table when the campus filter changes.
+                        $(document).on('change', '#instructors_hs_filter :input', function () {
+                            table_teacher_highschool.ajax.reload();
+                        });
+
+                        // Escape a value for insertion as HTML text. Filenames are
+                        // named by the uploading instructor and descriptions are
+                        // free text, so neither may be concatenated into markup.
+                        function esc(value) {
+                            return $('<div>').text(value == null ? '' : value).html();
+                        }
+
+                        table_teacher_uploads = $('#records_teacher_uploads')
+                           .DataTable({
+                                ajax: "{{teacher_uploads_api_url}}",
+                                "fnDrawCallback": function( oSettings ) {
+                                    $.unblockUI();
+                                },
+                                rowId: 'id',
+                                dom: 'B<"float-left mt-3 mb-3"l><"float-right mt-3"f><"row clear">rt<"row"<"col-6"i><"col-6 float-right"p>>',
+                                buttons: [
+                                    {
+                                        extend: 'csv', className: 'btn btn-sm btn-primary text-white text-light',
+                                        text: '<i class="fas fa-file-csv text-white"></i>&nbsp;CSV',
+                                        titleAttr: 'Export results to CSV',
+                                        // Buttons default to the 'display' orthogonal
+                                        // type, which would export the anchor markup
+                                        // the renderers build.
+                                        exportOptions: { orthogonal: 'export' }
+                                    },
+                                    {
+                                        extend: 'print', className: 'btn btn-sm btn-primary text-white text-light',
+                                        text: '<i class="fas fa-print text-white"></i>&nbsp;Print',
+                                        titleAttr: 'Print',
+                                        exportOptions: { orthogonal: 'export' }
+                                    },
+                                ],
+                                stateSave: true,
+                                'order': [
+                                    [0, 'asc']
+                                ],
+                                'lengthMenu': [30, 50, 100],
+                                'columns': [
+                                    {
+                                        'render': function (data, type, row, meta) {
+                                            var name = row.teacher_last_name || '';
+                                            if (type !== 'display')
+                                                return name;
+                                            return $('<a>')
+                                                .addClass('record-details')
+                                                .attr('refresh-target', 'table_teacher_uploads')
+                                                .attr('href', row.ce_url || '#')
+                                                .text(name)
+                                                .prop('outerHTML');
+                                        }
+                                    },
+                                    { 'render': $.fn.dataTable.render.text() },
+                                    { 'render': $.fn.dataTable.render.text() },
+                                    { 'render': $.fn.dataTable.render.text() },
+                                    {
+                                        // file_name is a model property, not an ORM
+                                        // field, so it cannot be ordered or searched
+                                        // server-side.
+                                        'orderable': false,
+                                        'searchable': false,
+                                        'render': function (data, type, row, meta) {
+                                            var name = row.file_name || '';
+                                            if (type !== 'display')
+                                                return name;
+                                            if (!row.media)
+                                                return esc(name);
+                                            // row.media is the authorized download
+                                            // action, never a pre-signed S3 URL.
+                                            return $('<a>')
+                                                .attr('href', row.media)
+                                                .text(name)
+                                                .prop('outerHTML');
+                                        }
+                                    },
+                                    { 'render': $.fn.dataTable.render.text() },
+                                    { 'render': $.fn.dataTable.render.text() },
+                                ]
+                            }
+                        );
+
+                    });
+                </script>
+        </div>
+    </div>
+
+</main>
+
+{% endblock %}

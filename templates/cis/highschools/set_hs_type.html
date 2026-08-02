@@ -1,0 +1,39 @@
+{# Bulk "Set School Type" modal body. Rendered into #bulk_modal_content by  #}
+{# ActionRegistry; the form posts back to the same bulk-actions endpoint with #}
+{# apply=1. Vocabulary comes from the tenant highschool_types service.        #}
+<div class="card">
+    <div class="card-body">
+        <h3 class="card-title">{{ title }}</h3>
+        <div class="card-text">
+            <form action="{{ form_action|safe }}" method="post" class="frm_ajax">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="set_hs_type">
+                <input type="hidden" name="apply" value="1">
+                {% for id in ids %}
+                <input type="hidden" name="ids[]" value="{{ id }}">
+                {% endfor %}
+
+                <p class="alert alert-info">
+                    This <strong>replaces</strong> the School Type on
+                    {{ count }} selected high school{{ count|pluralize }}.
+                    Select none to clear it.
+                </p>
+
+                <div class="form-group">
+                    <label for="id_hs_type">School Type</label>
+                    <select name="hs_type" id="id_hs_type" class="form-control" multiple size="{{ choices|length }}">
+                        {% for code, label in choices %}
+                        <option value="{{ code }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                    <small class="form-text text-muted">
+                        Hold Ctrl (Cmd on Mac) to select more than one.
+                    </small>
+                </div>
+
+                <input type="submit" class="btn btn-primary btn-sm" value="Set School Type">
+                <input type="button" class="btn btn-sm" onclick="window.closeBulkActionModal()" value="Cancel &amp; Close">
+            </form>
+        </div>
+    </div>
+</div>

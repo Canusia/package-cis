@@ -1,0 +1,80 @@
+{% extends 'cis/logged-base.html' %}
+{% block title %}Import Students{% endblock %}
+{% load crispy_forms_tags %}
+{% block body %}
+<h1 class="h3 mt-3 text-gray-800 mb-3">Import Students</h1>
+
+{% if header_errors %}
+  <div class="alert alert-danger"><ul class="mb-0">
+    {% for e in header_errors %}<li>{{ e }}</li>{% endfor %}
+  </ul></div>
+{% endif %}
+
+{% if committed %}
+  <div class="alert alert-success">
+    Created {{ summary.created }} · Skipped {{ summary.skipped }} · Failed {{ summary.failed }}
+  </div>
+{% endif %}
+
+{% if upload_form and not batch %}
+  <div class="card mb-4"><div class="card-body">
+    <p class="alert alert-info">
+      Upload a CSV. <a href="{% url 'cis:student_import_template' %}">Download the template</a>.
+      Required columns are marked below.
+    </p>
+    <form method="post" action="{% url 'cis:student_import_upload' %}" enctype="multipart/form-data">
+      {% csrf_token %}{{ upload_form|crispy }}
+      <button class="btn btn-primary btn-sm" type="submit">Upload &amp; Preview</button>
+    </form>
+    <hr>
+    <table class="table table-sm"><thead><tr><th>Column</th><th>Required</th></tr></thead>
+      <tbody>{% for f in field_definitions %}
+        <tr><td>{{ f.name }}</td><td>{% if f.required %}Yes{% else %}No{% endif %}</td></tr>
+      {% endfor %}</tbody>
+    </table>
+  </div></div>
+{% endif %}
+
+{% if batch %}
+  <form method="post" action="{% url confirm_url batch.id %}">
+    {% csrf_token %}
+    <table class="table table-sm table-striped">
+      <thead><tr>
+        <th><input type="checkbox" id="select_all"></th>
+        <th>#</th><th>Status</th><th>Email</th><th>Name</th><th>CEEB</th><th>Details</th>
+      </tr></thead>
+      <tbody>
+      {% for row in rows %}
+        <tr class="{% if row.status == 'error' %}table-danger{% elif row.status == 'duplicate' %}table-warning{% endif %}">
+          <td>
+            <input type="checkbox" name="selected_rows" value="{{ row.id }}"
+              class="row-check" {% if row.selected %}checked{% endif %}
+              {% if row.status != 'valid' %}disabled{% endif %}>
+          </td>
+          <td>{{ row.row_number }}</td>
+          <td>{{ row.get_status_display }}</td>
+          <td>{{ row.raw_data.email }}</td>
+          <td>{{ row.raw_data.first_name }} {{ row.raw_data.last_name }}</td>
+          <td>{{ row.raw_data.highschool_ceeb }}</td>
+          <td>
+            {% if committed %}{{ row.result }}
+            {% else %}{% for field, msgs in row.errors.items %}
+              <div class="small text-danger">{{ field }}: {{ msgs|join:", " }}</div>
+            {% endfor %}{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% if not committed %}
+      <button class="btn btn-success btn-sm" type="submit">Confirm &amp; Import Selected</button>
+    {% endif %}
+  </form>
+  <script>
+    document.getElementById('select_all')?.addEventListener('change', function (e) {
+      document.querySelectorAll('.row-check:not([disabled])')
+        .forEach(function (c) { c.checked = e.target.checked; });
+    });
+  </script>
+{% endif %}
+{% endblock %}

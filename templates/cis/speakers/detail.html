@@ -1,0 +1,141 @@
+{% extends "cis/logged-base.html" %}
+{%block title %}Speaker => {{ record.user.first_name }}{% endblock %}
+
+{% load templatehelpers %}
+{% load crispy_forms_tags %}
+
+{% block body %}
+<script>
+    jQuery(function ($) {
+        $('.dataTable').DataTable();
+    });
+</script>
+<div class="">
+    <div class="row">
+        <div class="col-md-6 col-sm-12">
+            <h1 class="h3 mt-3 text-gray-800 mb-3">{{ record.user.first_name }} {{ record.user.last_name }}</h1>
+        </div>
+        <!-- <div class="col-md-6 col-sm-12">
+            <div class="justify-content-end">
+                <form class="form-inline p-2 justify-content-end">
+                    <div class="ui search category focus">
+                        <div class="ui left icon input">
+                            <input class="prompt" type="text" placeholder="Search by name" autocomplete="off">
+                        </div>
+                        <div class="results"></div>
+                    </div>
+                </form>
+            </div>
+        </div> -->
+    </div>
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="#">Home</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'cis:speakers' %}?{% query_transform %}">All Speakers</a>
+            </li>
+            <li class="breadcrumb-item active" aria-current="page">{{ record.user.first_name }}</li>
+        </ol>
+    </nav>
+</div>
+<main>
+    <div class="row">
+        <div class="col-md-4 col-sm-12 mb-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Speaker Details</h5>
+                    <div class="card-text">
+                        {% if messages %}
+                        <ul class="messages list-group">
+                            {% for message in messages %}
+                            <li{% if message.tags %} class="list-group-item {{ message.tags }}" {% endif %}>
+                                {{ message }}</li>
+                                {% endfor %}
+                        </ul>
+                        {% endif %}
+                        <form action="" method="post">
+                            {% csrf_token %}
+                            {{ form | crispy }}
+                            <input type="submit" class="btn btn-primary btn-sm" value="Update">
+                            
+                            <p class="mt-3 alert alert-info">More fields can be added as needed. Eg: Bio, Title, Phone etc.</p>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-8 col-sm-12">
+            <ul class="nav nav-tabs">
+                <li class="nav-item">
+                    <a class="nav-link active" data-toggle="tab" href="#events">Events</a>
+                </li>
+
+                <li class="nav-item d-none">
+                    <a class="nav-link" data-toggle="tab" href="#notes">Notes</a>
+                </li>
+            </ul>
+
+            <!-- Tab panes -->
+            <div class="tab-content">
+
+                <div class="tab-pane" id="notes">
+                    <div class="row">
+                        <div class="col-12 bg-gray-100">
+                            <div class="card mb-4 border-top-0">
+                                <div class="card-body ">
+
+                                    <div class="text-right">
+                                        <a href="#notes" class="btn btn-sm btn-primary ajax-add_new"
+                                            data-parent="{{record.id}}" data-id="-1" data-modal="modal-add_new"
+                                            data-model="hsadminnote" data-updater=""><i
+                                                class="fa fas-light fa-plus-circle"></i>&nbsp;Add New Note</a>
+                                    </div>
+                                    <div class="clearfix">&nbsp;</div>
+                                    <div class="table-responsive">
+                                        <table class="table ">
+                                            <thead>
+                                                <tr>
+                                                    <th>Added On</th>
+                                                    <th>Note</th>
+                                                    <th>Added By</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for r in notes %}
+                                                <tr>
+                                                    <td>{{r.createdon|date:'m/d/Y H:i a'}}</td>
+                                                    <td>
+                                                        {{r.note}}
+                                                    </td>
+                                                    <td>{{r.createdby.first_name}} {{r.createdby.last_name}}</td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div> <!-- end #notes -->
+                <div class="tab-pane active" id="events">
+                    <div class="row">
+                        <div class="col-12 bg-gray-100">
+                            <div class="card mb-4 border-top-0">
+                                <div class="card-body">
+                                    <div class="table-responsive">
+
+                                    </div> <!-- end table-responsive -->
+                                </div> <!-- end card-body -->
+
+                            </div> <!-- end card -->
+                        </div>
+                    </div>
+                </div> <!-- end #highschools -->
+            </div> <!-- end tab-content -->
+        </div> <!-- end col-md-8 -->
+
+    </div> <!-- end row -->
+
+
+</main>
+{% endblock %}

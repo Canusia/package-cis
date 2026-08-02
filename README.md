@@ -1,0 +1,65 @@
+# MyCE — core platform app (`cis`)
+
+The MyCE concurrent-enrollment platform core: students, registrations, high schools,
+instructors, courses, sections, terms, campus scoping, settings and the CE admin portal.
+
+- **Package name:** `myce_cis`
+- **Import name:** `cis`
+- **Repo:** <https://github.com/Canusia/package-cis>
+
+## Install
+
+```
+git+https://github.com/Canusia/package-cis.git@v0.0.1
+```
+
+Development uses a git submodule at `webapp/cis`.
+
+## Self-rooted layout
+
+The repository root **is** the `cis` package — `models/`, `views/`, `migrations/` and the
+rest sit at top level beside `pyproject.toml`. Mounted as a submodule it imports as `cis`;
+pip-installed it imports as `cis`.
+
+This deliberately differs from the other Canusia packages (`drop_wd`, `docrepo`,
+`highschool_admin`, …), which use a 2-deep `pkg/pkg/` layout selected by
+`importlib.util.find_spec`. That pattern cannot work here: 187 distinct `cis.*` module
+paths are imported 1,374 times across 28 apps, and the packages shipped to every tenant
+import `cis` too (`highschool_admin` 191 times, `future_sections` 150, `instructor_app`
+126, `class_visit` 119). Those imports are hardcoded inside third-party packages where
+`cis` is always flat, so they cannot be `find_spec`-switched.
+
+**There is therefore no `find_spec` conditional for `cis` in any host.**
+
+## Host wiring
+
+`INSTALLED_APPS` keeps `'cis.apps.CisConfig'` and the URLconf keeps `include('cis.urls')` —
+both unchanged, because the import name never changes. Only static files move:
+
+```python
+os.path.join(get_package_path("cis"), 'staticfiles')
+```
+
+which resolves to `webapp/cis/staticfiles` in dev and `site-packages/cis/staticfiles` in
+production. `APP_DIRS=True` finds `cis/templates` in both layouts.
+
+## Host requirements
+
+This is a platform core, not a standalone library. A host must provide the `myce` Django
+project package (settings, `component_registry`), the per-tenant `myce_tenant_configs` app,
+and the sibling apps `future_sections`, `ethos`, `grades`, `student_transactions`,
+`student_onboarding`, `setting`, `announcement`, `class_visit`, `highschool_admin`,
+`alerts`, `two_step`, `support_ticket`, `pd_event`, `instructor_app`, `drop_wd`,
+`instructor` and `degree_pathway`.
+
+None of them are declared in `install_requires`. That matches Canusia convention and avoids
+a circular pin with `future_sections`, which imports `cis` 150 times.
+
+## Tests
+
+The 182 test modules live in the repo but are excluded from the distribution. Run them
+against a tenant's submodule checkout:
+
+```bash
+docker exec -w /app/webapp django_web_ewu python manage.py test cis
+```

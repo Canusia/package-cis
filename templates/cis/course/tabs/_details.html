@@ -1,0 +1,45 @@
+{% load crispy_forms_tags %}
+<div class="">
+    <div class="card border-top-0">
+        <div class="card-body">
+            <h5 class="card-title">Details</h5>
+            <div class="card-text">
+                <form action="" method="post">
+                    {% csrf_token %}
+
+                    {{ form.media }}
+                    {{ form | crispy }}
+                    <input type="hidden" name="action" value='save_course'>
+                    <input type="submit" class="btn btn-primary btn-sm" value="Update">&nbsp;
+                    <input type="button" value="Delete" class="btn btn-danger btn-sm delete">
+                    <script>
+                        jQuery(document).ready(function ($) {
+                            $("input.delete").on("click", function () {
+                                if (!confirm("Are you sure you want to permanently delete this record?"))
+                                    return;
+
+                                $.blockUI();
+                                $.ajax({
+                                    type: 'GET',
+                                    url: "{% url 'cis:delete_course' record.id %}",
+                                    success: function (response) {
+                                        $.unblockUI();
+                                        swal({
+                                            title: 'Success',
+                                            text: response.message,
+                                            icon: response.status
+                                        }).then(
+                                            (value) => {
+                                                window.parent.closeModal();
+                                            }
+                                        )
+                                    }
+                                });
+                            });
+                        });
+                    </script>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>

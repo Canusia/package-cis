@@ -1,0 +1,7 @@
+{% load crispy_forms_tags %}
+<form method="POST">
+    {% csrf_token %}
+    {{ form | crispy }}
+    <button type="submit" class="btn btn-primary">{{ button_label|default:"Login" }}</button>
+    <a href="{% url 'forgot_password' %}">{{ forgot_label|default:"Forgot Password" }}</a>
+</form>

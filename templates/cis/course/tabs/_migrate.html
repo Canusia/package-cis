@@ -1,0 +1,32 @@
+{% load crispy_forms_tags %}
+<div class="card border-top-0">
+    <div class="card-text mt-2">
+        <div class="col-12">
+        <p class="alert alert-info">Use the form to move current records over to a different course. This is helpful when trying to merge duplicate records.</p>
+
+        <div class="row">
+            <div class="col-4">
+
+                {{migration_form.media}}
+
+                <form action="" enctype="multipart/form-data" method="post">
+                {% csrf_token %}
+                {{migration_form|crispy}}
+                <input type="submit" class="btn btn-primary btn-sm" value="Submit">
+                </form>
+            </div>
+            <div class="col-8">
+                <div class="card">
+                    <div class="card-body">
+                    <div class="p2">
+                        <div id="migrate_student_info" class="">
+
+                        </div>
+                    </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        </div>
+    </div>
+</div>

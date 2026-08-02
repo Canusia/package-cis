@@ -1,0 +1,120 @@
+{% extends "cis/logged-base.html" %}
+{%block title %}{{ page_title }}{% endblock %}
+
+{% load templatehelpers %}
+{% load crispy_forms_tags %}
+
+{% block body %}
+<script>
+    function do_ajax_action(action, record_id) {
+        url = "{%url 'cis:faculty_bulk_actions' %}"
+        let modal = "modal-bulk_actions"
+        
+        let data = {
+            'action': action,
+            'record_id': record_id
+        }
+
+        $.ajax({
+            type: "GET",
+            url: url,
+            data: data,
+            success: function(response) {
+                $("#bulk_modal_content").html(response);
+                $("#" + modal).modal('show');
+            }
+        });
+    }
+
+    function do_bulk_action(action, dt) {
+
+        if(!dt.rows('.selected').any()) {
+            alert("Please select a row and try again.")
+            return
+        }
+
+        var selectedRows = dt.rows({ selected: true });
+        let data = {
+            'action': action,
+            'ids': Array()
+        }
+        selectedRows.every(function() {
+            data.ids.push(this.id())
+        })
+
+        $(dt).block()
+        url = "{%url 'cis:faculty_bulk_actions' %}"
+        let modal = "modal-bulk_actions"
+
+        $.ajax({
+            type: "GET",
+            url: url,
+            data: data,
+            success: function(response) {
+                $("#bulk_modal_content").html(response);
+                $("#" + modal).modal('show');
+            }
+        });
+    }
+</script>
+<div class="">
+    <div class="row">
+        <div class="col-md-6 col-sm-12">
+            <h1 class="h3 mt-3 text-gray-800 mb-3">{{ record.user.last_name }}, {{ record.user.first_name }}</h1>
+            <div class="bg-light mb-3">
+                <a href='#' onclick='do_ajax_action("change_status", "{{record.id}}")'> <i class="fa fas fa-edit fa-pencil"></i> Edit Status</a>
+            </div>
+        </div>
+    </div>
+</div>
+<main>
+    <div class="">
+        <div class="row">
+            <div class="col-md-4 col-sm-12 mb-4">
+                <div class="card">
+                    <div class="card-body">
+                            <h5 class="card-title mb-3">Details <small class="float-right"><a  target="_parent" href='{% url 'impersonate-start' record.user.id %}'><i class="fa fa-ghost"></i></a></small></h5>
+                        <div class="card-text">
+                            {% if messages %}
+                            <ul class="messages list-group">
+                                {% for message in messages %}
+                                <li{% if message.tags %} class="list-group-item {{ message.tags }}" {% endif %}>
+                                    {{ message }}</li>
+                                    {% endfor %}
+                            </ul>
+                            {% endif %}
+                            <form action="" method="post">
+                                {% csrf_token %}
+                                {{ form | crispy }}
+                                <input type="submit" class="btn btn-primary btn-sm" value="Update">
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-8 col-sm-12">
+                <ul class="nav nav-tabs">
+                  {% for slug, tab in detail_tabs.items %}
+                  <li class="nav-item">
+                    <a class="nav-link {% if tab.active %}active{% endif %}" data-toggle="tab" href="#{{ tab.slug }}">
+                      {% if tab.icon %}<i class="{{ tab.icon }}"></i> {% endif %}{{ tab.title }}
+                      {% if tab.badge %}<span class="badge badge-pill badge-secondary">{{ tab.badge }}</span>{% endif %}
+                    </a>
+                  </li>
+                  {% endfor %}
+                </ul>
+                <div class="tab-content">
+                  {% for slug, tab in detail_tabs.items %}
+                  {% if tab.lazy %}
+                  <div class="tab-pane {% if tab.active %}active{% endif %}" id="{{ tab.slug }}" data-tab-url="{{ tab.url }}"></div>
+                  {% else %}
+                  <div class="tab-pane {% if tab.active %}active{% endif %}" id="{{ tab.slug }}">{{ tab.html|safe }}</div>
+                  {% endif %}
+                  {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+</main>
+{% endblock %}

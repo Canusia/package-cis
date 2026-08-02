@@ -1,0 +1,99 @@
+{% extends base_template %}
+
+{%block title %}Manage District Administrator Role{% endblock %}
+
+{% load templatehelpers %}
+{% load crispy_forms_tags %}
+
+{% block body %}
+<script>
+   
+</script>
+{% if ajax != '1' %}
+<div class="">
+    <div class="row">
+        <div class="col">
+            <h1 class="h3 mt-3 text-gray-800 mb-3">Add New</h1>
+        </div>
+    </div>
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="#">Home</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'cis:district_roles' %}?{% query_transform %}">All District Roles</a>
+            </li>
+            <li class="breadcrumb-item active" aria-current="page">Add New</li>
+        </ol>
+    </nav>
+</div>
+{% else %}
+<script>
+</script>
+{% endif %}
+
+{% if ajax != '1' %}
+<main>
+    <div class="row">
+        <div class="col-md-6 col-sm-12 mb-4">
+{% endif %}
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title mb-4">Edit High School Administrator Role</h5>
+                    <div class="card-text">
+                        <div class="form_status">
+                            {% if messages %}
+                            <ul class="messages list-group">
+                                {% for message in messages %}
+                                <li{% if message.tags %} class="list-group-item {{ message.tags }}" {% endif %}>{{ message }}</li>
+                                    {% endfor %}
+                            </ul>
+                            {% endif %}
+                        </div>
+                        <form action="" id="form_hs_administrator_role" method="post">
+                            {% csrf_token %}
+                            {{ form | crispy }}
+
+                            {% if ajax == '1' %}
+                                <input type="hidden" name="model" value="hsadministratorrole">
+                            {% endif %}
+                            <input type="submit" class="btn btn-primary btn-sm" value="Save">
+                            <input type="button" class="btn btn-sm" onclick="window.closeAddNewModal()" value="Cancel & Close">
+
+                            {% if record %}
+                                <a class="btn btn-danger btn-sm delete-role float-right"><i class="fa fa-trash-alt text-light"></i></a>
+                                <script>
+                                    jQuery(document).ready(function ($) {
+                                        $("a.delete-role").on("click", function () {
+                                            if (!confirm("Are you sure you want to permanently delete this role?"))
+                                                return;
+
+                                            $.blockUI();
+                                            $.ajax({
+                                                type: 'GET',
+                                                url: "{% url 'cis:delete_hs_admin_role' record.id%}",
+                                                success: function (response) {
+                                                    $.unblockUI();
+                                                    swal(
+                                                        "",
+                                                        response.message,
+                                                        response.status
+                                                    )
+                                                    if (response.status == 'success') {
+                                                        window.closeAddNewModal();
+                                                    }
+                                                }
+                                            });
+                                        });
+                                    });
+                                </script>
+                            {% endif %}
+                        </form>
+                    </div>
+                </div> 
+            </div> <!-- end card -->
+{% if ajax != '1' %}
+        </div> <!-- end col-md-6 -->
+    </div> <!-- end row -->
+</main>
+{% endif %}
+
+{% endblock %}

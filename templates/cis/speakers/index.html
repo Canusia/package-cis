@@ -1,0 +1,64 @@
+{% extends "cis/logged-base.html" %}
+{%block title %}Event Speakers{% endblock %}
+
+{% load templatehelpers %}
+
+{% block body %}
+<main>
+    <div class="">
+        <div class="row">
+            <div class="col-sm-6 col-xs-12">
+                <h1 class="h3 mb-4 text-gray-800">Guest Speakers&nbsp; 
+                        <div class="btn-group btn-group-sm">
+                            <button type="button" class="btn btn-primary btn-sm dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                Actions
+                            </button>
+                            <div class="dropdown-menu">
+                                <a href="{% url 'cis:speaker_add_new' %}" class="dropdown-item"><i class="fas fa-plus"></i>&nbsp;&nbsp;Add New</a>
+                                <div class="dropdown-divider"></div>
+                                <a href="?{% query_transform order_by='name' order='desc' export='excel' %}" target="_blank" class="dropdown-item"><i class="fas fa-file-excel"></i>&nbsp;&nbsp;Export to Excel</a>
+                            </div>
+                        </div>
+                </h1>
+            </div>
+            <div class="col-sm-6 col-xs-12 d-none d-md-block d-sm-block">
+                <div class="justify-content-end">
+                {% include 'snippets/search.html' with q=q search_help=search_help %}
+                </div>
+            </div>
+        </div>
+
+        <div class="row table-responsive" style="min-height: 500px;">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        {% include 'snippets/th-order.html' with order_by=order_by order=order title='Name' ordering_by='user__first_name' %}
+
+                        <th>Email</th>
+
+                        <th class='text-right'><span class='sr-only'>Actions</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in records %}
+                    <tr>
+                        <td><a href="{% url 'cis:hs_admin' r.id %}?{% query_transform %}">{{ r.user.first_name }} {{ r.user.last_name }}</a></td>
+                        <td>{{ r.user.email }}</td>
+                        <td class='text-right'><a class="btn btn-sm btn-default btn-outline-secondary"
+                                href="{% url 'cis:speaker' r.id %}?{% query_transform %}">View Details</a></td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6">Your search did not match any records</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        {% include 'snippets/paginator.html' with records=records %}
+        
+    </div>
+
+</main>
+{% endblock %}

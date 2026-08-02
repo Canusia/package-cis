@@ -1,0 +1,14 @@
+{% for m in page_messages %}
+<div class="col-md-12">
+    <p class="alert alert-{{ m.level }}">
+        <i class="{{ m.icon }}"></i>&nbsp;{{ m.text|safe }}
+    </p>
+</div>
+{% if m.tile_id %}
+<script>
+    jQuery(document).ready(function($) {
+        $("#{{ m.tile_id }}").addClass('border-danger').css('background-color', '#fadbd8');
+    });
+</script>
+{% endif %}
+{% endfor %}

@@ -1,0 +1,354 @@
+{% extends "cis/logged-base.html" %}
+{%block title %}{{page_title}}{% endblock %}
+
+{% load templatehelpers %}
+
+{% block body %}
+
+<main>
+    <div class="">
+        <div class="row">
+            <div class="col-sm-6 col-xs-12">
+                <h1 class="h3 mb-4 text-gray-800">{{page_title}}&nbsp;
+                </h1>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <div class="">
+                {% include "cis/messages.html" with messages=messages %}
+                <ul class="nav nav-tabs">
+                    <li class="nav-item">
+                        <a class="nav-link active" data-toggle="tab" href="#all">All {{page_title}}</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-toggle="tab" href="#missing_faa">Missing Requests</a>
+                    </li>
+                </ul>
+
+                <div class="tab-content">
+
+                    <div class="tab-pane active " id="all">
+                        <div class="bg-white border border-top-0">
+                            <div class="col-12 pt-3 mb-3">
+                                <div class="row">
+                                    <div class="col-md-12 mb-3">
+                                        <div class="card">
+                                            <div class="card-body bg-gray-200">
+                                                <form id="class_section_filter" class="form-inline filter">
+                                                    <div class="form-row">
+                                                        <div class="col">
+                                                            <div class="float-right">
+                                                                
+                                                                <select class="form-control mt-2" name="term_id">
+                                                                    <option value="">By Term</option>
+                                                                    {% for c in terms %}
+                                                                    <option value="{{c.id}}"
+                                                                        {% if c.id == active_term.id %} selected
+                                                                        {% endif %}>{{c}}</option>
+                                                                    {% endfor %}
+                                                                </select>
+                                                                {% include 'snippets/campus.html' with campus=accessible_campuses default_campus=default_campus %}
+                                                                &nbsp;
+                                                                
+                                                            </div>
+
+                                                        </div>
+                                                    </div>
+                                                </form>
+
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <table id="records_all" class="table table-striped responsive" style="width:100%">
+                                    <thead>
+                                        <tr>
+                                            <th data-data="created_on" searchable="1" data-name="created_on">Created On
+                                            </th>
+                                            <th data-data="term.code" searchable="0" data-name="term.code">Term
+                                            </th>
+                                            <th data-data="student.user.last_name" searchable="1" data-name="student.user.last_name">Last Name
+                                            </th>
+                                            <th data-data="student.user.first_name" searchable="1" data-name="student.user.first_name">First Name</th>
+                                            <th data-name="student.highschool.name" searchable="1" data-data="student.highschool.name">High School</th>
+                                            <th data-name="student.user.email" searchable="1" data-data="student.user.email">Email</th>
+                                            <th data-data="student.current_student_balance" searchable="1" data-name="student.current_student_balance">Student Balance
+                                            </th>
+                                            <th data-data="student.current_school_balance" searchable="1" data-name="student.current_school_balance">School Balance
+                                            </th>
+                                            <th data-data="status" searchable="1" data-name="status">Status
+                                            </th>
+                                            <th data-data="ce_url" data-name='ce_url'><span class="sr-only">Actions</span></th>
+                                        </tr>
+                                    </thead>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- end tab # records_active -->
+
+                    <div class="tab-pane " id="missing_faa">
+                        <div class="bg-white border border-top-0">
+                            <div class="col-12 pt-3 mb-3">
+                                <div class="row">
+                                    <div class="col-md-12 mb-3">
+                                        <div class="card">
+                                            <div class="card-body bg-gray-200">
+                                                <form id="missing_faa_filter" class="form-inline filter">
+                                                    <div class="form-row">
+                                                        <div class="col">
+                                                            <div class="float-right">
+                                                                
+                                                                <select class="form-control mt-2" name="term_id">
+                                                                    <option value="">By Term</option>
+                                                                    {% for c in terms %}
+                                                                    <option value="{{c.id}}"
+                                                                        {% if c.id == active_term.id %} selected
+                                                                        {% endif %}>{{c}}</option>
+                                                                    {% endfor %}
+                                                                </select>
+                                                                {% include 'snippets/campus.html' with campus=accessible_campuses default_campus=default_campus %}
+                                                                &nbsp;
+                                                            </div>
+
+                                                        </div>
+                                                    </div>
+                                                </form>
+
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <table id="records_missing_faa" class="table table-striped responsive" style="width:100%">
+                                    <thead>
+                                        <tr>
+                                            <th data-data="user.last_name" searchable="1" data-name="user.last_name">Last Name
+                                            </th>
+                                            <th data-data="user.first_name" searchable="1" data-name="user.first_name">First Name</th>
+                                            <th data-name="highschool.name" searchable="1" data-data="highschool.name">High School</th>
+                                            <th data-name="user.email" searchable="1" data-data="user.email">Email</th>
+                                            <th data-data="current_student_balance" searchable="1" data-name="current_student_balance">Student Balance
+                                            </th>
+                                            <th data-data="current_school_balance" searchable="1" data-name="current_school_balance">School Balance
+                                            </th>
+                                            <th data-data="ce_url" data-name='ce_url'><span class="sr-only">Actions</span></th>
+                                        </tr>
+                                    </thead>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- end tab # records_active -->
+
+                </div>
+                <!-- end tab-content -->
+
+                <script>
+                    var table, table_missing_faa;
+                    setInterval(function() {
+                        if(!table.rows('.selected').any())
+                            table.ajax.reload(null, false);
+
+                        if(!table_missing_faa.rows('.selected').any())
+                            table_missing_faa.ajax.reload(null, false);
+                    }, 10000 * 60);
+
+                    $(document).ready(function () {
+                        // $('form#class_section_filter').rememberState()
+
+                        let baseURL = '{{api_url}}'
+
+                        $(document).on("change", "form#missing_faa_filter :input", function () {
+                            load_missing_data();
+                        })
+
+                        function load_missing_data() {
+                            let form = $('form#missing_faa_filter')
+                            let newURL = "{{missing_faa_api_url}}" + '&' + $(form).serialize();
+
+                            table_missing_faa.ajax.url(newURL).load()
+                        }
+
+                        $(document).on("change", "form#class_section_filter :input", function () {
+                            load_data();
+                        })
+
+                        function load_data() {
+                            let form = $('form#class_section_filter')
+                            let newURL = baseURL + '&' + $(form).serialize();
+
+                            table.ajax.url(newURL).load()
+                        }
+   
+                        table = $('#records_all')
+                            .DataTable({
+                                dom: 'B<"float-left mt-3 mb-3"l><"float-right mt-3"f><"row clear">rt<"row"<"col-6"i><"col-6 float-right"p>>',
+                                buttons: [
+                                    {
+                                        extend: 'csv', className: 'btn btn-sm btn-primary text-white text-light',
+                                        text: '<i class="fas fa-file-csv text-white"></i>&nbsp;CSV',
+                                        titleAttr: 'Export results to CSV' 
+                                    },
+                                    { 
+                                        extend: 'print', className: 'btn btn-sm btn-primary text-white text-light',
+                                        text: '<i class="fas fa-print text-white"></i>&nbsp;Print',
+                                        titleAttr: 'Print' 
+                                    },
+                                ],
+                                'orderCellsTop': true,
+                                'fixedHeader': true,
+                                // searching: false,
+                                ajax: '{{api_url}}',
+                                serverSide: true,
+                                processing: true,
+                                // stateSave: true,
+                                language: {
+                                    'loadingRecords': '&nbsp;',
+                                },
+                                order: [
+                                    [0, 'desc'],
+                                ],
+                                'lengthMenu': [30, 50, 100],
+                                'columns': [
+                                    null,
+                                    {
+                                        'render': function (data, type, row, meta) {
+                                            return row.term.academic_year.name + ' / ' + row.term.label
+                                        }
+                                    },
+                                    null,
+                                    null,
+                                    {
+                                        'render': function (data, type, row, meta) {
+                                            return row.student.highschool.name
+                                        }
+                                    },
+                                    null,
+                                    {
+                                        'render': function (data, type, row, meta) {
+                                            return formatCurrency(row.student.current_student_balance)
+                                        }  
+                                    },
+                                    {
+                                        'render': function (data, type, row, meta) {
+                                            return formatCurrency(row.student.current_school_balance)
+                                        }  
+                                    },
+                                    null,
+                                    {
+                                        'searchable': false,
+                                        'orderable': false,
+                                        'render': function (data, type, row, meta) {
+                                            return "<a class='btn btn-sm btn-primary record-details' refresh-target='table' href='" + row.ce_url + "'>View Details</a>"
+                                        }
+                                    }
+                                ]
+                            }
+                        );
+
+                        table_missing_faa = $('#records_missing_faa')
+                            .DataTable({
+                                dom: 'B<"float-left mt-3 mb-3"l><"float-right mt-3"f><"row clear">rt<"row"<"col-6"i><"col-6 float-right"p>>',
+                                buttons: [
+                                    {
+                                        extend: 'csv', className: 'btn btn-sm btn-primary text-white text-light',
+                                        text: '<i class="fas fa-file-csv text-white"></i>&nbsp;CSV',
+                                        titleAttr: 'Export results to CSV' 
+                                    },
+                                    { 
+                                        extend: 'print', className: 'btn btn-sm btn-primary text-white text-light',
+                                        text: '<i class="fas fa-print text-white"></i>&nbsp;Print',
+                                        titleAttr: 'Print' 
+                                    },
+                                ],
+                                'orderCellsTop': true,
+                                'fixedHeader': true,
+                                // searching: false,
+                                ajax: '{{missing_faa_api_url}}',
+                                serverSide: true,
+                                processing: true,
+                                // stateSave: true,
+                                language: {
+                                    'loadingRecords': '&nbsp;',
+                                },
+                                'lengthMenu': [30, 50, 100],
+                                'columns': [
+                                    null,
+                                    null,
+                                    {
+                                        'render': function (data, type, row, meta) {
+                                            return row.highschool.name
+                                        }
+                                    },
+                                    null,
+                                    {
+                                        'render': function (data, type, row, meta) {
+                                            return formatCurrency(row.current_student_balance)
+                                        }  
+                                    },
+                                    {
+                                        'render': function (data, type, row, meta) {
+                                            return formatCurrency(row.current_school_balance)
+                                        }  
+                                    },
+                                    {
+                                        'searchable': false,
+                                        'orderable': false,
+                                        'render': function (data, type, row, meta) {
+                                            return "<a class='btn btn-sm btn-primary record-details' refresh-target='table' href='" + row.ce_url + "'>View Details</a>"
+                                        }
+                                    }
+                                ]
+                            }
+                        );
+
+                       
+                        $('#records_all thead tr').clone(true).appendTo( '#records_all thead' );
+                        $('#records_all thead tr:eq(1) th').each( function (i) {
+                            if($(this).attr('searchable') != '1') {
+                                $(this).html('')
+                            } else {
+                                var title = $(this).text();
+                                $(this).html( '<input type="text" class="form-control" placeholder="Search '+title+'" />' );
+                        
+                                $( 'input', this ).on( 'keyup change', function () {
+                                    if ( table.column(i).search() !== this.value ) {
+                                        table
+                                            .column(i)
+                                            .search( this.value )
+                                            .draw();
+                                    }
+                                } );
+                            }
+                        } );
+
+                        $('#records_missing_faa thead tr').clone(true).appendTo( '#records_missing_faa thead' );
+                        $('#records_missing_faa thead tr:eq(1) th').each( function (i) {
+                            if($(this).attr('searchable') != '1') {
+                                $(this).html('')
+                            } else {
+                                var title = $(this).text();
+                                $(this).html( '<input type="text" class="form-control" placeholder="Search '+title+'" />' );
+                        
+                                $( 'input', this ).on( 'keyup change', function () {
+                                    if ( table.column(i).search() !== this.value ) {
+                                        table
+                                            .column(i)
+                                            .search( this.value )
+                                            .draw();
+                                    }
+                                } );
+                            }
+                        } );
+
+                    });
+                </script>
+            </div>
+        </div>
+
+</main>
+
+{% endblock %}

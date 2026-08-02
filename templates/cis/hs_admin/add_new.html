@@ -1,0 +1,167 @@
+{% extends base_template %}
+
+{%block title %}High School Administrator => Add New{% endblock %}
+
+{% load templatehelpers %}
+{% load crispy_forms_tags %}
+
+{% block body %}
+<script>
+
+</script>
+{% if ajax != '1' %}
+<div class="">
+    <div class="row">
+        <div class="col">
+            <h1 class="h3 mt-3 text-gray-800 mb-3">Add New</h1>
+        </div>
+    </div>
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="#">Home</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'cis:hs_admins' %}?{% query_transform %}">All Administrators</a>
+            </li>
+            <li class="breadcrumb-item active" aria-current="page">Add New</li>
+        </ol>
+    </nav>
+</div>
+{% else %}
+<script>
+</script>
+{% endif %}
+
+{% if ajax != '1' %}
+<main>
+    <div class="">
+        <div class="row">
+            <div class="col-12">
+                <div class="form_status">
+                    {% if messages %}
+                    <ul class="messages list-group mb-4">
+                        {% for message in messages %}
+                        <li{% if message.tags %} class="list-group-item {{ message.tags }}" {% endif %}>{{ message }}</li>
+                            {% endfor %}
+                    </ul>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="col-md-5 col-sm-12 mb-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Administrator Details</h5>
+                        <div class="card-text">
+                            <form action="" id="form_district_add_new" method="post">
+                                {% csrf_token %}
+                                {{ form | crispy }}
+                                <input type="submit" class="btn btn-primary btn-sm" value="Add Record">
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-7 col-sm-12 mb-4">
+                <div class="card mb-3">
+                    <div class="card-body">
+                        <h5 class="card-title">Import HS Members from CSV</h5>
+                        <div class="card-text">
+                            <p class="alert alert-info">
+                                Upload a CSV file to create or update HS administrators and their positions.
+                                Use the template below to ensure your file has the correct format.
+                                Once processed, the system will generate a CSV report with the results.
+                            </p>
+
+                            <a href="{% url 'cis:hs_admin_download_template' %}" class="btn btn-outline-secondary btn-sm mb-3">
+                                <i class="fa fa-download"></i> Download Template
+                            </a>
+
+                            <form action="" method="post" enctype="multipart/form-data">
+                                {% csrf_token %}
+                                {{ upload_form | crispy }}
+
+                                <input type="submit" class="btn btn-primary btn-sm" name="upload_file"
+                                    value="Import HS Members">
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">CSV Field Reference</h5>
+                        <div class="card-text">
+                            <p class="small text-muted mb-2">
+                                Fields marked with <span class="badge badge-danger">Required</span> must be present in every row.
+                                Column names are case-sensitive.
+                            </p>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered table-striped mb-0" style="font-size: 0.85rem;">
+                                    <thead class="thead-light">
+                                        <tr>
+                                            <th>Column Name</th>
+                                            <th>Description</th>
+                                            <th>Type</th>
+                                            <th>Required</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for field in schema_fields %}
+                                        <tr>
+                                            <td><code>{{ field.name }}</code></td>
+                                            <td>{{ field.description }}</td>
+                                            <td><small>{{ field.type }}</small></td>
+                                            <td>
+                                                {% if field.required %}
+                                                    <span class="badge badge-danger">Required</span>
+                                                {% else %}
+                                                    <span class="badge badge-secondary">Optional</span>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <hr>
+                            <h6>Notes</h6>
+                            <ul class="small text-muted mb-0">
+                                <li>Administrators are matched by <strong>email</strong> address. Existing administrators will be reused.</li>
+                                <li><strong>ceeb</strong> codes must match existing high schools. Multiple codes can be comma-separated.</li>
+                                <li><strong>position_title</strong> defaults to <code>Primary Contact</code> if left empty.</li>
+                                <li><strong>status</strong> must be <code>Active</code> or <code>Inactive</code> (defaults to <code>Active</code>).</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+{% else %}
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Administrator Details</h5>
+                    <div class="card-text">
+                        <div class="form_status">
+                            {% if messages %}
+                            <ul class="messages list-group">
+                                {% for message in messages %}
+                                <li{% if message.tags %} class="list-group-item {{ message.tags }}" {% endif %}>{{ message }}</li>
+                                    {% endfor %}
+                            </ul>
+                            {% endif %}
+                        </div>
+                        <form action="" id="form_district_add_new" method="post">
+                            {% csrf_token %}
+                            {{ form | crispy }}
+                            <input type="hidden" name="ajax" value="1">
+                            <input type="hidden" name="model" value="hs_admin">
+                            <input type="submit" class="btn btn-primary btn-sm" value="Add Record">
+                        </form>
+                    </div>
+                </div>
+            </div> <!-- end card -->
+{% endif %}
+
+{% endblock %}

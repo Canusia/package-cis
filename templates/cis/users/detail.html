@@ -1,0 +1,124 @@
+{% extends "cis/logged-base.html" %}
+{%block title %}{{ page_title }}{% endblock %}
+
+{% load templatehelpers %}
+{% load crispy_forms_tags %}
+
+{% block body %}
+<script>
+    jQuery(function ($) {
+        $('.dataTable').DataTable();
+    });
+</script>
+<div class="">
+    <div class="row">
+        <div class="col-md-6 col-sm-12">
+            <h1 class="h3 mt-3 text-gray-800 mb-3">{{ page_title }}</h1>
+        </div>
+        <!-- <div class="col-md-6 col-sm-12">
+            <div class="justify-content-end">
+                <form class="form-inline p-2 justify-content-end">
+                    <div class="ui search category focus">
+                        <div class="ui left icon input">
+                            <input class="prompt" type="text" placeholder="Search by name" autocomplete="off">
+                        </div>
+                        <div class="results"></div>
+                    </div>
+                </form>
+            </div>
+        </div> -->
+    </div>
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="#">Home</a></li>
+            <li class="breadcrumb-item"><a
+                    href="{% url urls.all_items %}?{% query_transform %}">{{labels.all_items}}</a>
+            </li>
+            <li class="breadcrumb-item active" aria-current="page">{{ record.first_name }}</li>
+        </ol>
+    </nav>
+</div>
+<main>
+    <div class="row">
+        <div class="col-md-4 col-sm-12 mb-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="mb-3">Details <small class="float-right"><a  target="_parent"
+                                href='{% url 'impersonate-start' record.id %}'><i class="fa fa-ghost"></i></a></small>
+                    </h5>
+                    <div class="card-text">
+                        {% if messages %}
+                        <ul class="messages list-group">
+                            {% for message in messages %}
+                            <li{% if message.tags %} class="list-group-item {{ message.tags }}" {% endif %}>
+                                {{ message }}
+                                </li>
+                                {% endfor %}
+                        </ul>
+                        {% endif %}
+                        <form action="" method="post">
+                            {% csrf_token %}
+                            {{ form | crispy }}
+                            <input type="submit" class="btn btn-primary btn-sm" value="Update">
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-8 col-sm-12">
+            <ul class="nav nav-tabs">
+                <li class="nav-item d-none">
+                    <a class="nav-link" data-toggle="tab" href="#passwd_reset">Password Reset</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link active" data-toggle="tab" href="#login_history">Login History</a>
+                </li>
+            </ul>
+            <!-- Tab panes -->
+            <div class="tab-content">
+                <div class="tab-pane active" id="login_history">
+                    <div class="col-12 mt-3">
+                        <table class="table table-striped">
+                            <thead>
+                                <th>Last Login</th>
+                                <th>From</th>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    {% for h in history %}
+                                        <tr>
+                                            <td>{{h.date}}</td>
+                                            <td>{{h.country}}</td>
+                                        </tr>
+                                    {% endfor %}
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="tab-pane" id="permissions">
+                    <div class="row bg-white">
+                        <div class="col-12 bg-gray-100">
+                            <div class="card mb-4 border-top-0">
+                                <div class="card-body">
+                                    <p class="alert alert-info">
+                                        Please click the button below to generate the password reset link for this
+                                        user.
+                                    </p>
+                                    <a href="#" class="btn btn-sm btn-block btn-primary ajax-pwd_reset_link"
+                                        data-parent="{{record.id}}" data-id="{{record.id}}" data-modal="modal-add_new"
+                                        data-model="customuser" data-updater=""><i
+                                            class="fa fas-light fa-plus-circle"></i>&nbsp;Generate Link</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div> <!-- end col-md-8 -->
+
+    </div> <!-- end row -->
+
+
+</main>
+{% endblock %}

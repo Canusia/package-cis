@@ -1,0 +1,22 @@
+{% for p in nav_items %}
+    {% if not p.dislay %}        
+        {% if p.name != 'home' %}
+            <div class="col-md-4 ">
+                <div class="card mb-4 shadow-sm" id="id_tile_{{p.name}}">
+                    <div class="text-center pt-2">
+                        <i class="{{ p.icon }}  fa-3x card-img-top"></i>
+                    </div>
+                    <div class="card-body text-center">
+                        <p class="card-text">{{ p.label }}</p>
+                        <div class="align-items-center">
+                            <div class="">
+                                <a class="btn btn-sm btn-block btn-outline-secondary stretched-link"
+                                    title="{{ p.label }}" href="{% url p.url %}">Continue</a>
+                            </div>
+                        </div> <!-- end d-flex -->
+                    </div> <!-- end card body -->
+                </div> <!-- end card -->
+            </div>
+        {% endif %}
+    {% endif %}
+{% endfor %}

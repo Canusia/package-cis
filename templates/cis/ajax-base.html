@@ -1,0 +1,94 @@
+<script>
+  jQuery(function ($) {
+    $('.dateinput:not([type=date])').mask('00/00/0000');
+  });
+
+  $(document).ready(function () {
+
+    $(document).on("submit", "form.frm_bulk_action", function (event) {
+      var blocked_element = $(this).parent()
+      $(blocked_element).block();
+      event.preventDefault()
+
+      if ($("input, select, textarea").hasClass('is-invalid'))
+        $("input, select, textarea").removeClass('is-invalid')
+
+      if ($("input, select, textarea").next('p').length)
+        $("input, select, textarea").nextAll('p').empty();
+
+      let first_element = '';
+
+      var form = this
+      var formData = new FormData(this)
+
+      let action = $(form).attr('action')
+      
+      $.ajax({
+        type: "POST",
+        url: action,
+        processData: false,
+        contentType: false,
+        data: formData, // $(".modal-content form").serialize(),
+        error: function (xhr, status, error) {
+
+          let errors = $.parseJSON(xhr.responseJSON.errors);
+
+          var span = document.createElement('span')
+          span.innerHTML = xhr.responseJSON.message
+
+          for (var name in errors) {
+            for (var i in errors[name]) {
+              var $input = $("[name='" + name + "']");
+              $input.addClass('is-invalid');
+
+              $input.after("<p class='invalid-feedback'><strong class=''>" + errors[name][i].message + "</strong></p>");
+            }
+
+            if (name == '__all__') {
+              span.innerHTML += "<br><br>" +
+                errors[name][0].message
+            }
+
+            if (first_element == '')
+              $input.focus()
+            else {
+              first_element = '-'
+            }
+          }
+
+          swal({
+            title: xhr.responseJSON.message,
+            content: span,
+            icon: 'warning'
+          });
+
+          $(blocked_element).unblock();
+        },
+        success: function (response) {
+          swal({
+            title: 'Success',
+            text: response.message,
+            icon: response.status
+          }).then(
+            (value) => {
+              if (response.action == 'reload_page') {
+                parent.location.reload()
+              }
+              if (response.action == 'reload_table') {
+                let modal = "modal-bulk_actions"
+                $("#" + modal).modal('hide');
+
+                window.parent.refreshTable();
+              }
+            }
+          )
+          $(blocked_element).unblock();
+        }
+      })
+      return false
+    });
+  })
+</script>
+{% block body %}
+Body content
+{% endblock %}

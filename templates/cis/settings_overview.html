@@ -1,0 +1,130 @@
+{% extends "cis/logged-base.html" %}
+{% block title %}{{ overview.title }}{% endblock %}
+
+{% block body %}
+<main>
+  <div class="row">
+    <div class="col-sm-12">
+      <h1 class="h3 mb-2 text-gray-800">{{ overview.title }}</h1>
+      <p class="text-muted mb-3">Current configuration for each step a student
+        moves through. Use <strong>Edit</strong> to change a setting in place.</p>
+    </div>
+  </div>
+
+  {% for section in overview.sections %}
+  <div class="card mb-3">
+    <div class="card-header bg-gray-200"><strong>{{ section.title }}</strong></div>
+    <div class="card-body">
+      {% for item in section.items %}
+      <div class="mb-4">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h5 class="mb-0">{{ item.title }}</h5>
+          {% if item.available and item.record_id %}
+          <button type="button" class="btn btn-sm btn-outline-primary so-edit"
+                  data-record-id="{{ item.record_id }}">
+            <i class="fas fa-edit"></i>&nbsp;Edit</button>
+          {% endif %}
+        </div>
+        {% if item.description %}
+          <p class="text-muted small mb-2">{{ item.description }}</p>
+        {% endif %}
+        {% if not item.available %}
+          <p class="text-danger small mb-0">Setting unavailable (not registered).</p>
+        {% else %}
+          <dl class="row mb-0">
+            {% for f in item.fields %}
+            <dt class="col-sm-4 text-truncate" title="{{ f.label }}">{{ f.label }}</dt>
+            <dd class="col-sm-8">
+              {% if f.is_empty %}<span class="text-warning">— not set —</span>
+              {% elif f.is_html %}<div class="border rounded p-2 bg-light">{{ f.value|safe }}</div>
+              {% else %}{{ f.value }}{% endif %}
+            </dd>
+            {% endfor %}
+          </dl>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</main>
+
+<div class="modal fade" id="so-edit-modal" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Edit Setting</h5>
+        <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+      </div>
+      <div class="modal-body" id="so-edit-body"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  jQuery(function ($) {
+    var recordDetailsUrl = "{% url 'setting:record_details' %}";
+    // run_record reverses with a placeholder uuid; swap it per-record.
+    var runRecordBase = "{% url 'setting:run_record' '00000000-0000-0000-0000-000000000000' %}"
+                          .replace('00000000-0000-0000-0000-000000000000', '');
+    var currentId = null;
+
+    $(document).on('click', '.so-edit', function () {
+      currentId = $(this).data('record-id');
+      $.ajax({
+        type: 'GET', url: recordDetailsUrl, data: { report_id: currentId },
+        success: function (resp) {
+          // record_details always responds 200; status distinguishes success/error.
+          if (resp.status !== 'success') { alert(resp.message || 'Unable to load setting.'); return; }
+          $('#so-edit-body').html(resp.report);
+          $('#so-edit-modal').modal('show');
+        },
+        error: function () { alert('Unable to load setting.'); },
+      });
+    });
+
+    // The injected crispy form submits here; POST to run_record/<currentId>.
+    // run_record's per-setting classes return {message, status:'success'} with HTTP 200 on save.
+    // The view itself returns HTTP 400 with {message, errors, status:'error'} on form validation
+    // failure (errors is a JSON string from form.errors.as_json()), and HTTP 400 with
+    // {message, details, status:'error'} on an unexpected exception. Neither error case re-renders
+    // the form, so on error we keep the modal open and surface the message instead of reloading.
+    $(document).on('submit', '#so-edit-body form', function (e) {
+      e.preventDefault();
+      var $form = $(this);
+
+      function showError(resp) {
+        var msg = (resp && resp.message) || 'Save failed. Please try again.';
+        if (resp && resp.errors) {
+          try {
+            var errors = JSON.parse(resp.errors);
+            var lines = [];
+            $.each(errors, function (field, fieldErrors) {
+              $.each(fieldErrors, function (i, err) {
+                lines.push(field + ': ' + err.message);
+              });
+            });
+            if (lines.length) { msg += '\n' + lines.join('\n'); }
+          } catch (e) { /* leave msg as-is */ }
+        }
+        alert(msg);
+      }
+
+      $.ajax({
+        type: 'POST', url: runRecordBase + currentId, data: $form.serialize(),
+        success: function (resp) {
+          if (resp && resp.status === 'error') { showError(resp); return; }
+          $('#so-edit-modal').modal('hide');
+          window.location.reload();
+        },
+        error: function (xhr) {
+          // Validation/exception failures come back as HTTP 400, which jQuery routes here.
+          if (xhr.responseJSON) { showError(xhr.responseJSON); return; }
+          alert('Save failed. Please try again.');
+        },
+      });
+      return false;
+    });
+  });
+</script>
+{% endblock %}

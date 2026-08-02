@@ -1,0 +1,482 @@
+{% extends "cis/logged-base.html" %}
+{%block title %}{{page_title}}{% endblock %}
+
+{% load templatehelpers %}
+
+{% block body %}
+
+<main>
+    <div class="">
+        <div class="row">
+            <div class="col-sm-6 col-xs-12">
+                <h1 class="h3 mb-4 text-gray-800">{{page_title}}&nbsp;
+                    <div class="btn-group btn-group-sm">
+                        <button type="button" class="btn btn-primary btn-sm dropdown-toggle" data-toggle="dropdown"
+                            aria-haspopup="true" aria-expanded="false">
+                            Actions
+                        </button>
+                        <div class="dropdown-menu">
+                            <a href="{% url urls.add_new %}" class="dropdown-item"><i
+                                    class="fas fa-plus"></i>&nbsp;&nbsp;Manage</a>
+                        </div>
+                    </div>
+                </h1>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <div class="">
+                {% include "cis/messages.html" with messages=messages %}
+                <ul class="nav nav-tabs">
+                    <li class="nav-item">
+                        <a class="nav-link active" data-toggle="tab" href="#all">All {{page_title}}</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-toggle="tab" href="#by_notes">By Notes</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-toggle="tab" href="#by_syllabi">By Syllabi</a>
+                    </li>
+                    <li class="nav-item d-none">
+                        <a class="nav-link" data-toggle="tab" href="#grades">Grades</a>
+                    </li>
+                    <li class="nav-item d-none">
+                        <a class="nav-link" data-toggle="tab" href="#archived">Archived</a>
+                    </li>
+                </ul>
+                <div class="tab-content">
+                    <div class="tab-pane" id="by_syllabi">
+                        <div class="bg-white border border-top-0">
+                            <div class="col-12 pt-3 mb-3">
+                                <div class="row">
+                                    <div class="col-md-12 mb-3">
+                                        <div class="card">
+                                            <div class="card-body bg-gray-200">
+                                                <form id="class_section_syllabi_filter" class="form-inline float-right filter">
+                                                    <div class="form-row">
+                                                        <div class="col">
+                                                            <div class="float-right">
+                                                                <select class="form-control mt-2" name="term">
+                                                                    <option value="">Filter By Term</option>
+                                                                    {% for c in terms %}
+                                                                    <option value="{{c.id}}"
+                                                                        {% if c.id == active_term.id %} selected
+                                                                        {% endif %}>{{c}}</option>
+                                                                    {% endfor %}
+                                                                </select>
+                                                            </div>
+
+                                                        </div>
+                                                    </div>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <table id="records_syllabi_all" class="table table-striped responsive" style="width:100%">
+                                    <thead>
+                                        <tr>
+                                            <th data-data="class_sections.term.code" data-name="class_sections.term.code">Term
+                                            </th>
+                                            <th data-data="class_sections.course.title" data-name="class_sections.course.title">Course
+                                            </th>
+                                            <th data-data="class_sections.teacher" data-name="class_sections.teacher.user.last_name">Instructor
+                                            </th>
+                                            <th data-data="class_sections.class_number" data-name='class_sections.class_number'>Class No.</th>
+                                            <th data-data="media" data-name="media">Syllabi</th>
+                                            <th data-data="class_sections.syllabi_status" data-name="class_sections.syllabi_status">Syllabi Status</th>
+                                            <th data-data="id" data-name='id'><span class="sr-only">Actions</span></th>
+                                        </tr>
+                                    </thead>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- end tab # records_active -->
+
+                    <div class="tab-pane active " id="all">
+                        <div class="bg-white border border-top-0">
+                            <div class="col-12 pt-3 mb-3">
+                                <div class="row">
+                                    <div class="col-md-12 mb-3">
+                                        <div class="card">
+                                            <div class="card-body bg-gray-200">
+                                                <form id="class_section_filter" class="form-inline float-right filter">
+                                                    <div class="form-row">
+                                                        <div class="col">
+                                                            <div class="float-right">
+                                                                <select class="form-control mt-2" name="term">
+                                                                    <option value="">Filter By Term</option>
+                                                                    {% for c in terms %}
+                                                                    <option value="{{c.id}}"
+                                                                        {% if c.id == active_term.id %} selected
+                                                                        {% endif %}>{{c}}</option>
+                                                                    {% endfor %}
+                                                                </select>
+
+                                                                &nbsp;
+                                                                {% include 'snippets/campus.html' with campus=campus default_campus=default_campus %}
+                                                                &nbsp;
+                                                                <select class="form-control mt-2" name="roster_status">
+                                                                    <option value="">Filter By Roster Status</option>
+                                                                    {% for c, label in roster_status %}
+                                                                    <option value="{{c}}"
+                                                                        {% if c == selected_roster_status %} selected
+                                                                        {% endif %}>{{label}}</option>
+                                                                    {% endfor %}
+                                                                </select>
+                                                                &nbsp;
+                                                                <select class="form-control mt-2" name="grade_status">
+                                                                    <option value="">Filter By Grade Status</option>
+                                                                    {% for c, label in grade_status %}
+                                                                    <option value="{{c}}"
+                                                                        {% if c == selected_grade_status %} selected
+                                                                        {% endif %}>{{label}}</option>
+                                                                    {% endfor %}
+                                                                </select>
+                                                            </div>
+
+                                                        </div>
+                                                    </div>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% include sections_table.partial_template with config=sections_table %}
+                            </div>
+                        </div>
+                    </div>
+                    <!-- end tab # records_active -->
+
+                    <div class="tab-pane" id="by_notes">
+                        <div class="bg-white border border-top-0">
+                            <div class="col-12 pt-3 mb-3">
+                                <div class="row">
+                                    <div class="col-md-12 mb-3">
+                                        <div class="card">
+                                            <div class="card-body bg-gray-200">
+                                                <form id="class_section_note_filter" class="form-inline float-right filter">
+                                                    <div class="form-row">
+                                                        <div class="col">
+                                                            <div class="float-right">
+                                                                <select class="form-control mt-2" name="term">
+                                                                    <option value="">Filter By Term</option>
+                                                                    {% for c in terms %}
+                                                                    <option value="{{c.id}}"
+                                                                        {% if c.id == active_term.id %} selected
+                                                                        {% endif %}>{{c}}</option>
+                                                                    {% endfor %}
+                                                                </select>
+                                                                &nbsp;
+                                                                {% include 'snippets/campus.html' with campus=campus default_campus=default_campus %}&nbsp;
+                                                                <select class="form-control mt-2" name="roster_status">
+                                                                    <option value="">Filter By Roster Status</option>
+                                                                    {% for c, label in roster_status %}
+                                                                    <option value="{{c}}"
+                                                                        {% if c == selected_roster_status %} selected
+                                                                        {% endif %}>{{label}}</option>
+                                                                    {% endfor %}
+                                                                </select>
+                                                            </div>
+
+                                                        </div>
+                                                    </div>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <table id="records_notes_all" class="table table-striped responsive" style="width:100%">
+                                    <thead>
+                                        <tr>
+                                            <th data-data="createdon" data-name="createdon">Created On</th>
+                                            <th data-data="class_section.term.code" data-name="class_section.term.code">Term(s)
+                                            </th>
+                                            <th data-data="class_section.course.title" data-name="class_section.course.title">Course
+                                            </th>
+                                            <th data-name="class_section.course.name"
+                                                data-data="class_section.course.name"></th>
+                                            <th data-name="class_section.course.catalog_number" data-data="class_section.course.catalog_number">
+                                            </th>
+                                            <th data-data="class_section.teacher" data-name="class_section.teacher.user.last_name">Instructor
+                                            </th>
+                                            <th data-data="class_section.class_number" data-name='class_section.class_number'>Class No.</th>
+                                            <th data-data="class_section.roster_status" data-name="class_section.roster_status">Roster Status</th>
+                                            <th data-data="note" data-name="note">Note</th>
+                                            <th data-data="class_section.id" data-name='class_section.id'><span class="sr-only">Actions</span></th>
+                                        </tr>
+                                    </thead>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- end tab # records_active -->
+
+                    <div class="tab-pane" id="grades">
+                        {% include "grades/partials/_sections_grades_tab.html" %}
+                    </div>
+                    <!-- end tab # grades -->
+
+                </div>
+                <!-- end tab-content -->
+
+                <script>
+                    var table_notes, table_syllabi;
+                    // `table` (records_all) is initialized by cis/sections/_table.html
+                    // (initSectionsTable) and exposed as window.table for back-compat.
+                    setInterval(function() {
+
+                        if(window.table && !window.table.rows('.selected').any())
+                            window.table.ajax.reload(null, false);
+
+                        if(!table_notes.rows('.selected').any())
+                            table_notes.ajax.reload(null, false);
+
+                        if(!table_syllabi.rows('.selected').any())
+                            table_syllabi.ajax.reload(null, false);
+                    }, 5000 * 60);
+
+
+                    function refreshTable() {
+                        if (window.table) window.table.ajax.reload()
+                        table_notes.ajax.reload()
+                        table_syllabi.ajax.reload()
+                    }
+
+                    function do_bulk_action(action, dt) {
+                        if(!dt.rows('.selected').any()) {
+                            alert("Please select a row and try again.")
+                            return
+                        }
+
+                        var selectedRows = dt.rows({ selected: true });
+                        let data = {
+                            'action': action,
+                            'ids': Array()
+                        }
+                        selectedRows.every(function() {
+                            data.ids.push(this.id())
+                        })
+
+                        $(dt).block()
+                        url = "{%url 'cis:section_bulk_actions' %}"
+                        let modal = "modal-bulk_actions"
+
+                        $.blockUI();
+                        $.ajax({
+                            type: "GET",
+                            url: url,
+                            data: data,
+                            success: function(response) {
+                                $.unblockUI();
+
+                                if(response.action == 'display') {
+                                    var span = document.createElement('span')
+                                    span.innerHTML = response.message
+                                    swal({
+                                        title: response.title,
+                                        content: span,
+                                        icon: response.status
+                                    });
+
+                                    var selectedRows = window.table.rows({ selected: true });
+                                    selectedRows.deselect();
+
+                                    window.table.ajax.reload(null, false)
+                                    data.ids = Array()
+                                } else {
+                                    $("#bulk_modal_content").html(response);
+                                    $("#" + modal).modal('show');
+
+                                    var selectedRows = window.table.rows({ selected: true });
+                                    selectedRows.deselect();
+                                }
+                            }
+                        });
+                    }
+
+                    $(document).ready(function () {
+                        // $('form.filter').rememberState()
+
+                        // records_all DataTable + class_section_filter wiring is
+                        // handled by cis/sections/_table.html (initSectionsTable).
+
+                        $(document).on("change", "form#class_section_syllabi_filter :input", function () {
+                            load_syllabi_data();
+                        })
+
+
+                        $(document).on("change", "form#class_section_note_filter :input", function () {
+                            load_notes_data();
+                        })
+
+                        function load_syllabi_data() {
+                            let form = $('form#class_section_syllabi_filter')
+                            let newURL = '{{syllabi_api_url}}' + '&' + $(form).serialize();
+
+                            table_syllabi.ajax.url(newURL).load()
+                        }
+
+                        function load_notes_data() {
+                            let form = $('form#class_section_note_filter')
+                            let newURL = '{{notes_api_url}}' + '&' + $(form).serialize();
+
+                            table_notes.ajax.url(newURL).load()
+                        }
+
+                        table_syllabi = $('#records_syllabi_all')
+                           .DataTable({
+                                "fnDrawCallback": function( oSettings ) {
+                                    $.unblockUI();
+                                },
+                                dom: 'B<"float-left mt-3 mb-3"l><"float-right mt-3"f><"row clear">rt<"row"<"col-6"i><"col-6 float-right"p>>',
+                                buttons: [
+                                    {
+                                        extend: 'csv', className: 'btn btn-sm btn-primary text-white text-light',
+                                        text: '<i class="fas fa-file-csv text-white"></i>&nbsp;CSV',
+                                        titleAttr: 'Export results to CSV' 
+                                    },
+                                    { 
+                                        extend: 'print', className: 'btn btn-sm btn-primary text-white text-light',
+                                        text: '<i class="fas fa-print text-white"></i>&nbsp;Print',
+                                        titleAttr: 'Print' 
+                                    },
+                                ],
+                                ajax: '{{syllabi_api_url}}&' + $('form#class_section_syllabi_filter').serialize(),
+                                serverSide: true,
+                                processing: true,
+                                stateSave: true,
+                                order: [[0, 'desc']],
+                                language: {
+                                    'loadingRecords': '&nbsp;',
+                                },
+                                'lengthMenu': [30, 50, 100],
+                                'columns': [
+                                    {
+                                        'render': function (data, type, row, meta) {
+                                            return row.class_sections[0].term.label + ' ' + row.class_sections[0].term.year
+                                        }
+                                    },
+                                    {
+                                        'render': function (data, type, row, meta) {
+                                            return row.class_sections[0].course.title + ' (' + row.class_sections[0].course.name + ')'
+                                        }
+                                    },
+                                    {
+                                        'render': function (data, type, row, meta) {
+
+                                            if (row.class_sections[0].teacher === null)
+                                                return '';
+                                            return row.class_sections[0].teacher.user.last_name + ', ' + row.class_sections[0].teacher.user.first_name
+                                        }
+                                    },
+                                    {
+                                        'render': function (data, type, row, meta) {
+                                            return row.class_sections[0].class_number + ' / ' + row.class_sections[0].section_number + ' (' + row.class_sections[0].credit_hours + ' credits)'
+                                        }
+                                    },
+                                    {
+                                        'render': function (data, type, row, meta) {
+                                            return "<a class='' href='" + row.media + "'>Download</a>";
+                                        }
+                                    }, 
+                                    {
+                                        'render': function (data, type, row, meta) {
+                                            return row.class_sections[0].syllabi_status
+                                            
+                                        }
+                                    },
+                                    {
+                                        'searchable': false,
+                                        'orderable': false,
+                                        'render': function (data, type, row, meta) {
+                                            return "<a class='btn btn-sm btn-primary  record-details' refresh-target='table_syllabi' href='" + "{{urls.details_prefix}}" + row.class_sections[0].id + "'>View Details</a>"
+                                        }
+                                    }
+                                ]
+                            }
+                        );
+
+
+                        table_notes = $('#records_notes_all')
+                           .DataTable({
+                                "fnDrawCallback": function( oSettings ) {
+                                    $.unblockUI();
+                                },
+                                dom: 'B<"float-left mt-3 mb-3"l><"float-right mt-3"f><"row clear">rt<"row"<"col-6"i><"col-6 float-right"p>>',
+                                buttons: [
+                                    {
+                                        extend: 'csv', className: 'btn btn-sm btn-primary text-white text-light',
+                                        text: '<i class="fas fa-file-csv text-white"></i>&nbsp;CSV',
+                                        titleAttr: 'Export results to CSV' 
+                                    },
+                                    { 
+                                        extend: 'print', className: 'btn btn-sm btn-primary text-white text-light',
+                                        text: '<i class="fas fa-print text-white"></i>&nbsp;Print',
+                                        titleAttr: 'Print' 
+                                    },
+                                ],
+                                ajax: '{{notes_api_url}}&' + $('form#class_section_note_filter').serialize(),
+                                serverSide: true,
+                                processing: true,
+                                stateSave: true,
+                                order: [[0, 'desc']],
+                                language: {
+                                    'loadingRecords': '&nbsp;',
+                                },
+                                'lengthMenu': [30, 50, 100],
+                                'columns': [
+                                    null,
+                                    {
+                                        'render': function (data, type, row, meta) {
+                                            return row.class_section.term.label + ' ' + row.class_section.term.year
+                                        }
+                                    },
+                                    {
+                                        'render': function (data, type, row, meta) {
+                                            return row.class_section.course.title + ' (' + row.class_section.course.name + ')'
+                                        }
+                                    },
+                                    {
+                                        'visible': false
+                                    },
+                                    {
+                                        'visible': false
+                                    },
+                                    {
+                                        'render': function (data, type, row, meta) {
+
+                                            if (row.class_section.teacher === null)
+                                                return '';
+                                            return row.class_section.teacher.user.last_name + ', ' + row.class_section.teacher.user.first_name
+                                        }
+                                    },
+                                    {
+                                        'render': function (data, type, row, meta) {
+                                            return row.class_section.class_number + ' / ' + row.class_section.section_number + ' (' + row.class_section.course.credit_hours + ' credits)'
+                                        }
+                                    },
+                                    null,
+                                    null,
+                                    {
+                                        'searchable': false,
+                                        'orderable': false,
+                                        'render': function (data, type, row, meta) {
+                                            return "<a class='btn btn-sm btn-primary  record-details' refresh-target='table_notes' href='" + "{{urls.details_prefix}}" + row.class_section.id + "'>View Details</a>"
+                                        }
+                                    }
+                                ]
+                            }
+                        );
+
+
+                    });
+
+                </script>
+            </div>
+        </div>
+
+</main>
+
+{% endblock %}

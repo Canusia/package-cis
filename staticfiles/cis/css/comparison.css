@@ -1,0 +1,17 @@
+/* Screen: keep wide tables scrollable rather than blowing out the layout. */
+.compare-table-wrap { overflow-x: auto; }
+
+@media print {
+    /* Hide everything that isn't the comparison result. */
+    nav, .nav-tabs, .compare-filters, .compare-actions,
+    .compare-png, .compare-print, .compare-run {
+        display: none !important;
+    }
+    /* One card per page-break boundary; never split a chart. */
+    .compare-card {
+        break-inside: avoid;
+        page-break-inside: avoid;
+        border: none;
+    }
+    .compare-table-wrap { overflow-x: visible; }
+}
