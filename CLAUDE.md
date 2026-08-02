@@ -71,10 +71,13 @@ than declared as dependencies.
 ## Tenant seam
 
 Per-tenant behaviour resolves through `cis.services.tenant_services.get_tenant_service()`,
-backed by each tenant's in-tree `myce_tenant_configs`. Ten seams exist today
+backed by each tenant's in-tree `myce_tenant_configs`. Eleven seams exist today
 (`sis_importer`, `registration_form`, `recommendation_form`, `ferpa_form`,
-`highschool_types`, `bulk_enroller`, `onboarding_steps`, `ethos_identity`, `registration`,
-…). The 29 `reports/`, 22 `services/importers/` schemas and four ewu-flavoured modules
+`verify_email_form`, `highschool_types`, `bulk_enroller`, `onboarding_steps`,
+`ethos_identity`, `registration`, …). The form seams are re-exported by the PEP 562
+`__getattr__` shim at the bottom of `forms/student.py` — adding one means adding an entry to
+`_TENANT_FORMS` there **and** shipping the module in every tenant, or that tenant breaks at
+first use. See README → "Required tenant service modules". The 29 `reports/`, 22 `services/importers/` schemas and four ewu-flavoured modules
 (`tabs/faculty_coordinator.py`, `settings/student_profile.py`,
 `forms/application_validators.py`, `forms/application_form.py`) are **not** behind the
 seam yet — deferred to v0.0.2+, driven by what lsco/sccc convergence surfaces.

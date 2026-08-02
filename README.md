@@ -10,8 +10,12 @@ instructors, courses, sections, terms, campus scoping, settings and the CE admin
 ## Install
 
 ```
-git+https://github.com/Canusia/package-cis.git@v0.0.1
+git+https://github.com/Canusia/package-cis.git@<tag>
 ```
+
+Pin a specific tag — see the repository's tags for the current release. Never
+track `main`: the host records which commit it was built against in its
+`webapp/cis` gitlink, and an unpinned host would drift from it.
 
 Development uses a git submodule at `webapp/cis`.
 
@@ -54,6 +58,23 @@ and the sibling apps `future_sections`, `ethos`, `grades`, `student_transactions
 
 None of them are declared in `install_requires`. That matches Canusia convention and avoids
 a circular pin with `future_sections`, which imports `cis` 150 times.
+
+### Required tenant service modules
+
+Some forms live in the tenant app and are re-exported by a `cis` shim. A host **must** ship
+each of these under `myce_tenant_configs/services/`, or the corresponding import raises at
+first use:
+
+| Module | Must export | Used by |
+|---|---|---|
+| `verify_email_form.py` | `StudentVerifyEmailForm` | student signup at `/student/start_request/`, and `seed_demo_students` |
+| `ferpa_form.py` | `StudentFerpaForm` | student FERPA page, `StudentFerpa.asHTML` |
+| `recommendation_form.py` | `StudentRecommendationForm` | HS-admin student recommendation |
+| `registration_form.py` | `EditStudentRegistration` | CE registration detail/edit |
+| `student_profile_form.py` | `StudentProfileForm`, `EDITABLE_FIELDS` | student profile, CE student edit, importer |
+
+`verify_email_form.py` is **new in v0.0.3** — a tenant upgrading from v0.0.2 must add it
+before deploying, or `/student/start_request/` fails to resolve the form.
 
 ## Tests
 
