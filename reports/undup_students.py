@@ -239,15 +239,16 @@ class undup_students(forms.Form):
                 return ""
             return record.graduation_date.strftime("%m/%d/%Y")
         if key == "export_start_date":
+            # HS start date from student.meta; export as mm/dd/yyyy (same as graduation_date).
             raw = (record.meta or {}).get("start_date")
             if not raw:
                 return ""
             from datetime import date, datetime
             if isinstance(raw, (date, datetime)):
-                return raw.strftime("%m/%Y")
+                return raw.strftime("%m/%d/%Y")
             for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%Y-%m", "%m/%Y"):
                 try:
-                    return datetime.strptime(str(raw), fmt).strftime("%m/%Y")
+                    return datetime.strptime(str(raw), fmt).strftime("%m/%d/%Y")
                 except ValueError:
                     continue
             return str(raw)
