@@ -88,9 +88,21 @@ before deploying, or `/student/start_request/` fails to resolve the form.
 
 ## Tests
 
-The 182 test modules live in the repo but are excluded from the distribution. Run them
-against a tenant's submodule checkout:
+The test modules ship **inside the wheel**, as `cis.tests`. A tenant that adopts this
+package pin-only — no in-tree `webapp/cis` — still runs the whole suite, against its own
+settings and its own `myce_tenant_configs`:
 
 ```bash
-docker exec -w /app/webapp django_web_ewu python manage.py test cis
+docker exec -w /app/webapp django_web_<tenant> python manage.py test cis
 ```
+
+That is deliberate, and it is why `find_packages()` in `setup.py` carries no `exclude`.
+A handful of the modules exercise the tenant seam (`test_tenant_services.py`,
+`test_student_profile_*.py`, `test_mirror_to_sis.py`, …); those only assert anything
+meaningful when they run against a real tenant's configuration, so a tenant whose
+configuration legitimately diverges from the package's assumptions should expect a small
+number of failures there and fix them in its own config — not lose the coverage.
+
+The suite reads no data files today. If a test ever needs one, add its directory to the
+`asset_patterns(...)` call in `setup.py`: `package_data` is enumerated explicitly in this
+layout, so a fixture dropped under `tests/` would not otherwise reach the wheel.

@@ -38,7 +38,13 @@ def asset_patterns(*dirs):
     return sorted(patterns)
 
 
-subpackages = find_packages(where='.', exclude=['tests', 'tests.*'])
+# `tests` is NOT excluded, deliberately. A tenant that adopts this package
+# pin-only and drops its in-tree `webapp/cis` has no other copy of the suite:
+# excluding it took lsco from 1,632 runnable tests to 335 in one step, and the
+# handful of tests that exercise the `myce_tenant_configs` seam only mean
+# anything when run against a real tenant's configuration. `package-grades` and
+# `package-docrepo` both ship their tests; this is the outlier. See ewu#34.
+subpackages = find_packages(where='.')
 
 setup(
     packages=['cis'] + [f'cis.{name}' for name in subpackages],

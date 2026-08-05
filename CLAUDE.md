@@ -57,7 +57,7 @@ production.
 ```
 models/ views/ forms/ serializers/ settings/ services/ tabs/ actions/ admin/ api/
 backends/ signals/ templatetags/ reports/ migrations/ management/commands/
-templates/ (294 files)  staticfiles/ (77)  fixtures/ (1)  tests/ (182, not shipped)
+templates/ (294 files)  staticfiles/ (77)  fixtures/ (1)  tests/ (178, shipped as `cis.tests`)
 ```
 
 ## Coupling
