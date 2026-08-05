@@ -15,6 +15,7 @@ from cis.models.term import Term
 from cis.models.course import Campus
 from cis.models.student import StudentRecommendation
 from cis.campus_gate import get_accessible_campuses, scope_report_by_campus
+from cis.services.recommendation_fields import recommendation_export_fields
 
 _CAMPUS_PATH = 'student__studentregistration__class_section__course__campus'
 
@@ -69,30 +70,43 @@ class recommendation_export(forms.Form):
 
         return records
 
+    #: Columns that come from the record itself and are the same for every
+    #: tenant. The counselor's answers go between the two blocks.
+    IDENTITY_COLUMNS = {
+        'student.id': 'Canusia ID Number',
+        'student.user.first_name': 'Student Legal First Name',
+        'student.user.last_name': 'Student Legal Last Name',
+        'student.user.middle_name': 'Middle Name or Initial',
+        'student.highschool.name': 'High School',
+    }
+
+    SUBMISSION_COLUMNS = {
+        'submitted_on': 'Submitted On',
+        'submitted_by': 'Submitted By',
+
+        'term.code': 'Term Code',
+        'term.label': 'Term',
+    }
+
+    def column_map(self):
+        """``{accessor: header}`` for the export, in column order.
+
+        The answer columns follow the tenant's own recommendation form rather
+        than a fixed list. The list used to be one tenant's Pennsylvania
+        vocabulary, so every other tenant ran this report -- and CE staff do
+        run it -- and got five permanently-empty columns and none of its own
+        (ewu#49).
+        """
+        fields = dict(self.IDENTITY_COLUMNS)
+        fields.update(recommendation_export_fields())
+        fields.update(self.SUBMISSION_COLUMNS)
+        return fields
+
     def run(self, task, data):
         records = self.get_result(data, user=getattr(task, 'created_by', None))
 
         file_name = "student-recommendation-export.csv"
-        fields = {
-            'student.id': 'Canusia ID Number',
-            'student.user.first_name': 'Student Legal First Name',
-            'student.user.last_name': 'Student Legal Last Name',
-            'student.user.middle_name': 'Middle Name or Initial',
-            'student.highschool.name': 'High School',
-
-            'qualification': 'Qualification',
-            'grade_earned': 'Grade Earned',
-            'school_assessment': 'School Assessment',
-            'keystone_exam': 'Keystone Exam',
-            'geip': 'GEIP',
-            'enrolled_in_honors': 'Enrolled in Honors',
-
-            'submitted_on': 'Submitted On',
-            'submitted_by': 'Submitted By',
-
-            'term.code': 'Term Code',
-            'term.label': 'Term',
-        }
+        fields = self.column_map()
 
         stream = io.StringIO()
         writer = csv.writer(stream, delimiter=',')

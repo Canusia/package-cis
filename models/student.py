@@ -2835,6 +2835,33 @@ class StudentRecommendation(models.Model):
         from cis.services.tenant_services import get_tenant_service
         return get_tenant_service('recommendation_form').as_html(self, html_type)
 
+    def __getattr__(self, name):
+        """Read a tenant's own recommendation answers by attribute.
+
+        The fixed properties above cover one tenant's vocabulary. A tenant
+        whose rec form declares different fields had no property to render
+        through, so its answers were only reachable by digging into the raw
+        blob (`{{ rec.recommendation.student_frl }}`) -- and the serializer and
+        the export report, which both reach data by attribute, could not see
+        them at all (ewu#49).
+
+        Python only calls this when normal lookup has already failed, so the
+        declared properties and every real field still win. Private and dunder
+        names are refused outright: Django's deferred loading, pickling and
+        copy all probe for those, and answering would break them. `recommendation`
+        is read out of `__dict__` rather than by attribute so an instance that
+        does not have it loaded cannot recurse.
+        """
+        if name.startswith('_'):
+            raise AttributeError(name)
+
+        stored = self.__dict__.get('recommendation')
+        if isinstance(stored, dict) and name in stored:
+            return stored[name]
+
+        raise AttributeError(
+            f'{type(self).__name__!r} object has no attribute {name!r}')
+
 class StudentAgreement(models.Model):
     """
     Student Agreement

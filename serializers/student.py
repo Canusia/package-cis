@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
+from cis.services.recommendation_fields import recommendation_export_fields
 
 from ..models.student import (
     Student, StudentAgreement,
@@ -97,21 +98,27 @@ class StudentAgreementSerializer(serializers.ModelSerializer):
         model = StudentAgreement
         fields = '__all__'
 
+class RecommendationValueField(serializers.CharField):
+    """One answer out of the recommendation blob, by field name.
+
+    Never raises for an answer the counselor left blank or a field added to the
+    tenant's form after a record was stored -- both read as ''.
+    """
+
+    def get_attribute(self, instance):
+        return (getattr(instance, 'recommendation', None) or {}).get(
+            self.field_name, '')
+
+
 class StudentRecommendationSerializer(serializers.ModelSerializer):
     student = StudentSerializer()
+
+    # Cross-tenant aliases, each backed by a property on the model.
     gpa = serializers.CharField(read_only=True)
-    grade_level = serializers.CharField(read_only=True)
     meets_prereq = serializers.CharField(read_only=True)
     student_prereq = serializers.CharField(read_only=True)
-    
     qualification = serializers.CharField(read_only=True)
     waiver_approved = serializers.CharField(read_only=True)
-    
-    school_assessment = serializers.CharField(read_only=True)
-    grade_earned = serializers.CharField(read_only=True)
-    keystone_exam = serializers.CharField(read_only=True)
-    geip = serializers.CharField(read_only=True)
-    enrolled_in_honors = serializers.CharField(read_only=True)
 
     term = TermSerializer()
 
@@ -125,13 +132,28 @@ class StudentRecommendationSerializer(serializers.ModelSerializer):
         datatables_always_serialize = [
             'id',
             'gpa',
-            'grade_level',
             'meets_prereq',
             'qualification',
             'waiver_approved',
             'upload',
-            'grade_earned'
         ]
+
+    def get_fields(self):
+        """Add the tenant's own recommendation answers.
+
+        `school_assessment`, `grade_earned`, `keystone_exam`, `geip` and
+        `enrolled_in_honors` used to be declared here outright. They are one
+        tenant's Pennsylvania vocabulary, so every other tenant's payload
+        carried five permanently-empty fields and none of its own -- which is
+        why a tenant's CE DataTable had to read out of the raw `recommendation`
+        blob instead. They come back automatically for any tenant whose rec
+        form declares them (ewu#49).
+        """
+        fields = super().get_fields()
+        for name in recommendation_export_fields():
+            if name not in fields:
+                fields[name] = RecommendationValueField(read_only=True)
+        return fields
 
 class ParentConsentSerializer(serializers.ModelSerializer):
     student = StudentSerializer()
