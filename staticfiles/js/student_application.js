@@ -30,7 +30,21 @@ $(function () {
     $el.find('input, select, textarea').prop('required', required);
   }
 
+  // Each toggle below starts by checking that its CONTROLLING input exists,
+  // and returns if it does not. The empty-jQuery-set no-op is not enough: the
+  // else-branches call reveal(..., true), which sets required=true on whatever
+  // fields the branch targets. On a form variant that renders those fields but
+  // not the checkbox that governs them — the CE staff edit form and the student
+  // editable profile both do — an unguarded toggle would force them required
+  // and make the form unsubmittable. Returning early leaves them exactly as the
+  // server rendered them, which is the correct default for every variant.
+  //
+  // This file is shared by every tenant, so it carries the union of all
+  // tenants' toggles; a tenant that does not collect a given field simply never
+  // renders its controller and the toggle returns immediately. (ewu#40)
+
   function toggle_new_highschool_info() {
+    if ($("#id_highschool_not_listed").length === 0) return;
     let $elements = $("#div_id_new_highschool_name, #div_id_new_highschool_counselor_name, #div_id_new_highschool_counselor_email");
     if ($("#id_highschool_not_listed").is(":checked")) {
       reveal($elements, true);
@@ -41,6 +55,7 @@ $(function () {
   }
 
   function toggle_mailing_address_info() {
+    if ($("#id_same_as_permanent").length === 0) return;
     let $mailing_divs = $("#div_id_mailing_country, #div_id_mailing_address, #div_id_mailing_address2, #div_id_mailing_city, #div_id_mailing_county, #div_id_mailing_state, #div_id_mailing_zip_code");
     let $mailing_optional_divs = $("#div_id_mailing_address2");
     if ($("#id_same_as_permanent").is(":checked")) {
@@ -51,7 +66,24 @@ $(function () {
     }
   }
 
+  function toggle_ssn_fields() {
+    // No checkbox on this form variant (e.g. CE staff edit form, student
+    // editable profile): leave the SSN fields exactly as the server rendered
+    // them instead of forcing them required.
+    if ($("#id_no_ssn").length === 0) return;
+    let $ssn_divs = $("#div_id_ssn, #div_id_verify_student_ssn");
+    if ($("#id_no_ssn").is(":checked")) {
+      // Clear before hiding, so an SSN typed and then retracted by ticking
+      // "no SSN" is not submitted anyway.
+      $ssn_divs.find('input').val('');
+      hide($ssn_divs);
+    } else {
+      reveal($ssn_divs, true);
+    }
+  }
+
   function toggle_college_attended_info() {
+    if ($("#id_other_college_credits").length === 0) return;
     let $elements = $("#div_id_college_attended_1, #div_id_college_attended_2, #div_id_college_attended_3");
     if ($("#id_other_college_credits").val() == '1') {
       reveal($elements, false);
@@ -65,10 +97,12 @@ $(function () {
   $(document).on('change', '#id_same_as_permanent', toggle_mailing_address_info);
   $(document).on('click', '#id_highschool_not_listed', toggle_new_highschool_info);
   $(document).on('change', '#id_other_college_credits', toggle_college_attended_info);
+  $(document).on('change', '#id_no_ssn', toggle_ssn_fields);
 
   toggle_college_attended_info();
   toggle_new_highschool_info();
   toggle_mailing_address_info();
+  toggle_ssn_fields();
   // Defensive: line 2 address fields are optional and should never be forced required.
   $("#div_id_permanent_address2, #div_id_mailing_address2")
     .find('input, select, textarea')

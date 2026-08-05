@@ -71,11 +71,22 @@ class StudentImportRowForm(StudentProfileForm):
                 self.fields[name].widget = forms.DateInput()
                 self.fields[name].input_formats = ['%m/%d/%Y', '%Y-%m-%d']
 
-        # single-cell multi-choice binding for ethnicity
+        # single-cell multi-choice binding for ethnicity.
+        #
+        # The replacement must inherit the storage metadata of the field it
+        # replaces. MetaFormMixin._save_fields_to_models keys off
+        # storage_target, so a field built fresh here is skipped by the save
+        # loop: the row validates, the import reports success, and the value is
+        # silently discarded (ewu#39). getattr defaults keep a tenant whose
+        # ethnicity field carries no metadata behaving as before.
         if 'ethnicity' in self.fields:
-            self.fields['ethnicity'] = DelimitedMultipleChoiceField(
+            replaced = self.fields['ethnicity']
+            field = DelimitedMultipleChoiceField(
                 choices=Student.ETHNICITY_OPTIONS, required=False,
             )
+            field.storage_target = getattr(replaced, 'storage_target', None)
+            field.storage_path = getattr(replaced, 'storage_path', None)
+            self.fields['ethnicity'] = field
 
     def clean_highschool(self):
         ceeb = (self.data.get('highschool_ceeb') or '').strip()
