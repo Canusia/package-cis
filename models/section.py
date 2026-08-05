@@ -1479,6 +1479,12 @@ class StudentRegistration(models.Model):
         ('not_approved', 'Not Approved by HS'),
         ('missing_prereq', 'Missing PreReq'),
 
+        # A registration the student entered twice. Distinct from a denial on
+        # purpose: closing duplicates out as 'not_approved' misreports the
+        # school's approval rate. Carried in HVCC's own tree before the
+        # extraction (ewu#47).
+        ('duplicate', 'Duplicate Section'),
+
         # ('knowledge_assessment', 'Pending Knowledge Assessment'),
 
         # ('cancelled', 'Cancelled'),
