@@ -94,3 +94,56 @@ class FieldMessagesTests(TestCase):
         form = SpecDrivenApplicationForm(spec=SPEC, student=self.student)
         self.assertEqual(str(form.fields['race'].label), 'Race')
         self.assertEqual(str(form.fields['agree'].label), 'I agree')
+
+
+class MediaTests(TestCase):
+    """The signup page loads whatever the form declares.
+
+    `student/start_app.html` renders `{{ form.media }}` and then calls
+    `.addressAutocomplete()` from an inline script, so the form returned by
+    `get_application_form()` decides what the page loads. The spec-driven form
+    declared no Media at all: on a tenant shipping
+    `myce_tenant_configs/services/application_form.py` the application page
+    loaded no JS — no client-side validation (the spec's own `validate`
+    metadata renders as the `data-validate-*` attributes `form_validation.js`
+    consumes, so it was inert), no SSN / college-attended toggling, and
+    `addressAutocomplete is not a function` in the console. Nothing failed
+    server-side, so the page looked fine. See ewu#43.
+    """
+
+    EXPECTED_JS = (
+        'js/form_validation.js',
+        'js/student_application.js',
+        'js/address_auto_complete.js',
+    )
+
+    def setUp(self):
+        Group.objects.get_or_create(name='student')
+        u = CustomUser.objects.create_user(
+            username='m', email='m@example.com', password='x')
+        self.student = Student.objects.create(user=u)
+
+    def test_declares_the_application_page_javascript(self):
+        form = SpecDrivenApplicationForm(spec=SPEC, student=self.student)
+        rendered = str(form.media)
+        for asset in self.EXPECTED_JS:
+            self.assertIn(asset, rendered)
+
+    def test_declares_the_address_autocomplete_stylesheet(self):
+        form = SpecDrivenApplicationForm(spec=SPEC, student=self.student)
+        self.assertIn('css/address_auto_complete.css', str(form.media))
+
+    def test_widget_media_is_merged_rather_than_replaced(self):
+        """Declaring Media on the form must not drop what a field's widget
+        needs — Django merges the two, and a spec that arms a date or
+        rich-text field depends on that."""
+        spec = SPEC + [{'name': 'dob', 'type': 'date', 'label': 'DOB',
+                        'required': False, 'target': 'student'}]
+        form = SpecDrivenApplicationForm(spec=spec, student=self.student)
+        rendered = str(form.media)
+        for asset in self.EXPECTED_JS:
+            self.assertIn(asset, rendered)
+        widget_media = str(form.fields['dob'].widget.media)
+        for line in widget_media.split('\n'):
+            if line.strip():
+                self.assertIn(line.strip(), rendered)

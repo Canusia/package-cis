@@ -26,6 +26,27 @@ from cis.forms.application_spec import (
 
 
 class SpecDrivenApplicationForm(MetaFormMixin, forms.Form):
+    class Media:
+        # `student/start_app.html` renders `{{ form.media }}` and then calls
+        # `.addressAutocomplete()` inline, so whichever form
+        # get_application_form() returns decides what the signup page loads.
+        # Declaring nothing here meant a tenant on the spec-driven path got a
+        # page with no JS at all: the spec's own `validate` metadata renders as
+        # the data-validate-* attributes form_validation.js consumes and was
+        # therefore inert, the SSN / college-attended toggles never bound, and
+        # address lookup raised "addressAutocomplete is not a function". All
+        # silent -- nothing failed server-side. This form renders the same
+        # field family as the profile form, so it needs the same assets
+        # (ewu#43). Widget media still merges on top.
+        js = (
+            'js/form_validation.js',
+            'js/student_application.js',
+            'js/address_auto_complete.js',
+        )
+        css = {
+            'all': ['css/address_auto_complete.css'],
+        }
+
     def __init__(self, spec=None, rules=None, student=None, request=None,
                  validator=None, post_save=None, *args, **kwargs):
         super().__init__(*args, **kwargs)

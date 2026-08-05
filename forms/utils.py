@@ -239,16 +239,31 @@ class MetaFormMixin:
 
             try:
                 if target == 'user' and hasattr(student, 'user'):
-                    self.initial[name] = getattr(student.user, path, '')
+                    value = getattr(student.user, path, '')
                 elif target == 'student':
-                    self.initial[name] = getattr(student, path, '')
+                    value = getattr(student, path, '')
                 elif target == 'meta' and hasattr(student, 'meta') and student.meta:
-                    self.initial[name] = student.meta.get(path, '')
+                    value = student.meta.get(path, '')
                 elif (target == 'notifications'
                         and getattr(student, 'notifications', None)):
-                    self.initial[name] = student.notifications.get(path, '')
+                    value = student.notifications.get(path, '')
+                else:
+                    continue
             except AttributeError:
-                pass
+                continue
+
+            # A blank instance value must not overwrite a declared `initial`.
+            # BoundField.value() reads `form.initial.get(name, field.initial)`,
+            # so writing the key at all makes the declaration lose -- and a
+            # field only declares an initial because it wants one in exactly
+            # this case. Fatal on a hidden required field: the control renders
+            # empty, the POST carries nothing, and the student sees a
+            # required-field error naming an input they cannot see (ewu#44).
+            # An instance value that actually exists still wins.
+            if value in (None, '') and field.initial not in (None, ''):
+                continue
+
+            self.initial[name] = value
 
     def _save_fields_to_models(self, user=None, student=None, commit=True):
         """
