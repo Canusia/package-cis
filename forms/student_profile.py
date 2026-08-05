@@ -63,6 +63,27 @@ def tenant_editable_fields():
     return tuple(getattr(_tenant_module(), 'EDITABLE_FIELDS', ()) or ())
 
 
+def tenant_ce_hidden_fields():
+    """Extra fields the tenant hides from the CE-admin form, as a tuple.
+
+    CISProfileMixin already drops the generic three (the SSN confirmation and
+    the two password halves). Anything beyond that is a statement about which
+    fields THIS tenant collects — sccc hides its SSN opt-out and its three
+    agreement checkboxes, because a CE staffer entering a record on a student's
+    behalf cannot agree on the student's behalf. Naming those in `cis` would
+    put tenant field data back into the shared code this seam exists to keep
+    empty of it.
+
+    Absent export -> (): the tenant hides nothing extra, which is exactly the
+    behaviour every tenant had before this seam existed. Note the default is
+    the opposite kind of choice from tenant_editable_fields() above — there,
+    empty is the restrictive answer and so the safe one; here, empty is the
+    permissive answer, and it is safe because cis cannot know that a field a
+    tenant does collect should be withheld from its own staff.
+    """
+    return tuple(getattr(_tenant_module(), 'CE_HIDDEN_FIELDS', ()) or ())
+
+
 class EditableProfileMixin:
     """Post-SIS editable profile: restrict the field set by application status.
 
@@ -200,8 +221,12 @@ class CISProfileMixin(forms.Form):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        # Remove fields not needed for CIS users
-        fields_to_remove = ['verify_student_ssn', 'password', 'confirm_password']
+        # Remove fields not needed for CIS users. The three below are generic —
+        # an SSN confirmation and the two password halves are never a CE
+        # staffer's to fill in. Beyond that it is the tenant's call, since it
+        # depends on which fields that tenant collects at all.
+        fields_to_remove = (['verify_student_ssn', 'password', 'confirm_password']
+                            + list(tenant_ce_hidden_fields()))
         for field_name in fields_to_remove:
             if field_name in self.fields:
                 del self.fields[field_name]

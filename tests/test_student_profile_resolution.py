@@ -65,6 +65,72 @@ class StudentProfileResolutionTest(TestCase):
         with patch.object(mod, '_tenant_module', return_value=_Bare()):
             self.assertEqual(mod.tenant_editable_fields(), ())
 
+    def test_ce_hidden_fields_default_is_empty_when_tenant_omits_it(self):
+        """Absent export -> (), i.e. today's behaviour. Unlike EDITABLE_FIELDS
+        the safe default here is 'hide nothing extra': cis already drops the
+        generic three, and defaulting to anything more would silently remove
+        fields a tenant does collect."""
+        from unittest.mock import patch
+        import cis.forms.student_profile as mod
+
+        class _Bare:
+            pass
+
+        with patch.object(mod, '_tenant_module', return_value=_Bare()):
+            self.assertEqual(mod.tenant_ce_hidden_fields(), ())
+
+    def test_ce_hidden_fields_reads_the_tenant_export_as_a_tuple(self):
+        from unittest.mock import patch
+        import cis.forms.student_profile as mod
+
+        class _Tenant:
+            CE_HIDDEN_FIELDS = ['no_ssn', 'agree_tuition_responsibility']
+
+        with patch.object(mod, '_tenant_module', return_value=_Tenant()):
+            hidden = mod.tenant_ce_hidden_fields()
+        # A tuple, so a caller cannot mutate the tenant's default in place.
+        self.assertEqual(hidden, ('no_ssn', 'agree_tuition_responsibility'))
+        self.assertIsInstance(hidden, tuple)
+
+    def test_ce_form_drops_the_tenant_hidden_fields(self):
+        """The seam's whole point: a CE staffer entering a record on a
+        student's behalf must not fill in fields only the student can answer
+        (an SSN opt-out, an agreement checkbox)."""
+        from unittest.mock import patch
+        import cis.forms.student_profile as mod
+
+        target = next(n for n in ('gender', 'legal_sex', 'ethnicity')
+                      if n in mod.StudentCISForm.base_fields)
+
+        with patch.object(mod, 'tenant_ce_hidden_fields',
+                          return_value=(target,)):
+            form = mod.StudentCISForm(None, request=None)
+        self.assertNotIn(target, form.fields)
+
+        # ...and the generic three still go regardless.
+        for name in ('verify_student_ssn', 'password', 'confirm_password'):
+            self.assertNotIn(name, form.fields)
+
+    def test_ce_form_keeps_every_field_when_the_tenant_hides_nothing(self):
+        from unittest.mock import patch
+        import cis.forms.student_profile as mod
+
+        with patch.object(mod, 'tenant_ce_hidden_fields', return_value=()):
+            form = mod.StudentCISForm(None, request=None)
+        for name in ('psid', 'first_name'):
+            self.assertIn(name, form.fields)
+
+    def test_ce_hidden_fields_naming_an_absent_field_is_harmless(self):
+        """Tenants drift; a stale name in CE_HIDDEN_FIELDS must not 500 the CE
+        student form."""
+        from unittest.mock import patch
+        import cis.forms.student_profile as mod
+
+        with patch.object(mod, 'tenant_ce_hidden_fields',
+                          return_value=('not_a_real_field',)):
+            form = mod.StudentCISForm(None, request=None)
+        self.assertIn('psid', form.fields)
+
     def test_importing_the_module_does_not_resolve_the_tenant_app(self):
         # Lazy is a hard requirement: the tenant module imports cis.models at
         # module level, so eager resolution risks AppRegistryNotReady. Execute a
