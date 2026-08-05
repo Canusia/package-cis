@@ -1319,6 +1319,52 @@ def registration_terms():
     except Setting.DoesNotExist:
         return None
 
+def registration_terms_state():
+    """Return ``(state, terms)`` for the configured registration terms.
+
+    ``registration_terms()`` collapses three different situations into one
+    empty result: the setting is absent, no terms are selected, or the selected
+    term ids no longer resolve. The third is a stale-configuration bug -- the
+    setting stores term UUIDs, so terms recreated by a data refresh or a
+    re-import leave it pointing at ids that match nothing while the settings
+    page still displays a configured-looking value -- and callers that gate on
+    "are any terms open?" need to tell it apart from the deliberate states.
+
+    ``state`` is one of:
+
+    ``'unconfigured'``
+        No setting row, or no terms selected.
+    ``'stale'``
+        Terms are selected but none of the stored ids resolve to a Term.
+    ``'ok'``
+        At least one selected term resolves.
+
+    See ewu#45.
+    """
+    from cis.models.term import Term
+
+    key = getattr(settings, 'CAMPUS_CODE_PREFIX') + "_cis_registrations"
+    try:
+        setting = Setting.objects.get(key=key)
+    except Setting.DoesNotExist:
+        return 'unconfigured', Term.objects.none()
+
+    selected = (setting.value or {}).get('registration_terms') or []
+    if not selected:
+        return 'unconfigured', Term.objects.none()
+
+    try:
+        terms = Term.objects.filter(pk__in=selected)
+        if not terms.exists():
+            return 'stale', Term.objects.none()
+    except (ValueError, ValidationError):
+        # Stored ids that are not valid UUIDs cannot match anything, and would
+        # otherwise surface as a 500 rather than a configuration problem.
+        return 'stale', Term.objects.none()
+
+    return 'ok', terms
+
+
 def is_student_registration_open(test_date_time=None):
     """
     Returns True if registration today is after registration starting date and
