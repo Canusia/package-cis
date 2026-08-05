@@ -11,7 +11,13 @@
     const validators = {
         'required': function(value, param, field) {
             if (field.is(':checkbox')) {
-                return field.is(':checked');
+                // A CheckboxSelectMultiple renders one <input> per choice, all
+                // sharing a name, and Django copies the widget's data-validate-*
+                // attrs onto every one of them. "Required" for such a group means
+                // at least one box is checked — not that every box is. Validating
+                // each input in isolation put a "This field is required." beside
+                // every unchecked choice.
+                return checkboxGroup(field).filter(':checked').length > 0;
             }
             return value !== null && value !== undefined && value.trim() !== '';
         },
@@ -60,6 +66,36 @@
         'email': 'Please enter a valid email address.',
         'numeric': 'Please enter a number.'
     };
+
+    /**
+     * Return every checkbox sharing this field's name. For a lone checkbox that
+     * is just the field itself; for a CheckboxSelectMultiple it is the whole
+     * choice group, which must be validated and error-flagged as one unit.
+     */
+    function checkboxGroup(field) {
+        const name = field.attr('name');
+        if (!name || !field.is(':checkbox')) return field;
+        const group = field.closest('form').find('input[type="checkbox"][name="' + name + '"]');
+        return group.length ? group : field;
+    }
+
+    /**
+     * The element an error message should hang off. For a checkbox group that is
+     * the innermost element containing the whole group — Django's own
+     * <div id="id_<name>"> when the widget renders itself, or crispy's wrapper
+     * around the choice divs — so one message appears for the group instead of
+     * one per choice. Anything else anchors on the field itself.
+     */
+    function errorAnchor(field) {
+        const group = checkboxGroup(field);
+        if (group.length < 2) return field;
+
+        const name = field.attr('name');
+        const container = field.parents().filter(function() {
+            return $(this).find('input[type="checkbox"][name="' + name + '"]').length === group.length;
+        }).first();
+        return container.length ? container : field;
+    }
 
     /**
      * Get validation rules from a field's data attributes
@@ -119,16 +155,17 @@
     function showError(field, message) {
         clearError(field);
 
-        const wrapper = field.closest('.form-group, .field-wrapper, .mb-3, div').first();
-        field.addClass('is-invalid');
+        const anchor = errorAnchor(field);
+        checkboxGroup(field).addClass('is-invalid');
 
         const errorDiv = $('<div class="invalid-feedback" style="display: block;"></div>').text(message);
 
-        // Insert after the field or its wrapper
-        if (field.next('.input-group-append').length) {
+        // Insert after the field, its input-group wrapper, or — for a checkbox
+        // group — after the whole group container.
+        if (anchor.is(field) && field.next('.input-group-append').length) {
             field.parent().after(errorDiv);
         } else {
-            field.after(errorDiv);
+            anchor.after(errorDiv);
         }
     }
 
@@ -136,7 +173,15 @@
      * Clear validation error from a field
      */
     function clearError(field) {
-        field.removeClass('is-invalid');
+        checkboxGroup(field).removeClass('is-invalid');
+
+        const anchor = errorAnchor(field);
+        if (!anchor.is(field)) {
+            // Checkbox group: the message sits as the container's sibling.
+            anchor.next('.invalid-feedback').remove();
+            return;
+        }
+
         const wrapper = field.closest('.form-group, .field-wrapper, .mb-3, div').first();
         wrapper.find('.invalid-feedback').remove();
     }
