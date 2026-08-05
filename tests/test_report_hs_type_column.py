@@ -28,6 +28,28 @@ class ReportFieldMapTests(TestCase):
             with self.subTest(report=name):
                 self.assertIn('SchoolType', self._fields_of(name))
 
+    def test_future_classes_exports_carry_the_column(self):
+        """These three build their `fields` dict as a local inside the export
+        method, so there is no attribute to introspect — assert against the
+        source instead. Crude, but it is a real guard: the column was missing
+        from all three for the entire life of the feature (ewu#37), and the
+        resolution tests below cannot notice a key that is absent."""
+        import importlib
+        import inspect
+
+        for module_name, path in (
+            ('future_classes',
+             'teacher_course.teacher_highschool.highschool.hs_type_display'),
+            ('pending_future_classes',
+             'highschool.hs_type_display'),
+            ('pending_future_classes_courses',
+             'teacher_highschool.highschool.hs_type_display'),
+        ):
+            with self.subTest(report=module_name):
+                module = importlib.import_module(f'cis.reports.{module_name}')
+                source = inspect.getsource(module)
+                self.assertIn(f"'{path}': '{SCHOOL_TYPE_LABEL}'", source)
+
 
 class ReportFieldResolutionTests(TestCase):
     def setUp(self):
@@ -60,6 +82,30 @@ class ReportFieldResolutionTests(TestCase):
 
         self.assertEqual(
             get_field(Row(), 'class_section.highschool.hs_type_display'),
+            'Zone A, Zone B')
+
+    def test_teacher_course_rooted_path_resolves(self):
+        """future_classes walks FutureSection -> teacher_course ->
+        teacher_highschool -> highschool."""
+        class Row:
+            teacher_course = type('TC', (), {
+                'teacher_highschool': type('TH', (), {'highschool': self.hs})(),
+            })()
+
+        self.assertEqual(
+            get_field(
+                Row(),
+                'teacher_course.teacher_highschool.highschool.hs_type_display'),
+            'Zone A, Zone B')
+
+    def test_teacher_highschool_rooted_path_resolves(self):
+        """pending_future_classes_courses starts one level lower, at the
+        TeacherCourse itself."""
+        class Row:
+            teacher_highschool = type('TH', (), {'highschool': self.hs})()
+
+        self.assertEqual(
+            get_field(Row(), 'teacher_highschool.highschool.hs_type_display'),
             'Zone A, Zone B')
 
     def test_untyped_school_yields_blank_not_an_error(self):

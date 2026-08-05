@@ -5,6 +5,7 @@ calls Ethos.get_registration_eligibility with the section's reporting academic
 period, and records a failed mirror (surfacing on the failed-mirror page) when
 the SIS reports the student ineligible.
 """
+import importlib.util
 import uuid
 from unittest.mock import patch
 
@@ -18,14 +19,20 @@ from cis.models.course import Course, Cohort
 from cis.models.term import Term, AcademicYear
 from cis.services.tenant_services import get_tenant_service
 
-try:
+# ethos may be an in-tree editable submodule (nested) or a flat pip install.
+# The models import below tolerated both already; the patch target did not —
+# patch() resolves its string by attribute walk, so 'ethos.ethos.…' raises
+# AttributeError under a flat install rather than falling back.
+_ETHOS = 'ethos.ethos' if importlib.util.find_spec('ethos.ethos') else 'ethos'
+
+if importlib.util.find_spec('ethos.ethos'):
     from ethos.ethos.models import EthosLog
-except ImportError:
+else:  # pragma: no cover
     from ethos.models import EthosLog
 
 
 PERIOD_ID = 'c0496632-88d2-4fac-95e6-d44234c99ed5'
-ETHOS_PATH = 'ethos.ethos.library.ethos.Ethos'
+ETHOS_PATH = f'{_ETHOS}.library.ethos.Ethos'
 
 
 class MirrorEligibilityGateTests(TestCase):

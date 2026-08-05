@@ -101,6 +101,7 @@ class pending_future_classes_courses(forms.Form):
         fields = {
             'pk': 'ID',
             'teacher_highschool.highschool': 'School',
+            'teacher_highschool.highschool.hs_type_display': 'School Type',
             'teacher_highschool.teacher.user.last_name': 'Teacher Last Name',
             'teacher_highschool.teacher.user.first_name': 'Teacher First Name',
             'course.name': 'Course Name',

@@ -11,9 +11,17 @@ unescaped/|safe rendering sink is intentionally left unchanged.
 The sanitizer helper lives in the future_sections submodule (shared with the
 PT-24 plan) so the pip-installable package stays self-contained.
 """
+import importlib.util
+
 from django.test import TestCase
 
-from future_sections.future_sections.utils import sanitize_plain_text
+# future_sections may be an in-tree editable submodule (nested) or a flat pip
+# install; cis ships this suite to both, so resolve the path rather than
+# assuming the nested layout the host repos happen to use.
+if importlib.util.find_spec('future_sections.future_sections'):
+    from future_sections.future_sections.utils import sanitize_plain_text
+else:  # pragma: no cover
+    from future_sections.utils import sanitize_plain_text
 
 
 class SanitizePlainTextTests(TestCase):
@@ -48,7 +56,10 @@ from django.test import RequestFactory
 from cis.models.highschool import HighSchool
 from cis.models.highschool_administrator import HSPosition
 
-from future_sections.future_sections.forms import HSAdministratorPositionForm
+if importlib.util.find_spec('future_sections.future_sections'):
+    from future_sections.future_sections.forms import HSAdministratorPositionForm
+else:  # pragma: no cover
+    from future_sections.forms import HSAdministratorPositionForm
 
 
 class HSAdministratorPositionFormSanitizeTests(TestCase):

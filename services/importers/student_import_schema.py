@@ -10,17 +10,28 @@ fields a student fills in manually. Rules:
 """
 from django import forms
 
+from cis.forms import student_profile as _profile
 from cis.forms.student_profile import StudentProfileForm
 
 
 class StudentImportColumns:
-    # Mechanic / system-managed fields that never appear in the CSV.
+    # Mechanic / system-managed fields that never appear in the CSV. Generic
+    # only — the tenant's own never-importable fields arrive through
+    # excluded() below, so this set and StudentImportRowForm.DROP_FIELDS stay
+    # in agreement instead of being two hand-maintained lists.
     EXCLUDED = frozenset({
         'password', 'confirm_password', 'verify_student_ssn',
-        'signature', 'cte',
+        'signature',
         # highschool is represented by highschool_ceeb instead of a PK
         'highschool',
     })
+
+    @classmethod
+    def excluded(cls):
+        """EXCLUDED plus the fields this tenant's students attest to
+        personally. Resolved per call, never at import time (the accessor
+        reaches into the tenant app)."""
+        return cls.EXCLUDED | set(_profile.tenant_non_importable_fields())
 
     # Inserted in place of the form's `highschool` field.
     CEEB_COLUMN = 'highschool_ceeb'
@@ -37,8 +48,9 @@ class StudentImportColumns:
     @classmethod
     def headers(cls):
         cols = []
+        excluded = cls.excluded()
         for name, field in cls._form_fields().items():
-            if name in cls.EXCLUDED or cls._is_hidden(field):
+            if name in excluded or cls._is_hidden(field):
                 if name == 'highschool':
                     cols.append(cls.CEEB_COLUMN)
                 continue
@@ -50,8 +62,9 @@ class StudentImportColumns:
     @classmethod
     def required(cls):
         req = []
+        excluded = cls.excluded()
         for name, field in cls._form_fields().items():
-            if name in cls.EXCLUDED or cls._is_hidden(field):
+            if name in excluded or cls._is_hidden(field):
                 continue
             if field.required:
                 req.append(name)

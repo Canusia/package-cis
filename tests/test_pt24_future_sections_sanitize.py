@@ -6,9 +6,17 @@ brackets stripped before they are persisted (and later echoed unescaped as
 `teacher_name` by the course-requests API). Templates / |safe / the JS
 renderer are intentionally left unchanged per house decision.
 """
+import importlib.util
+
 from django.test import TestCase
 
-from future_sections.future_sections.utils import sanitize_plain_text
+# future_sections may be an in-tree editable submodule (nested) or a flat pip
+# install; cis ships this suite to both, so resolve the path rather than
+# assuming the nested layout the host repos happen to use.
+if importlib.util.find_spec('future_sections.future_sections'):
+    from future_sections.future_sections.utils import sanitize_plain_text
+else:  # pragma: no cover
+    from future_sections.utils import sanitize_plain_text
 
 
 class SanitizePlainTextTests(TestCase):
@@ -43,7 +51,10 @@ class SanitizePlainTextTests(TestCase):
         self.assertEqual(sanitize_plain_text(5), 5)
 
 
-from future_sections.future_sections.forms import AddNewTeacherForm
+if importlib.util.find_spec('future_sections.future_sections'):
+    from future_sections.future_sections.forms import AddNewTeacherForm
+else:  # pragma: no cover
+    from future_sections.forms import AddNewTeacherForm
 
 
 class AddNewTeacherFormSanitizeTests(TestCase):

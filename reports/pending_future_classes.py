@@ -94,6 +94,7 @@ class pending_future_classes(forms.Form):
             'highschool.name': 'High School',
             'highschool.status': 'High School Status',
             'highschool.code': 'CEEB Code',
+            'highschool.hs_type_display': 'School Type',
             'highschool.address1': 'Address1',
             'highschool.address2': 'Address2',
             'highschool.city': 'City',

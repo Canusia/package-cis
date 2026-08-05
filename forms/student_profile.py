@@ -84,6 +84,28 @@ def tenant_ce_hidden_fields():
     return tuple(getattr(_tenant_module(), 'CE_HIDDEN_FIELDS', ()) or ())
 
 
+def tenant_non_importable_fields():
+    """Fields this tenant never accepts from a CSV upload, as a tuple.
+
+    Typically the ones a student attests to personally: a CE staffer uploading
+    a spreadsheet cannot affirm an agreement or an SSN disclosure on a
+    student's behalf, which is the same rule that hides them from the CE-admin
+    form. The name is deliberately about the effect rather than the reason,
+    since a tenant may withhold a field from import for other reasons — ewu
+    names `cte` here, a hidden program selection that is nobody's attestation. Read by both StudentImportRowForm and
+    StudentImportColumns so the row form and the CSV header set cannot drift —
+    before this existed each hardcoded its own list and the two disagreed.
+
+    Kept separate from CE_HIDDEN_FIELDS deliberately, though the two sets
+    overlap heavily in practice: a tenant may reasonably want a field a staffer
+    can see and edit on the detail page but must not bulk-load from a
+    spreadsheet, and collapsing them would remove that choice.
+
+    Absent export -> (), i.e. only the generic mechanic fields are dropped.
+    """
+    return tuple(getattr(_tenant_module(), 'NON_IMPORTABLE_FIELDS', ()) or ())
+
+
 class EditableProfileMixin:
     """Post-SIS editable profile: restrict the field set by application status.
 

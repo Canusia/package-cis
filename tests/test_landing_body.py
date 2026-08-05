@@ -13,11 +13,10 @@ class LandingBodyTests(TestCase):
             {"student", "instructor", "faculty", "staff", "counselor"},
         )
 
-    def test_falls_back_to_default_when_unset(self):
-        # No portal_content setting saved in the test DB -> uses DEFAULT_BODIES.
-        out = render_landing_body(self.request, "student", {"registration_is_open": True})
-        self.assertIn("breadcrumb", out)  # breadcrumb partial rendered
-        self.assertIn("Start New Application", out)
+    # test_falls_back_to_default_when_unset moved to the tenant repo
+    # (myce_tenant_configs/tests/test_landing_body_tenant.py, ewu#34): it
+    # asserted the student default body offers password signup, which is false
+    # on a tenant whose students sign in through SSO only.
 
     def test_custom_body_from_setting_is_used(self):
         from cis.models.settings import Setting

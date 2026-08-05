@@ -73,6 +73,7 @@ class future_classes(forms.Form):
             'future_course.academic_year': 'Academic Year',
             'teacher_course.teacher_highschool.highschool': 'High School',
             'teacher_course.teacher_highschool.highschool.code': 'High School CEEB',
+            'teacher_course.teacher_highschool.highschool.hs_type_display': 'School Type',
             'teacher_course.teacher_highschool.teacher.user.last_name': 'Teacher Last Name',
             'teacher_course.teacher_highschool.teacher.user.first_name': 'Teacher First Name',
             'teacher_course.course.name': 'Course Name',

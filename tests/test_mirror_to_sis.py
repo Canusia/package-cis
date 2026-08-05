@@ -6,15 +6,22 @@ the failed-mirror page renders it). These unit tests cover the helpers
 new code paths depend on.
 """
 
+import importlib.util
 import uuid
 from unittest.mock import patch
 
 from django.contrib.auth.models import Group
 from django.test import TestCase
 
-try:
+# ethos may be an in-tree editable submodule (nested) or a flat pip install.
+# The models import tolerated both already; the patch target did not — patch()
+# resolves its string by attribute walk, so 'ethos.ethos.…' raises
+# AttributeError under a flat install rather than falling back.
+_ETHOS = 'ethos.ethos' if importlib.util.find_spec('ethos.ethos') else 'ethos'
+
+if importlib.util.find_spec('ethos.ethos'):
     from ethos.ethos.models import EthosLog
-except ImportError:
+else:  # pragma: no cover
     from ethos.models import EthosLog
 
 from cis.models import CustomUser
@@ -24,7 +31,7 @@ from cis.models.course import Course, Cohort
 from cis.models.term import Term, AcademicYear
 from cis.services.tenant_services import get_tenant_service
 
-ETHOS_PATH = 'ethos.ethos.library.ethos.Ethos'
+ETHOS_PATH = f'{_ETHOS}.library.ethos.Ethos'
 
 
 class EthosLogHelperTests(TestCase):

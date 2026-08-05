@@ -12,6 +12,7 @@ DOB range, graduation-date future, phone formatting, SSN), while:
 from django import forms
 from django.core.exceptions import ValidationError
 
+from cis.forms import student_profile as _profile
 from cis.forms.student_profile import StudentProfileForm
 from cis.models.highschool import HighSchool
 from cis.models.student import Student
@@ -30,7 +31,11 @@ class DelimitedMultipleChoiceField(forms.MultipleChoiceField):
 
 class StudentImportRowForm(StudentProfileForm):
 
-    DROP_FIELDS = ('password', 'confirm_password', 'verify_student_ssn', 'signature', 'cte')
+    # Generic account mechanics only. Anything tenant-specific comes from
+    # tenant_non_importable_fields() — 'cte' used to sit in this tuple and is an
+    # ewu field, so a tenant that does not collect it carried a dead name while a
+    # tenant with its own such fields had nowhere to put them.
+    DROP_FIELDS = ('password', 'confirm_password', 'verify_student_ssn', 'signature')
 
     def __init__(self, *args, highschools=None, **kwargs):
         self._allowed_highschools = (
@@ -39,7 +44,11 @@ class StudentImportRowForm(StudentProfileForm):
         )
         super().__init__(student=None, request=None, *args, **kwargs)
 
-        for name in self.DROP_FIELDS:
+        # Resolved per instance, not at import time: the accessor reaches into
+        # the tenant app, which imports cis.models at module level. Called
+        # through the module (not a from-import) so the schema below and this
+        # form share one patch point and cannot be stubbed apart.
+        for name in self.DROP_FIELDS + _profile.tenant_non_importable_fields():
             self.fields.pop(name, None)
 
         # email arrives from CSV, so the field must accept bound data

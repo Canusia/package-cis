@@ -21,13 +21,12 @@ class LandingPagesShortcodeTests(TestCase):
         if _login_history_post_login is not None:
             user_logged_in.connect(_login_history_post_login)
 
-    def test_student_page_renders_body_from_shortcodes(self):
-        resp = self.client.get(reverse("student_index"))
-        self.assertEqual(resp.status_code, 200)
-        html = resp.content.decode()
-        self.assertIn('aria-label="breadcrumb"', html)   # [breadcrumb] expanded
-        self.assertIn("csrfmiddlewaretoken", html)         # [login_form] expanded
-        self.assertNotIn("[login_form]", html)             # no raw shortcode leaked
+    # test_student_page_renders_body_from_shortcodes moved to the tenant repo
+    # (myce_tenant_configs/tests/test_landing_body_tenant.py, ewu#34): it
+    # asserted [login_form] expands on the student landing page, which is a
+    # statement about how that tenant's students sign in, not about shortcode
+    # expansion. The other portals below stay — none of them assume a
+    # particular signup mechanic.
 
     def test_student_custom_body_setting_overrides(self):
         from cis.models.settings import Setting
