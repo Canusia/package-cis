@@ -104,14 +104,6 @@ class StudentProfileFormTests(TestCase):
                         "label": "New First Name",
                         "help_text": "New first name help.",
                     },
-                    "highschool": {
-                        # This substring must match the replacement logic in
-                        # _handle_highschool_not_listed().
-                        "help_text": (
-                            '<input type="checkbox" name="highschool_not_listed" '
-                            'value="highschool_not_listed" id="id_highschool_not_listed">'
-                        ),
-                    },
                 }
             },
         )
@@ -165,27 +157,6 @@ class StudentProfileFormTests(TestCase):
         self.assertEqual(form.fields["first_name"].label, "New First Name")
         # mark_safe returns SafeString; comparing via str() avoids SafeString vs str mismatch.
         self.assertEqual(str(form.fields["first_name"].help_text), "New first name help.")
-
-    def test_highschool_not_listed_enables_new_fields_and_updates_help_text(self):
-        data = {"highschool_not_listed": "on"}
-        form = StudentProfileForm(student=self.student, data=data)
-
-        help_text = str(form.fields["highschool"].help_text)
-        original = (
-            '<input type="checkbox" name="highschool_not_listed" value="highschool_not_listed" '
-            'id="id_highschool_not_listed">'
-        )
-        checked = (
-            '<input type="checkbox" name="highschool_not_listed" checked value="highschool_not_listed" '
-            'id="id_highschool_not_listed">'
-        )
-
-        self.assertIn(checked, help_text)
-        self.assertNotIn(original, help_text)
-
-        self.assertTrue(form.fields["new_highschool_name"].required)
-        self.assertTrue(form.fields["new_highschool_counselor_name"].required)
-        self.assertTrue(form.fields["new_highschool_counselor_email"].required)
 
     def test_populate_initial_normalizes_phone_and_sets_notifications_and_meta(self):
         form = StudentProfileForm(student=self.student)
@@ -300,19 +271,6 @@ class StudentProfileFormTests(TestCase):
         with self.assertRaises(ValidationError):
             form.clean_parent_phone()
 
-    def test_clean_highschool_when_not_listed_requires_new_fields(self):
-        form = StudentProfileForm(student=self.student)
-        form.data = {"highschool_not_listed": "on"}  # intentionally omit new_* values
-        form.cleaned_data = {"highschool": None}
-        with self.assertRaises(ValidationError):
-            form.clean_highschool()
-
-    def test_clean_highschool_returns_dropdown_value_when_listed(self):
-        form = StudentProfileForm(student=self.student)
-        form.data = {}  # highschool_not_listed not selected
-        form.cleaned_data = {"highschool": self.hs_regular}
-        self.assertEqual(form.clean_highschool(), self.hs_regular)
-
     def test_clean_parent_email_rejects_same_as_student_email(self):
         form = StudentProfileForm(student=self.student)
         form.cleaned_data = {"parent_email": "student@example.com", "email": "student@example.com"}
@@ -384,48 +342,6 @@ class StudentProfileFormTests(TestCase):
         # that overflow the varchar(2) column.
         valid_grades = {code for code, _ in Student._meta.get_field("grade_level").choices}
         self.assertIn(saved.grade_level, valid_grades)
-
-    @patch("cis.models.highschool.HighSchool.notify_new_counselor")
-    def test_save_creates_new_highschool_and_adds_student_note_and_updates_notifications(
-        self, mock_notify
-    ):
-        mock_notify.return_value = True
-
-        form = StudentProfileForm(
-            student=self.student,
-            data={"highschool_not_listed": "on"},
-        )
-
-        cleaned_data = self._build_storage_cleaned_data(form)
-        cleaned_data.update(
-            {
-                "password": "Aa1!SecurePassword",
-                "cell_phone_opt_in": False,
-                "graduation_date": datetime.date(2026, 6, 1),
-                "new_highschool_name": "New High School",
-                "new_highschool_counselor_name": "Counselor Name",
-                "new_highschool_counselor_email": "counselor@example.com",
-            }
-        )
-        form.cleaned_data = cleaned_data
-
-        saved = form.save(commit=True)
-        saved.refresh_from_db()
-
-        self.assertIsNotNone(saved.highschool)
-        self.assertTrue(saved.highschool.name.startswith("New High School"))
-        self.assertIn("*", saved.highschool.name)
-
-        self.assertEqual(saved.notifications.get("new_highschool_counselor_name"), "Counselor Name")
-        self.assertEqual(saved.notifications.get("new_highschool_counselor_email"), "counselor@example.com")
-
-        # Student.add_note() uses StudentNote, created by "cron".
-        notes = StudentNote.objects.filter(student=saved).order_by("-createdon")
-        self.assertGreater(notes.count(), 0)
-
-        note_text = notes.first().note
-        self.assertIn("Sent email to school counselor", note_text)
-        self.assertIn("Counselor Name", note_text)
 
     def test_parent_guardian_type_field_labels_and_save_round_trip(self):
         form = StudentProfileForm(student=self.student)

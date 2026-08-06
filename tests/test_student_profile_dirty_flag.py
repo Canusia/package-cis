@@ -42,7 +42,6 @@ class StudentProfileDirtyDetectionTests(TestCase):
         form = self._bound_form(self._request_as(self.user), {'first_name': 'New'})
         form.cleaned_data = {'first_name': 'New'}
         form._save_fields_to_models = MagicMock(side_effect=lambda **kw: setattr(self.user, 'first_name', 'New'))
-        form._handle_new_highschool_save = MagicMock()
         form._save_notifications = MagicMock()
         form.save(student=self.student)
         self.student.refresh_from_db()
@@ -54,7 +53,6 @@ class StudentProfileDirtyDetectionTests(TestCase):
         form = self._bound_form(self._request_as(staff), {'first_name': 'New'})
         form.cleaned_data = {'first_name': 'New'}
         form._save_fields_to_models = MagicMock(side_effect=lambda **kw: setattr(self.user, 'first_name', 'New'))
-        form._handle_new_highschool_save = MagicMock()
         form._save_notifications = MagicMock()
         form.save(student=self.student)
         self.student.refresh_from_db()
@@ -64,7 +62,6 @@ class StudentProfileDirtyDetectionTests(TestCase):
         form = self._bound_form(self._request_as(self.user), {'first_name': 'Old'})
         form.cleaned_data = {'first_name': 'Old'}
         form._save_fields_to_models = MagicMock()  # no mutation
-        form._handle_new_highschool_save = MagicMock()
         form._save_notifications = MagicMock()
         form.save(student=self.student)
         self.student.refresh_from_db()
@@ -85,7 +82,6 @@ class StudentProfileDirtyDetectionTests(TestCase):
             self.student.meta['mailing_address'] = '200 New St'
 
         form._save_fields_to_models = MagicMock(side_effect=fake_save)
-        form._handle_new_highschool_save = MagicMock()
         form._save_notifications = MagicMock()
         form.save(student=self.student)
         self.student.refresh_from_db()

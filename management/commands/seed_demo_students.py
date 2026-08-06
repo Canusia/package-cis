@@ -185,9 +185,6 @@ class Command(BaseCommand):
             # School
             'highschool': highschool,
             'cte': None,
-            'new_highschool_name': '',
-            'new_highschool_counselor_name': '',
-            'new_highschool_counselor_email': '',
             'current_grade_level': rnd.choice(GRADE_LEVELS),
             'graduation_date': grad_date,
             'signature': f'{first} {last}',
