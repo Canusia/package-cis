@@ -1076,11 +1076,15 @@ class ParentConsentForm(forms.Form):
         student = Student.objects.get(pk=cleaned_data['student'])
         terms = registration_terms()
 
+        from student_onboarding.signals import onboarding_event
+        from student_onboarding import events as onboarding_events
+
         registered_term_ids = StudentRegistration.objects.filter(
             student=student,
             class_section__term__in=terms
         ).values_list('class_section__term__id', flat=True)
 
+        signed_any = False
         for term in terms:
             if term.id not in registered_term_ids:
                 continue
@@ -1094,8 +1098,21 @@ class ParentConsentForm(forms.Form):
                 parent_consent.parent_signed_on = datetime.datetime.now()
 
                 parent_consent.save()
+                signed_any = True
             except:
                 pass
+
+        # A tenant enabling the `parent_consent` onboarding step wires an event
+        # to that step key; without this send the step never completed and the
+        # checklist sat on "Obtain parent/guardian consent" forever (ewu#54).
+        # Mirrors StudentAgreementForm.save() above. Gated on an actual write,
+        # since the event asserts that consent now exists.
+        if signed_any:
+            onboarding_event.send(
+                sender=__name__,
+                event=onboarding_events.PARENT_CONSENT_SIGNED,
+                student=student,
+            )
         return
   
 class StudentExportForm(forms.Form):

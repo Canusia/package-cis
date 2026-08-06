@@ -1277,6 +1277,18 @@ def waive_parent_consent(request):
         parent_consent.parent_signed_on = datetime.datetime.now()
 
         parent_consent.save()
+
+        # The CE "mark as received" path writes the same row as the parent
+        # signing it, so it must complete the same onboarding step (ewu#54).
+        from student_onboarding.signals import onboarding_event
+        from student_onboarding import events as onboarding_events
+
+        onboarding_event.send(
+            sender=__name__,
+            event=onboarding_events.PARENT_CONSENT_SIGNED,
+            student=student,
+        )
+
         data = {
             'message': 'Successfully marked as received',
             'status': 'success'

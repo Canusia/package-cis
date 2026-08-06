@@ -47,6 +47,24 @@ def reset_class_section_syl_status(sender, instance, **kwargs):
             section.save()
 
 @receiver(pre_save, sender=ClassSection)
+def default_registration_term(sender, instance, **kwargs):
+    """Fall back to the academic term when no registration term is set.
+
+    ``registration_term`` is nullable and plenty of sections only ever set
+    ``term``. The charge signal in ``student_transactions`` writes
+    ``class_section.registration_term`` into ``StudentTransaction.term``, which
+    is NOT NULL, so applying for a class on such a section died with a
+    NOT NULL violation that surfaced to the student as "You have already added
+    it" -- a message about a completely different failure (ewu#53).
+
+    A section that deliberately registers against a different term keeps it;
+    the two fields exist separately for exactly that case.
+    """
+    if instance.registration_term_id is None and instance.term_id is not None:
+        instance.registration_term_id = instance.term_id
+
+
+@receiver(pre_save, sender=ClassSection)
 def grades_submitted(sender, instance, **kwargs):
     """
     Grades Status was updated, so update status_updated_on JSONField
