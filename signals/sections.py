@@ -14,6 +14,7 @@ from ..models.section import (
     ClassSection,
     ClassSectionSyllabi
 )
+from ..models.term import Term
 
 from cis.middleware import current_request
 
@@ -48,7 +49,11 @@ def reset_class_section_syl_status(sender, instance, **kwargs):
 
 @receiver(pre_save, sender=ClassSection)
 def default_registration_term(sender, instance, **kwargs):
-    """Fall back to the academic term when no registration term is set.
+    """Derive the registration term when none is set.
+
+    Registration happens against the term that *owns* the academic term: a
+    child term -- a session or sub-term -- registers under its parent, and a
+    term with no parent registers under itself.
 
     ``registration_term`` is nullable and plenty of sections only ever set
     ``term``. The charge signal in ``student_transactions`` writes
@@ -57,11 +62,18 @@ def default_registration_term(sender, instance, **kwargs):
     NOT NULL violation that surfaced to the student as "You have already added
     it" -- a message about a completely different failure (ewu#53).
 
-    A section that deliberately registers against a different term keeps it;
-    the two fields exist separately for exactly that case.
+    A section that deliberately registers against some other term keeps it; the
+    two fields exist separately for exactly that case. Only the immediate
+    parent is used, not the root of the chain.
     """
-    if instance.registration_term_id is None and instance.term_id is not None:
-        instance.registration_term_id = instance.term_id
+    if instance.registration_term_id is not None or instance.term_id is None:
+        return
+
+    parent_id = Term.objects.filter(
+        pk=instance.term_id
+    ).values_list('parent_id', flat=True).first()
+
+    instance.registration_term_id = parent_id or instance.term_id
 
 
 @receiver(pre_save, sender=ClassSection)
