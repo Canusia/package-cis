@@ -23,7 +23,7 @@ from django.contrib.auth.models import Group
 
 from mailer import send_mail, send_html_mail
 
-from cis.academic_calendar import GRADE_LEVEL_ROLLOVER_MONTH
+from cis.academic_calendar import grade_level_from_graduation
 from cis.validators import validate_email
 from cis.utils import (
     format_emplid, getDomain,
@@ -598,60 +598,77 @@ class Student(models.Model):
         
 
     def get_grade_level(self, graduation_year=None, graduation_date=None):
+        """Grade level for this student, today.
+
+        'FR' / 'SO' / 'JR' / 'SR', or one of three sentinels callers must not
+        persist: 'GRAD' (already finished), '--' (input unreadable), None (year
+        readable but outside high school).
+
+        A thin wrapper over ``cis.academic_calendar.grade_level_from_graduation``
+        — one derivation, so a caller passing a year and a caller passing the
+        equivalent date can no longer disagree. They used to, for the seven
+        months from the rollover to the end of the year, which put every student
+        one grade low through the whole autumn application season.
+
+        With no arguments it reads the student's own graduation fields.
         """
-        Given a student's high school graduation year (or full date), returns:
-        'FR' - Freshman
-        'SO' - Sophomore
-        'JR' - Junior
-        'SR' - Senior
-        'GRAD' - Already graduated
 
-        Academic year runs roughly August–June. When only a year is known, we
-        assume graduation happens at the end of that academic year and treat
-        June onward as "advanced a grade". When the actual ``graduation_date``
-        is supplied it takes precedence over that heuristic — a student whose
-        graduation date is still in the future has NOT graduated, even if it is
-        already June (e.g. early June, graduating mid-June).
+        # Falls back to whichever graduation fact this student actually has.
+        # The date is preferred when both exist, since only a date can tell
+        # "graduates in ten days" from "graduated last month". Reading BOTH
+        # matters: tenants are split, some collecting only a year and some only
+        # a date, and consulting one field alone returned '--' for every student
+        # on a tenant that stores the other.
+        if graduation_date is None and graduation_year is None:
+            graduation_date = self.graduation_date
+            graduation_year = self.graduation_year
+
+        return grade_level_from_graduation(
+            graduation_year=graduation_year,
+            graduation_date=graduation_date,
+            as_of=datetime.now().date(),
+        )
+
+    def refresh_grade_level_from_graduation(self, save=False, as_of=None):
+        """Recompute ``grade_level`` from the student's graduation fact.
+
+        Returns the code written, or None when nothing was written.
+
+        Only ever writes a real grade. The derivation's sentinels — GRAD for a
+        student who has finished, '--' for unreadable input, None for a year
+        outside high school — are not valid ``grade_level`` choices and would
+        overflow the column, so an existing value is left alone rather than
+        blanked.
+
+        Deliberately derives straight from the graduation fact rather than
+        anchoring on ``account_verified_on`` and advancing by elapsed school
+        years, as csn's version does. The anchor buys nothing here — graduation
+        year already implies the grade for any given date — and it fails for
+        students whose ``account_verified_on`` is null, which is a real
+        population.
         """
+        computed = grade_level_from_graduation(
+            graduation_year=self.graduation_year,
+            graduation_date=self.graduation_date,
+            as_of=as_of or datetime.now().date(),
+        )
 
-        today = datetime.now().date()
+        valid = {code for code, _ in self._meta.get_field('grade_level').choices
+                 if code}
+        if computed not in valid:
+            logger.info(
+                'Student %s: not refreshing grade_level, derived %r from '
+                'graduation_year=%r graduation_date=%r',
+                self.pk, computed, self.graduation_year, self.graduation_date)
+            return None
 
-        grad_date = graduation_date
-        if grad_date is not None:
-            if hasattr(grad_date, "date"):  # datetime -> date
-                grad_date = grad_date.date()
-            graduation_year = grad_date.year
+        if self.grade_level == computed:
+            return computed
 
-        try:
-            if not graduation_year:
-                years_to_graduation = int(self.graduation_year) - today.year
-            else:
-                years_to_graduation = int(graduation_year) - today.year
-        except Exception as e:
-            logger.error(e)
-            print(e)
-            return '--'
-
-        # From the rollover month onward the academic year has turned over and
-        # the student has advanced a grade — UNLESS we know the actual
-        # graduation date and it is still in the future, in which case they
-        # haven't advanced yet.
-        not_yet_graduated = grad_date is not None and grad_date >= today
-        if today.month >= GRADE_LEVEL_ROLLOVER_MONTH and not not_yet_graduated:
-            years_to_graduation -= 1
-
-        mapping = {
-            3: "FR",   # 3 years until graduation
-            2: "SO",   # 2 years
-            1: "JR",   # 1 year
-            0: "SR",   # graduating this year
-        }
-
-        # If graduation is in the past
-        if years_to_graduation < 0:
-            return "GRAD"
-
-        return mapping.get(years_to_graduation, None)  # None if outside expected range
+        self.grade_level = computed
+        if save:
+            self.save(update_fields=['grade_level'])
+        return computed
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)

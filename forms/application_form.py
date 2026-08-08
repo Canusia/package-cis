@@ -13,6 +13,8 @@ field name in `student_profile.field_messages()` overrides them, exactly as it
 does for StudentProfileForm. So editing a field's Label in the profile-fields
 settings table renames it on both form paths.
 """
+import logging
+
 from django import forms
 from django.utils import timezone
 
@@ -23,6 +25,8 @@ from cis.forms.application_validators import apply_field_validators
 from cis.forms.application_spec import (
     get_application_fields, get_application_rules, get_tenant_post_save,
     get_tenant_validator)
+
+logger = logging.getLogger(__name__)
 
 
 class SpecDrivenApplicationForm(MetaFormMixin, forms.Form):
@@ -203,6 +207,17 @@ class SpecDrivenApplicationForm(MetaFormMixin, forms.Form):
                  student._meta.get_field('grade_level').choices if code}
         if computed in valid:
             student.grade_level = computed
+        else:
+            # Silently dropping this is what turned a data-entry mistake into a
+            # five-month diagnosis: a student left with a blank grade_level
+            # stops matching `f'{grade_level}*'` in the eligibility check and
+            # simply disappears from the high school admin's pending list, with
+            # nothing logged anywhere.
+            logger.warning(
+                'Student %s: graduation_date %s derives grade level %r, which '
+                'is not a valid choice; leaving grade_level as %r',
+                student.pk, data['graduation_date'], computed,
+                student.grade_level or '')
 
 
 def get_application_form(student=None, request=None, data=None):
