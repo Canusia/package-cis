@@ -23,6 +23,7 @@ from django.contrib.auth.models import Group
 
 from mailer import send_mail, send_html_mail
 
+from cis.academic_calendar import GRADE_LEVEL_ROLLOVER_MONTH
 from cis.validators import validate_email
 from cis.utils import (
     format_emplid, getDomain,
@@ -300,14 +301,6 @@ class Student(models.Model):
     SENIOR = 'SR'
     GRADE_LEVEL = [
         ('', 'Select'),
-        (SENIOR, 'Senior'),
-        (JUNIOR, 'Junior'),
-        (SOPHOMORE, 'Sophomore'),
-        (FRESHMAN, 'Freshman'),
-    ]
-
-    GRADE_LEVEL = [
-        ('', 'Select'),
         (SENIOR, 'Senior - 12th grade'),
         (JUNIOR, 'Junior- 11th grade'),
         (SOPHOMORE, 'Sophomore - 10th grade'),
@@ -333,36 +326,6 @@ class Student(models.Model):
     ]
     class Meta:
         ordering = ['user__first_name']
-
-    def needs_recommendation(self, term_id):       
-        from django.db.models import Q
-
-        classes_needing_recommendation = StudentRegistration.objects.filter(
-            Q(student=self) &
-            Q(status__in=['applied', 'registered', 'approved']) &
-            Q(class_section__registration_term__id=term_id) & 
-            (
-                (
-                    Q(class_section__course__registration_eligibility__contains='SO*') &
-                    Q(student__grade_level__in=['SO'])
-                    
-                ) | (
-                    Q(class_section__course__registration_eligibility__contains='FR*') &
-                    Q(student__grade_level__in=['FR'])
-                )
-            )
-        )
-
-        if not classes_needing_recommendation.exists():
-            return False
-        
-        # has classes needing recommendation, check if recommendations exist for term_id
-        if StudentRecommendation.objects.filter(
-            student=self,
-            term__id=term_id
-        ).exists():
-            return False
-        return True
 
     @property
     def suid(self):
@@ -669,11 +632,12 @@ class Student(models.Model):
             print(e)
             return '--'
 
-        # After June the academic year has rolled over and the student has
-        # advanced a grade — UNLESS we know the actual graduation date and it
-        # is still in the future, in which case they haven't advanced yet.
+        # From the rollover month onward the academic year has turned over and
+        # the student has advanced a grade — UNLESS we know the actual
+        # graduation date and it is still in the future, in which case they
+        # haven't advanced yet.
         not_yet_graduated = grad_date is not None and grad_date >= today
-        if today.month >= 6 and not not_yet_graduated:
+        if today.month >= GRADE_LEVEL_ROLLOVER_MONTH and not not_yet_graduated:
             years_to_graduation -= 1
 
         mapping = {
@@ -2977,3 +2941,33 @@ class StudentSupportingDocument(models.Model):
     def filename(self):
         import os
         return os.path.basename(self.media.name)
+
+
+def recommendation_required_q(course_path='class_section__course',
+                              grade_path='student__grade_level'):
+    """Q matching rows whose course requires a recommendation for that grade.
+
+    ``Course.registration_eligibility`` marks a grade as needing a
+    recommendation by suffixing it with ``*`` — FR*, SO*, JR*, SR*. Callers used
+    to spell two of those out by hand, so JR* and SR* courses could never
+    surface. The grades are read from ``Student.GRADE_LEVEL`` here, so a fifth
+    grade added to the model is covered without touching this function.
+
+    Deliberately *not* expressed as ``__contains=Concat(grade, Value('*'))``.
+    ``registration_eligibility`` is a MultiSelectField — a list in Python but a
+    comma-joined string in the column — so ``__contains`` is a SQL ``LIKE``. A
+    student with a blank grade level would yield the bare token ``'*'`` and
+    match every course carrying any asterisk value, while the in-Python
+    implementations (which use exact list membership) correctly match none.
+    Pairing each literal token with an equality test on the grade keeps blank
+    grade levels out by construction.
+    """
+    from django.db.models import Q
+
+    q = Q()
+    for code, _label in Student.GRADE_LEVEL:
+        if not code:
+            continue
+        q |= (Q(**{f'{course_path}__registration_eligibility__contains': f'{code}*'})
+              & Q(**{grade_path: code}))
+    return q

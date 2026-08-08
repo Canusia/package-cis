@@ -1031,7 +1031,14 @@ def get_uploaded_file(file_type='class_export'):
 
         content = ''
         for obj in bucket.objects.filter(Prefix=key):
-            content = obj.get()['Body'].read().decode('utf-8-sig')
+            raw = obj.get()['Body'].read()
+            try:
+                content = raw.decode('utf-8-sig')
+            except UnicodeDecodeError:
+                # Excel on Windows writes CSVs as cp1252, so a single accented
+                # name is enough to break a strict UTF-8 decode. Falling back
+                # keeps the accented characters instead of discarding the file.
+                content = raw.decode('cp1252', errors='replace')
 
         if content == '':
             return None

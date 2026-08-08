@@ -28,6 +28,7 @@ from cis.campus_gate import (
     scope_records_by_student_campus,
 )
 from cis.models.student import (
+    recommendation_required_q,
     Student, StudentRecommendation,
     StudentAgreement, ParentConsent,
     StudentCampusID,
@@ -402,17 +403,8 @@ class StudentViewSet(viewsets.ReadOnlyModelViewSet):
 
                 applied_students = StudentRegistration.objects.filter(
                     Q(status__in=['applied', 'registered', 'approved']) &
-                    Q(class_section__registration_term__id=registration_term_id) & 
-                    (
-                        (
-                            Q(class_section__course__registration_eligibility__contains='SO*') &
-                            Q(student__grade_level__in=['SO'])
-                            
-                        ) | (
-                            Q(class_section__course__registration_eligibility__contains='FR*') &
-                            Q(student__grade_level__in=['FR'])
-                        )
-                    )
+                    Q(class_section__registration_term__id=registration_term_id) &
+                    recommendation_required_q()
                 ).values_list('student__id', flat=True)
 
                 has_recommendation = StudentRecommendation.objects.filter(

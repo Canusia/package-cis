@@ -1,4 +1,21 @@
+"""Incomplete-application reminders.
+
+`instructor_app` ships a command of this same name. Django's ``get_commands()``
+iterates ``reversed(apps.get_app_configs())``, so the app listed *earlier* in
+INSTALLED_APPS wins — which on a default tenant is `cis`, silently shadowing
+instructor_app. The body below queries the legacy
+``cis.models.teacher_applicant`` tables; on a tenant whose applications live in
+instructor_app those are empty, so the cron ran green and sent nothing.
+
+So when instructor_app is installed, hand this name to its implementation and
+keep the legacy body only for tenants still on the legacy models. Deciding at
+import time rather than by deleting this module means neither kind of tenant
+goes silent, and an existing ``CronTab`` row keeps working under the same
+command name either way.
+"""
+import importlib.util
 from datetime import datetime
+from importlib import import_module
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
@@ -22,8 +39,34 @@ from cis.models.customuser import CustomUser
 from cis.models.note import TeacherApplicationNote
 
 from cis.settings.incomplete_si_application import incomplete_si_application
-class Command(BaseCommand):
-    
+
+# Nested (editable submodule) layout first, then the flat pip install.
+_CANDIDATES = (
+    'instructor_app.instructor_app.management.commands.notify_incomplete_si_app',
+    'instructor_app.management.commands.notify_incomplete_si_app',
+)
+
+
+def _load_instructor_app_command():
+    """Return instructor_app's Command class, or None if the app is absent.
+
+    find_spec first so that a genuine ImportError *inside* instructor_app
+    propagates instead of being swallowed as "not installed" — that would put us
+    straight back to failing silently.
+    """
+    for path in _CANDIDATES:
+        try:
+            spec = importlib.util.find_spec(path)
+        except (ImportError, ValueError):
+            # Parent package missing, or not a package at all.
+            continue
+        if spec is not None:
+            return import_module(path).Command
+    return None
+
+
+class _LegacyCommand(BaseCommand):
+
     help = 'Register reports in DB'
 
     def add_arguments(self, parser):
@@ -142,3 +185,9 @@ class Command(BaseCommand):
             note.save()
             emails_sent += 1
             
+
+_delegate = _load_instructor_app_command()
+
+# instructor_app owns this command wherever it is installed; `cis` keeps the
+# name resolvable for tenants still on the legacy models.
+Command = _delegate if _delegate is not None else _LegacyCommand
