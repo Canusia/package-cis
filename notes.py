@@ -58,11 +58,33 @@ class NoteType:
     #: the owner record is resolvable. None means no object scoping.
     scope: Optional[Callable] = None
 
+    #: True when the form's __init__ is `(request, *args, **kwargs)` rather
+    #: than Django's `(*args, **kwargs)`. Only StudentPlanNoteForm does this —
+    #: it varies its note_type choices by the caller's role — but the view has
+    #: to know, so the declaration lives here rather than as an isinstance
+    #: check in the dispatcher.
+    form_takes_request: bool = False
+
     supports_media: bool = False
     supports_reply: bool = False
 
     #: Extra keyword defaults handed to the generic writer.
     extras: dict = field(default_factory=dict)
+
+    def build_form(self, request, data=None, files=None, initial=None):
+        """
+        Instantiate this kind's form.
+
+        Kinds that declare no form get the generic `NoteForm`, which is what
+        the dispatcher's `else` branch used to hand them.
+        """
+        from cis.forms.note import NoteForm
+
+        form_class = self.form or NoteForm
+        args = (request,) if self.form_takes_request else ()
+        if data is None:
+            return form_class(*args, initial=initial or {})
+        return form_class(*args, data, files)
 
     def create(self, request, note_form):
         """

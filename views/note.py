@@ -10,6 +10,7 @@ from django.urls import reverse
 
 from cis.models.note import StudentNote
 from cis.menu import cis_menu, draw_menu
+from cis.notes import note_types
 from cis.forms.note import (
     NoteForm, StudentNoteForm,
     StudentNoteReplyForm,
@@ -40,24 +41,40 @@ def add_new_note(request, add_to):
     template = 'cis/notes/manage_note.html'
 
     if request.method == 'POST':
-        if request.POST.get('model') == 'studentnote':
-            form = StudentNoteForm(request.POST, request.FILES)
-        if request.POST.get('model') == 'eventnote':
-            form = EventNoteForm(request.POST)
-        elif request.POST.get('model') == 'teachernote':
-            form = TeacherNoteForm(request.POST, request.FILES)
-        elif request.POST.get('model') == 'student_replynote':
-            form = StudentNoteReplyForm(request.POST, request.FILES)
-        elif request.POST.get('model') == 'classsectionnote':
-            form = ClassSectionNoteForm(request.POST)
-        elif request.POST.get('model') == 'teacherapplicationnote':
-            form = TeacherApplicationNoteForm(request.POST)
-        elif request.POST.get('model') == 'studentplannote':
-            form = StudentPlanNoteForm(request, request.POST)
-        elif request.POST.get('model') == 'visitreportnote':
-            form = VisitReportNoteForm(request.POST)
-        else:
-            form = NoteForm(request.POST)
+        # Dispatch through the note_types registry rather than a hardcoded
+        # `if request.POST.get('model') == …` chain.
+        #
+        # The chain could only ever serve slugs written into this file, so a
+        # NoteType registered by another app fell through to the generic
+        # NoteForm, matched no branch in the writer chain below, left `note`
+        # as None, and returned a success-shaped "There was an error while
+        # adding note" — a silent no-write. cis/notes.py always described the
+        # registry as the destination for these branches; this is that move.
+        #
+        # Behaviour for the kinds the chain named is unchanged: each one now
+        # declares in cis/actions/notes.py the same form the chain picked, and
+        # NoteType.create() delegates to the model's own add_note() exactly as
+        # the writer chain did.
+        slug = request.POST.get('model')
+        note_type = note_types.get(slug)
+
+        if note_type is None:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Invalid note type.',
+            }, status=400)
+
+        # add_new_note is not routed directly — every caller arrives through
+        # cis/actions/notes.py, which already checks may(). Re-checking here
+        # keeps the guarantee if that ever stops being true, and generalises
+        # the doubled hsadminnote check (PT-9) to every kind.
+        if not note_type.may(request):
+            return JsonResponse({
+                'status': 'error',
+                'message': 'You are not authorized to perform this action.',
+            }, status=403)
+
+        form = note_type.build_form(request, request.POST, request.FILES)
 
         context = {
             'form': form,
@@ -65,51 +82,7 @@ def add_new_note(request, add_to):
         }
         if form.is_valid():
             try:
-                note = None
-                if form.cleaned_data['model'] == f"teacherapplicationnote":
-                    from cis.models.note import TeacherApplicationNote as note_model
-                    note = note_model.add_note(request, form)
-                
-                elif form.cleaned_data['model'] == f"visitreportnote":
-                    from cis.models.note import ClassVisitReportNote as note_model
-                    note = note_model.add_note(request, form)
-                
-                elif form.cleaned_data['model'] == f"coursenote":
-                    from cis.models.note import CourseNote as note_model
-                    note = note_model.add_note(request, form)
-
-                elif form.cleaned_data['model'] == f"classsectionnote":
-                    from cis.models.note import ClassSectionNote
-                    note = ClassSectionNote.add_note(request, form)
-                
-                elif form.cleaned_data['model'] == f"eventnote":
-                    from cis.models.note import EventNote
-                    note = EventNote.add_note(request, form)
-
-                elif form.cleaned_data['model'] == f"highschoolnote":
-                    from cis.models.note import HighSchoolNote
-                    note = HighSchoolNote.add_note(request, form)
-
-                elif form.cleaned_data['model'] == f"teachernote":
-                    from cis.models.note import TeacherNote
-                    note = TeacherNote.add_note(request, form)
-
-                elif form.cleaned_data['model'] == f"hsadminnote":
-                    if not user_has_cis_role(request.user):
-                        return JsonResponse({
-                            'status': 'error',
-                            'message': 'You are not authorized to perform this action.',
-                        }, status=403)
-                    from cis.models.note import HSAdministratorNote
-                    note = HSAdministratorNote.add_note(request, form)
-
-                elif form.cleaned_data['model'] == f"ticketnote":
-                    from support_ticket.models.ticket import TicketNote
-                    note = TicketNote.add_note(request, form)
-
-                elif form.cleaned_data['model'] == f"studentnote" or form.cleaned_data['model'] == 'student_replynote':
-                    from cis.models.note import StudentNote
-                    note = StudentNote.add_note(request, form)
+                note = note_type.create(request, form)
 
                 if note:
                     if form.cleaned_data['ajax'] == '1':

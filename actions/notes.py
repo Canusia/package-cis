@@ -86,8 +86,14 @@ def _model(dotted):
 
 
 def _register_note_type(slug, model, owner_field, owner_model,
-                        permission, scope=None, add_to=None, label=None):
-    """Declare a note kind and wire its add_new action."""
+                        permission, scope=None, add_to=None, label=None,
+                        form=None, form_takes_request=False):
+    """Declare a note kind and wire its add_new action.
+
+    `form` is the form class the old `if request.POST.get('model') == …` chain
+    in cis/views/note.py picked for this slug; kinds it did not name fell
+    through to the generic NoteForm and still declare nothing here.
+    """
     note_type = note_types.register(NoteType(
         slug=slug,
         model=model,
@@ -95,6 +101,8 @@ def _register_note_type(slug, model, owner_field, owner_model,
         owner_model=owner_model,
         permission=permission,
         scope=scope,
+        form=form,
+        form_takes_request=form_takes_request,
     ))
 
     def handler(request, _slug=slug, _add_to=add_to or owner_field):
@@ -130,6 +138,11 @@ def register_all():
     from cis.models.section import ClassSection
     from cis.models.student import Student
     from cis.models.teacher import Teacher
+    from cis.forms.note import (
+        ClassSectionNoteForm, EventNoteForm, StudentNoteForm,
+        StudentNoteReplyForm, StudentPlanNoteForm, TeacherApplicationNoteForm,
+        TeacherNoteForm, VisitReportNoteForm,
+    )
 
     # --- CE-only: no non-cis template posts these ------------------------
     _register_note_type(
@@ -144,17 +157,20 @@ def register_all():
     # ce and faculty URL modules, so CE-only would break the faculty portal.
     _register_note_type(
         'eventnote', EventNote, 'event', Event,
+        form=EventNoteForm,
         permission=user_has_cis_or_faculty_role, add_to='event',
         label='Add Event Note')
 
     _register_note_type(
         'studentnote', StudentNote, 'student', Student,
+        form=StudentNoteForm,
         permission=_cis, add_to='student', label='Add Student Note')
 
     # degree_pathway posts this from degree_plan/hs_admin/detail.html as well
     # as its ce page, so HS admins need it — scoped to their own students.
     _register_note_type(
         'studentplannote', StudentNote, 'student', Student,
+        form=StudentPlanNoteForm, form_takes_request=True,
         permission=_cis_or_hs_admin, scope=_student_in_hs_admin_scope,
         add_to='studentplan', label='Add Student Plan Note')
 
@@ -167,12 +183,14 @@ def register_all():
     # PT-23: teacher notes are CE-only. The guard moves off the if-chain.
     _register_note_type(
         'teachernote', TeacherNote, 'teacher', Teacher,
+        form=TeacherNoteForm,
         permission=_cis, add_to='teacher', label='Add Instructor Note')
 
     # --- Shared with other portals ---------------------------------------
     # Posted from the instructor portal as well as cis.
     _register_note_type(
         'classsectionnote', ClassSectionNote, 'class_section', ClassSection,
+        form=ClassSectionNoteForm,
         permission=_cis_or_instructor, add_to='classsection',
         label='Add Class Section Note')
 
@@ -180,6 +198,7 @@ def register_all():
     # schools that admin manages — this path had no check at all before.
     _register_note_type(
         'student_replynote', StudentNote, 'student', Student,
+        form=StudentNoteReplyForm,
         permission=_cis_or_hs_admin, scope=_student_in_hs_admin_scope,
         add_to='student_reply', label='Reply to Student Note')
 
@@ -199,12 +218,14 @@ def register_all():
     _register_note_type(
         'teacherapplicationnote', TeacherApplicationNote,
         'teacher_application', _model('cis.models.customuser.CustomUser'),
+        form=TeacherApplicationNoteForm,
         permission=_authenticated, add_to='teacherapplication',
         label='Add Application Note')
 
     _register_note_type(
         'visitreportnote', _model('cis.models.note.ClassVisitReportNote'),
         'visit_report', CustomUser,
+        form=VisitReportNoteForm,
         permission=_authenticated, add_to='visitreport',
         label='Add Visit Report Note')
 
