@@ -1659,9 +1659,14 @@ def delete_student(request):
     record = get_object_or_404(Student, pk=ids[0])
     try:
         Student.delete_record(record)
+        # Not onActionComplete: that ends in location.reload(), which reloads
+        # the detail page of a student that no longer exists — inside the
+        # iframe, so the user gets a page-load error. onRecordDeleted closes
+        # the modal and returns to the index instead, matching the
+        # `a.delete` handler and common_methods.js.
         return JsonResponse({
             'outcome': 'call',
-            'fn': 'onActionComplete',
+            'fn': 'onRecordDeleted',
             'args': {'title': 'Done', 'message': 'Record deleted.', 'status': 'success'},
         })
     except Exception as e:

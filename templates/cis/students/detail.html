@@ -50,6 +50,24 @@ jQuery(document).ready(function () {
     });
 });
 
+// Deletion cannot use onActionComplete: its location.reload() would reload the
+// detail page of a record that no longer exists, and this page renders inside
+// the #details iframe, so that surfaces as a page-load error. Close the modal
+// and refresh the index behind it instead — same convention as the
+// `a.delete` handler above and cis/staticfiles/js/common_methods.js.
+function onRecordDeleted(args) {
+    var span = document.createElement('span');
+    span.innerHTML = (args && args.message) || 'Record deleted.';
+    swal({
+        title: (args && args.title) || 'Done',
+        content: span,
+        icon: (args && args.status) || 'success'
+    }).then(function () {
+        window.parent.closeModal();
+        window.parent.location.reload();
+    });
+}
+
 function onActionComplete(args) {
     if (args && args.message) {
         var span = document.createElement('span');
