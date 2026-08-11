@@ -39,6 +39,7 @@ from cis.forms.course import (
     AddAppRequirementForm,
     BulkCourseAvailabilityForm,
     BulkCourseCampusForm,
+    BulkCourseRegistrationEligibilityForm,
 )
 
 from django.template.loader import render_to_string
@@ -347,6 +348,40 @@ def update_course_campus(request):
         'form': form,
         'form_action': reverse('cis:course_bulk_actions'),
         'action_slug': 'update_course_campus',
+        'ids': ids,
+    }, request=request)
+    return JsonResponse({'outcome': 'modal', 'html': html})
+
+
+@course_actions.action('eligibility', label='Update Registration Eligibility', icon='fas fa-user-check', scope=['bulk'])
+def update_course_registration_eligibility(request):
+    template = 'cis/course/bulk_action.html'
+    ids_raw = request.POST.getlist('ids[]')
+    ids = processable_ids(Course, ids_raw, request.user)
+
+    if request.POST.get('action_confirmed'):
+        # Campus-gate the confirm payload the same way update_course_campus
+        # does. The ids the modal was built from are not the ids it posts back,
+        # so re-filtering here is what stops a hand-crafted confirm from
+        # rewriting eligibility on a course in another campus.
+        data = request.POST.copy()
+        if ids_raw:
+            data.setlist('record_ids', ids)
+        else:
+            data.setlist('record_ids', processable_ids(
+                Course, request.POST.getlist('record_ids'), request.user))
+        form = BulkCourseRegistrationEligibilityForm(data=data)
+        if form.is_valid():
+            form.save(request)
+            return JsonResponse({'outcome': 'call', 'fn': 'onBulkActionComplete', 'args': {'message': 'Successfully updated records', 'status': 'success'}})
+        return JsonResponse({'message': 'Please correct the errors and try again.', 'errors': form.errors.as_json()}, status=400)
+
+    form = BulkCourseRegistrationEligibilityForm(ids)
+    html = render_to_string(template, {
+        'title': 'Update Registration Eligibility',
+        'form': form,
+        'form_action': reverse('cis:course_bulk_actions'),
+        'action_slug': 'update_course_registration_eligibility',
         'ids': ids,
     }, request=request)
     return JsonResponse({'outcome': 'modal', 'html': html})

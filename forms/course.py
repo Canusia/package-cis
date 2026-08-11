@@ -769,6 +769,59 @@ class BulkCourseCampusForm(forms.Form):
         return courses
 
 
+class BulkCourseRegistrationEligibilityForm(forms.Form):
+    record_ids = forms.MultipleChoiceField(
+        required=False,
+        label='Courses to Update',
+        widget=forms.CheckboxSelectMultiple,
+        choices=[]
+    )
+
+    registration_eligibility = forms.MultipleChoiceField(
+        required=True,
+        label='Registration Eligibility',
+        help_text=(
+            'Replaces the current eligibility on every selected course. '
+            'A grade marked "with recommendation" requires a school '
+            'recommendation before the application can be approved.'
+        ),
+        widget=forms.CheckboxSelectMultiple,
+        choices=Course.GRADE_LEVEL
+    )
+
+    action = forms.CharField(
+        widget=forms.HiddenInput,
+        initial='update_course_registration_eligibility'
+    )
+
+    def __init__(self, record_ids=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        if record_ids:
+            records = Course.objects.filter(id__in=record_ids)
+            record_choices = [(record.id, record.name) for record in records]
+            self.fields['record_ids'].choices = record_choices
+            self.fields['record_ids'].initial = record_ids
+        elif kwargs.get('data'):
+            record_choices = []
+            for record_id in kwargs['data'].getlist('record_ids'):
+                record_choices.append((record_id, record_id))
+            self.fields['record_ids'].choices = record_choices
+            self.fields['record_ids'].required = False
+
+    def save(self, request=None):
+        data = self.cleaned_data
+        courses = Course.objects.filter(id__in=data.get('record_ids'))
+        # Iterate rather than queryset.update(): registration_eligibility is a
+        # MultiSelectField, whose list-to-string conversion happens in the
+        # field's pre_save, which .update() bypasses.
+        eligibility = data.get('registration_eligibility')
+        for course in courses:
+            course.registration_eligibility = eligibility
+            course.save()
+        return courses
+
+
 class AddAppRequirementForm(forms.Form):
     courses = forms.ModelMultipleChoiceField(
         required=True,
