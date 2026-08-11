@@ -1424,6 +1424,37 @@ def auto_delete_file_on_delete(sender, instance, **kwargs):
     return False
 
 
+def _tenant_registration_override(name):
+    """Return the tenant's override for a StudentRegistration rule, or None.
+
+    Recommendation eligibility is tenant policy: which grade levels need a
+    recommendation, and which registrations count as "pending", differ per
+    deployment. A tenant opts in by defining the named function in its
+    ``services/registration.py`` (the module that already owns mirror_to_sis);
+    tenants that don't get the defaults below unchanged.
+
+    Imported inside the function on purpose — a tenant's services module
+    imports ``cis.models.*`` at its own module level, so resolving it while
+    ``cis.models.section`` is still importing would risk AppRegistryNotReady.
+    """
+    from django.conf import settings
+
+    from cis.services.tenant_services import get_tenant_service
+
+    try:
+        module = get_tenant_service('registration')
+    except ModuleNotFoundError as exc:
+        # Only a tenant that ships no registration service falls back. An
+        # ImportError raised from *inside* that module is a real breakage and
+        # must not be swallowed into the defaults.
+        expected = f'{settings.TENANT_SERVICES_APP}.services.registration'
+        if exc.name in (expected, settings.TENANT_SERVICES_APP,
+                        f'{settings.TENANT_SERVICES_APP}.services'):
+            return None
+        raise
+    return getattr(module, name, None)
+
+
 class StudentRegistrationQuerySet(models.QuerySet):
     def pending_sis_mirror(self, trigger_statuses=None):
         """Registrations queued for the next SIS mirror run.
@@ -2196,12 +2227,31 @@ class StudentRegistration(models.Model):
         return model_as_HTML(self, layout)
 
     def needs_recommendation(self):
+        """Whether this registration's course requires a recommendation.
+
+        Tenants may override by defining ``needs_recommendation(registration)``
+        in their ``services/registration.py``.
+        """
+        override = _tenant_registration_override('needs_recommendation')
+        if override is not None:
+            return override(self)
+
         grade_level = self.student.grade_level
         eligibility = self.class_section.course.registration_eligibility
 
         return f'{grade_level}*' in eligibility
     
     def has_recommendation(self):
+        """Whether a recommendation already exists for this registration.
+
+        Tenants may override by defining ``has_recommendation(registration)``
+        in their ``services/registration.py`` — which terms count as covering a
+        registration is tenant policy.
+        """
+        override = _tenant_registration_override('has_recommendation')
+        if override is not None:
+            return override(self)
+
         from django.db.models import Q
         from cis.models.student import StudentRecommendation
         return StudentRecommendation.objects.filter(
@@ -2213,7 +2263,16 @@ class StudentRegistration(models.Model):
     def get_pending_recommendations(cls, student_ids=None, highschool_ids=None):
         """
         Returns a queryset of 'StudentRegistration' where reviewer is 'None'.
+
+        Tenants may override by defining
+        ``get_pending_recommendations(student_ids=None, highschool_ids=None)``
+        in their ``services/registration.py``.
         """
+        override = _tenant_registration_override('get_pending_recommendations')
+        if override is not None:
+            return override(
+                student_ids=student_ids, highschool_ids=highschool_ids)
+
         records = StudentRegistration.objects.none()
 
         if student_ids:
