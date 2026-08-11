@@ -6,8 +6,10 @@ admin should only be able to see teachers from their high school":
 
   * instructor        -> only their own Teacher record
   * highschool_admin  -> only teachers in the high schools they administer
-  * ce / faculty      -> all teachers (CE instructors index + faculty
-                         "My Instructors" both consume this endpoint)
+  * ce                -> all teachers (CE instructors index)
+  * faculty           -> only the instructors in their visible set (the
+                         faculty portal's "My Instructors"); see the
+                         2026-08-11 faculty -> teacher assignment spec
   * any other role    -> no access (403)
 
 Because retrieve() resolves through get_queryset(), an out-of-scope teacher
@@ -109,7 +111,8 @@ class TeacherViewSetAuthzTests(TestCase):
         ce_user.groups.add(Group.objects.get(name='ce'))
         cls.ce_user = ce_user
 
-        # Faculty coordinator (spans schools; keeps full access).
+        # Faculty coordinator. Administers no course, so their visible-teacher
+        # set is empty (fail closed).
         fac_user = User.objects.create_user(
             username='fac1', email='fac1@example.com', password='x',
             first_name='Fay', last_name='Faculty',
@@ -160,7 +163,7 @@ class TeacherViewSetAuthzTests(TestCase):
         resp = self.client.get(f'/ce/api/teacher/{self.teacher3.id}/?format=json')
         self.assertEqual(resp.status_code, 404)
 
-    # --- ce / faculty (full access) -----------------------------------------
+    # --- ce (full access) / faculty (scoped) --------------------------------
     def test_ce_sees_all_teachers(self):
         self.client.force_login(self.ce_user)
         resp = self.client.get('/ce/api/teacher/?format=json')
@@ -170,14 +173,21 @@ class TeacherViewSetAuthzTests(TestCase):
             {str(self.teacher1.id), str(self.teacher2.id), str(self.teacher3.id)},
         )
 
-    def test_faculty_sees_all_teachers(self):
+    def test_faculty_sees_only_their_visible_teachers(self):
+        """Superseded the old "faculty sees all teachers" contract.
+
+        As of the 2026-08-11 faculty -> teacher assignment spec, faculty are
+        scoped to cis.services.faculty_scope.visible_teachers: the instructors
+        certified for the courses they actively administer, narrowed further
+        where CE has assigned specific instructors for the academic year. This
+        faculty user administers no course, so they see nobody -- fail closed.
+        Their full-fledged scoping matrix lives in
+        cis/tests/test_faculty_teacher_api_scoping.py.
+        """
         self.client.force_login(self.faculty_user)
         resp = self.client.get('/ce/api/teacher/?format=json')
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(
-            self._ids(resp),
-            {str(self.teacher1.id), str(self.teacher2.id), str(self.teacher3.id)},
-        )
+        self.assertEqual(self._ids(resp), set())
 
     # --- unauthorized role --------------------------------------------------
     def test_student_role_is_forbidden(self):

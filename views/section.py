@@ -397,6 +397,15 @@ class ClassSectionViewSet(viewsets.ReadOnlyModelViewSet):
                     )
                     
                 if teacher_id:
+                    # Same PT-1 idiom as the `term` guard above: teacher__id is
+                    # UUID-typed, so a malformed client value raises
+                    # ValidationError (an HTTP 500 the enclosing `except
+                    # ValueError` does not catch) before any role scoping below
+                    # gets a chance to run. Treat it as "no match".
+                    try:
+                        uuid.UUID(str(teacher_id))
+                    except (ValueError, AttributeError, TypeError):
+                        return ClassSection.objects.none()
                     records = records.filter(
                         teacher__id=teacher_id
                     )
@@ -500,12 +509,14 @@ class ClassSectionViewSet(viewsets.ReadOnlyModelViewSet):
             #  - CIS ('ce') staff: unrestricted (multi-tenant listing).
             #  - highschool_admin: may only pass a highschool_id they administer.
             #  - instructor: scoped to the sections they teach.
+            #  - faculty: a teacher_id must be one of their visible instructors.
             user = self.request.user
             if not user_has_cis_role(user):
                 from cis.utils import (
                     user_has_highschool_admin_role,
                     user_has_instructor_role,
                 )
+                from cis.services.faculty_scope import visible_teachers
                 if user_has_highschool_admin_role(user):
                     if highschool_id:
                         # Imported locally: highschool_admin.views.utils ->
@@ -523,6 +534,29 @@ class ClassSectionViewSet(viewsets.ReadOnlyModelViewSet):
                             raise PermissionDenied('High school not in your scope.')
                 elif user_has_instructor_role(user):
                     records = records.filter(teacher__user=user)
+                elif user_has_faculty_role(user):
+                    # Faculty -> teacher assignment (spec 2026-08-11): the
+                    # faculty teacher-detail page loads this endpoint with a
+                    # teacher_id, so a teacher_id outside the caller's visible
+                    # set must yield nothing.
+                    #
+                    # Only the teacher_id path is scoped. The same endpoint
+                    # backs the faculty portal's Class Sections and Offered
+                    # Classes pages, which pass no teacher_id; narrowing those
+                    # by visible_teachers() would change what faculty see
+                    # before any assignment row exists, which the spec's
+                    # rollout ("purely additive") rules out. Sections with no
+                    # instructor yet would disappear from Offered Classes too.
+                    if teacher_id:
+                        try:
+                            uuid.UUID(str(teacher_id))
+                        except (ValueError, AttributeError, TypeError):
+                            # Same idiom as the PT-1 term guard above: a
+                            # malformed id is "no match", not a 500.
+                            return ClassSection.objects.none()
+                        if not visible_teachers(user).filter(
+                                id=teacher_id).exists():
+                            return ClassSection.objects.none()
 
             records = scope_queryset_by_campus(records, self.request.user)
             return records

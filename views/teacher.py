@@ -60,6 +60,7 @@ from cis.utils import (
     user_has_faculty_role,
 )
 from cis.menu import cis_menu, draw_menu
+from cis.services.faculty_scope import visible_teachers
 
 class TeacherCourseViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = TeacherCourseSerializer
@@ -139,6 +140,21 @@ class TeacherUploadViewSet(viewsets.ReadOnlyModelViewSet):
         # Instructors: only their own uploads; never trust client teacher_id.
         if user_has_instructor_role(user):
             return TeacherUpload.objects.filter(teacher__user=user)
+
+        # Faculty: only uploads for instructors in their visible set (spec
+        # 2026-08-11, faculty -> teacher assignment). permission_classes above
+        # admit ce/instructor/highschool_admin only, so a faculty-only user is
+        # still 403 here -- deliberately not widened by this change. The branch
+        # exists so the scope, not an accident of the permission list, is what
+        # protects the data if the faculty portal is ever granted the endpoint.
+        if user_has_faculty_role(user):
+            records = TeacherUpload.objects.filter(
+                teacher__in=visible_teachers(user))
+            if teacher_id:
+                if not teacher_id_is_valid_uuid:
+                    return TeacherUpload.objects.none()
+                records = records.filter(teacher__id=teacher_id)
+            return records
 
         return TeacherUpload.objects.none()
 
@@ -235,16 +251,12 @@ class TeacherViewSet(viewsets.ReadOnlyModelViewSet):
                 course__id__in=fac_courses.values_list('course__id', flat=True)
             )
 
-            # print(records.count())
-
             records = records.filter(
                 id__in=course_teachers.values_list(
                     'teacher_highschool__teacher__id',
                     flat=True
                 )
             )
-
-            print(records.count())
 
         if record_type:
             # if record_type == 'active_inactive':
@@ -262,14 +274,16 @@ class TeacherViewSet(viewsets.ReadOnlyModelViewSet):
 
         # PT-11: scope teacher records to the caller's role (applied last,
         # after all other filters). Mirrors the TeacherUploadViewSet fix.
-        #   * ce / faculty      -> all teachers (CE index + faculty portal).
+        #   * ce                -> all teachers (CE index), campus-gated.
+        #   * faculty           -> only the instructors they may see, per
+        #                          cis/services/faculty_scope.visible_teachers.
         #   * highschool_admin  -> teachers in the high schools they manage.
         #   * instructor        -> only their own Teacher record.
         # ce is checked first because user_has_faculty_role() is also True for
         # ce users. retrieve() runs through this queryset, so an out-of-scope
         # teacher UUID returns 404.
         user = self.request.user
-        if user_has_cis_role(user) or user_has_faculty_role(user):
+        if user_has_cis_role(user):
             # Campus gate (ce only): scope to instructors certified for courses
             # at a processable campus; instructors with no course certs are
             # universal. The dropdown narrows to the chosen campus.
@@ -278,6 +292,24 @@ class TeacherViewSet(viewsets.ReadOnlyModelViewSet):
                 records, user,
                 cert_path='teacherhighschool__teachercoursecertificate',
                 selected_campus=campus or None)
+
+        if user_has_faculty_role(user):
+            # Faculty -> teacher assignment (spec 2026-08-11): per overseen
+            # course, the assigned instructors when CE has configured any for
+            # this academic year, otherwise the full certificate list that has
+            # always been shown. Ships dark: with no assignment rows this is
+            # exactly today's derivation.
+            #
+            # This is an additional AND on top of every filter above --
+            # including the client-supplied faculty_coordinator_id, which
+            # narrows by *that* faculty's courses. Replacing rather than
+            # intersecting would let a faculty user pass a colleague's id and
+            # widen their own view.
+            #
+            # No campus gate: scope_by_course_cert_campus() is a no-op for
+            # non-ce, non-superuser callers.
+            return records.filter(
+                id__in=visible_teachers(user).values('id'))
 
         if user_has_highschool_admin_role(user):
             highschool_ids = user.get_highschools_for_admin()
@@ -299,6 +331,16 @@ class TeacherNotesViewSet(viewsets.ReadOnlyModelViewSet):
         teacher_id = self.request.GET.get('teacher_id')
 
         records = TeacherNote.objects.all()
+
+        # Faculty: only notes about instructors in their visible set (spec
+        # 2026-08-11). Same reachability caveat as TeacherUploadViewSet --
+        # permission_classes is CIS_user_only, so a faculty-only user is 403
+        # today and this change does not widen that; it makes the scope, rather
+        # than the permission list alone, what protects the data.
+        # user_has_faculty_role() is True for ce users, so ce is excluded first.
+        user = self.request.user
+        if not user_has_cis_role(user) and user_has_faculty_role(user):
+            records = records.filter(teacher__in=visible_teachers(user))
 
         if teacher_id:
             records = records.filter(
