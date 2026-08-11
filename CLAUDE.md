@@ -91,9 +91,17 @@ form: `cis` keeps a working default and a tenant overrides only if it defines th
 named function. As of v0.0.18 the `registration` module carries five such hooks —
 `needs_recommendation`, `has_recommendation`, `get_pending_recommendations`,
 `student_needs_recommendation` and `counselor_notification_groups` — so a tenant
-that ships none of them is unaffected. Prefer this form for behaviour that has a
-sensible platform default; reserve the required-module form for things `cis`
-genuinely cannot supply.
+that ships none of them is unaffected. v0.0.20 adds a second opt-in module,
+`faculty_scope`, with `visible_teachers(user, academic_year=None)`. Prefer this
+form for behaviour that has a sensible platform default; reserve the
+required-module form for things `cis` genuinely cannot supply.
+
+One trap when writing an opt-in module: re-export the **default**, not the seam
+wrapper. `faculty_scope` exposes `default_visible_teachers` for exactly this —
+a tenant re-exporting `visible_teachers` would make the seam resolve the
+override to the wrapper itself and recurse until the stack blew. The wrapper
+guards with an `is not` check, so the wrong shape is merely redundant, but the
+default is the name to re-export.
 
 The 29 `reports/`, 22 `services/importers/` schemas and four ewu-flavoured modules
 (`tabs/faculty_coordinator.py`, `settings/student_profile.py`,
