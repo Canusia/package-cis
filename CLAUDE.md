@@ -83,7 +83,19 @@ backed by each tenant's in-tree `myce_tenant_configs`. Eleven seams exist today
 `ethos_identity`, `registration`, …). The form seams are re-exported by the PEP 562
 `__getattr__` shim at the bottom of `forms/student.py` — adding one means adding an entry to
 `_TENANT_FORMS` there **and** shipping the module in every tenant, or that tenant breaks at
-first use. See README → "Required tenant service modules". The 29 `reports/`, 22 `services/importers/` schemas and four ewu-flavoured modules
+first use. See README → "Required tenant service modules".
+
+Those eleven are **required** modules — a tenant missing one breaks at first use.
+`services/tenant_services.get_tenant_override(module, attr)` is the **opt-in**
+form: `cis` keeps a working default and a tenant overrides only if it defines the
+named function. As of v0.0.18 the `registration` module carries five such hooks —
+`needs_recommendation`, `has_recommendation`, `get_pending_recommendations`,
+`student_needs_recommendation` and `counselor_notification_groups` — so a tenant
+that ships none of them is unaffected. Prefer this form for behaviour that has a
+sensible platform default; reserve the required-module form for things `cis`
+genuinely cannot supply.
+
+The 29 `reports/`, 22 `services/importers/` schemas and four ewu-flavoured modules
 (`tabs/faculty_coordinator.py`, `settings/student_profile.py`,
 `forms/application_validators.py`, `forms/application_form.py`) are **not** behind the
 seam yet — deferred to v0.0.2+, driven by what lsco/sccc convergence surfaces.
