@@ -1456,6 +1456,26 @@ class StudentRegistrationQuerySet(models.QuerySet):
             trigger_statuses = registration_status_email.from_db().get('sis_mirror_trigger') or []
         return self.filter(status__in=trigger_statuses, needs_mirroring=True)
 
+    def awaiting_recommendation(self, terms=None):
+        """Applied registrations whose course requires a recommendation.
+
+        The selection half of the counselor chase-up, as a queryset so callers
+        can narrow it further (by school, by student) instead of re-deriving the
+        rule. `terms` scopes to the sections' registration terms; None applies
+        no term scoping.
+
+        The grade rule is `recommendation_required_q()` rather than a Python
+        loop collecting skip_ids, which is one query and — unlike a bare
+        `__contains` on registration_eligibility — cannot match every asterisk
+        course for a student with a blank grade level.
+        """
+        from cis.models.student import recommendation_required_q
+
+        qs = self.filter(status='applied').filter(recommendation_required_q())
+        if terms is not None:
+            qs = qs.filter(class_section__registration_term__in=terms)
+        return qs
+
 
 class StudentRegistration(models.Model):
     """
@@ -1944,71 +1964,90 @@ class StudentRegistration(models.Model):
 
 
     @staticmethod
-    def notify_school_counselors(*args, **kwargs):
-        
+    def counselor_notification_groups(terms=None):
+        """Who to chase for recommendations, grouped by the school to email.
+
+        The selection half of `notify_school_counselors`: which registrations
+        are outstanding, which school each belongs to, and who at that school
+        hears about it. All three are tenant policy — the send half (settings
+        gating, template rendering, delivery, note-keeping) stays in cis.
+
+        Returns a list of dicts with keys `highschool`, `registrations` (one row
+        per student) and `recipients` (a list of email addresses). Tenants
+        override by defining `counselor_notification_groups(terms=None)` in
+        their services/registration.py.
+
+        `terms` defaults to the configured registration terms.
+        """
+        override = _tenant_registration_override('counselor_notification_groups')
+        if override is not None:
+            return override(terms=terms)
+
         from cis.models.highschool import HighSchool
-        from cis.models.highschool_administrator import (
-            HSAdministrator, HSAdministratorPosition
-        )
+        from cis.utils import registration_terms as get_registration_terms
 
-        from cis.utils import registration_terms as get_registration_terms, getDomain, upload_to_s3
-        from cis.settings.registrations import registrations as regis_settings
-        from cis.settings.school_counselor_regis_email import school_counselor_regis_email
+        if terms is None:
+            terms = get_registration_terms() or []
 
-        registration_terms = get_registration_terms()
+        applied_registrations = StudentRegistration.objects.awaiting_recommendation(
+            terms=terms)
 
-        email_settings = school_counselor_regis_email.from_db()
-
-        is_active = email_settings.get('is_active', 'No') 
-        if is_active == 'No':
-            return
-        
-        # get classes that are applied
-        applied_registrations = StudentRegistration.objects.filter(
-            status='applied',
-            class_section__registration_term__in=registration_terms
-        )
-
-        skip_ids = []
-        for registration in applied_registrations:
-            if f'{registration.student.grade_level}*' not in registration.class_section.course.registration_eligibility:
-                skip_ids.append(registration.id)
-        applied_registrations = applied_registrations.exclude(id__in=skip_ids)
-        
-        emails = []
-        emails_sent = 0
-
-        # get distinct high schools in all registrations
+        # Preserved verbatim, quirk included: DISTINCT ON the *student's* school
+        # while selecting the *section's* school, so only one section-school
+        # survives per student-school and the rest are never notified. Changing
+        # it here would change behaviour for every tenant on a release meant to
+        # be a refactor; ewu's override regroups by the student's school, which
+        # is the school that owns the recommendation.
         highschool_ids = applied_registrations.distinct(
             'student__highschool__id').values_list(
                 'class_section__highschool',
                 flat=True
             )
-        
-        highschool_ids = list(set(highschool_ids))
-        for highschool_id in highschool_ids:
+
+        groups = []
+        for highschool_id in list(set(highschool_ids)):
             highschool = HighSchool.objects.get(
                 pk=highschool_id
             )
 
-            hs_administrators = highschool.administrators_in_highschool('can_manage_student_recommendation')
-            students_in_highschool = applied_registrations.filter(
-                class_section__highschool=highschool
-            ).distinct('student')
+            hs_administrators = highschool.administrators_in_highschool(
+                'can_manage_student_recommendation')
 
+            groups.append({
+                'highschool': highschool,
+                'registrations': applied_registrations.filter(
+                    class_section__highschool=highschool
+                ).distinct('student'),
+                'recipients': [
+                    member.user.email for member in hs_administrators
+                ],
+            })
+        return groups
+
+    @staticmethod
+    def notify_school_counselors(*args, **kwargs):
+        from cis.settings.school_counselor_regis_email import school_counselor_regis_email
+
+        email_settings = school_counselor_regis_email.from_db()
+
+        is_active = email_settings.get('is_active', 'No')
+        if is_active == 'No':
+            return
+
+        emails_sent = 0
+
+        for group in StudentRegistration.counselor_notification_groups():
             students = []
-            for registration in students_in_highschool:
+            for registration in group['registrations']:
                 students.append(
                     f'{registration.student.user.first_name} {registration.student.user.last_name}'
                 )
-                
+
                 registration.student.add_note(None, 'Emailed school counselor requesting recommendation')
-                
+
             students.sort()
-            
-            to = [
-                member.user.email for member in hs_administrators
-            ]
+
+            to = group['recipients']
 
             subject = email_settings.get('pending_rec_email_subject', 'Customize in settings')
             message = Template(email_settings.get('pending_rec_email'))
