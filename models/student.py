@@ -2718,7 +2718,11 @@ class StudentRecommendation(models.Model):
                 student=student
             ).values_list('class_section__term__id', flat=True)
 
-            terms = registration_terms()
+            # registration_terms() returns None — not an empty queryset — when
+            # the <prefix>_cis_registrations setting row is absent, so iterating
+            # it raised TypeError on any deployment that had not configured
+            # registration terms yet. No open term means nothing outstanding.
+            terms = registration_terms() or []
             for term in terms:
                 if term.id in registered_term_ids:
                     if not StudentRecommendation.objects.filter(
