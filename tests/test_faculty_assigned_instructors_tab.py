@@ -212,6 +212,26 @@ class AssignedInstructorsRenderTests(AssignedInstructorsTabMixin, TestCase):
         html = self._get()
         self.assertIn(f'value="{self.year.id}" selected', html)
 
+    def test_the_active_year_is_labelled_in_the_selector(self):
+        """QA read a year named "2026 - 2027 - DELETE ME" as junk, switched to a
+        similarly-named inactive year, and configured assignments that the
+        portal then ignored. The active year must identify itself, since its
+        name cannot be relied on to."""
+        html = self._get()
+        self.assertIn(f'{self.year} (active)', html)
+        self.assertNotIn(f'{self.other_year} (active)', html)
+
+    def test_editing_an_inactive_year_says_the_saves_are_inert(self):
+        """The wrong-year no-op is invisible without this: the fallback
+        over-shows, so a misconfigured year and an unconfigured one produce the
+        same full list."""
+        html = self._get(academic_year=str(self.other_year.id))
+        self.assertIn('is not the active academic year', html)
+        self.assertIn(str(self.year), html)
+
+    def test_no_warning_on_the_active_year(self):
+        self.assertNotIn('is not the active academic year', self._get())
+
     def test_year_parameter_scopes_what_is_shown(self):
         course = self._course('Yearly')
         self._oversees(course)

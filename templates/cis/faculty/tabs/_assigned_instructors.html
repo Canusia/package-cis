@@ -23,7 +23,7 @@ Two things this fragment must keep saying out loud:
                         <select id="ai_academic_year" name="academic_year"
                                 class="form-control form-control-sm js-ai-year">
                             {% for year in academic_years %}
-                            <option value="{{ year.id }}"{% if year == academic_year %} selected{% endif %}>{{ year }}</option>
+                            <option value="{{ year.id }}"{% if year == academic_year %} selected{% endif %}>{{ year }}{% if year == active_year %} (active){% endif %}</option>
                             {% endfor %}
                         </select>
                     </div>
@@ -39,7 +39,7 @@ Two things this fragment must keep saying out loud:
                                             class="form-control form-control-sm">
                                         {% for year in academic_years %}
                                         {% if year != academic_year %}
-                                        <option value="{{ year.id }}">{{ year }}</option>
+                                        <option value="{{ year.id }}">{{ year }}{% if year == active_year %} (active){% endif %}</option>
                                         {% endif %}
                                         {% endfor %}
                                     </select>
@@ -58,6 +58,20 @@ Two things this fragment must keep saying out loud:
 
         {% if message %}
         <div class="alert alert-success">{{ message }}</div>
+        {% endif %}
+
+        {% if editing_inactive_year %}
+        {% comment %}
+        Saving here is legal but inert: the faculty portal resolves through the
+        active year, and because an unconfigured course falls back to showing
+        everyone, a wrong-year configuration looks identical to no configuration
+        at all. Say so rather than letting the reader infer it from a full list.
+        {% endcomment %}
+        <p class="alert alert-warning">
+            <strong>{{ academic_year }}</strong> is not the active academic year
+            ({{ active_year }}). Assignments saved here have no effect on what
+            faculty see until {{ academic_year }} becomes active.
+        </p>
         {% endif %}
 
         {% if not academic_year %}

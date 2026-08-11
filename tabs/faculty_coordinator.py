@@ -217,10 +217,24 @@ def assigned_instructors_tab(request, record):
         'unassigned': not assigned.get(course.id),
     } for course in courses]
 
+    # The faculty portal resolves through active_academic_year(), so
+    # assignments saved against any other year are a silent no-op today. The
+    # fallback over-shows by design, which means that no-op is invisible: a full
+    # instructor list reads the same whether the year is unconfigured or
+    # configured in the wrong year. QA hit exactly this within minutes, so the
+    # page names the active year rather than leaving it to be inferred.
+    active_year = active_academic_year()
+
     return {
         'rows': rows,
         'academic_year': academic_year,
         'academic_years': AcademicYear.objects.all().order_by('-name'),
+        'active_year': active_year,
+        'editing_inactive_year': (
+            academic_year is not None
+            and active_year is not None
+            and academic_year != active_year
+        ),
         'tab_url': reverse('cis:faculty_coordinator_tab',
                            args=[record.id, ASSIGNED_INSTRUCTORS_SLUG]),
         'message': message,
