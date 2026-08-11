@@ -22,3 +22,33 @@ def get_tenant_service(module_name):
     return importlib.import_module(
         f'{settings.TENANT_SERVICES_APP}.services.{module_name}'
     )
+
+
+def get_tenant_override(module_name, attr):
+    """Return `attr` from a tenant service module, or None if not overridden.
+
+    The opt-in form of `get_tenant_service`, for seams where `cis` keeps a
+    working default and a tenant may replace it: a tenant that ships neither the
+    module nor the attribute simply gets the default. Callers do
+
+        override = get_tenant_override('registration', 'needs_recommendation')
+        if override is not None:
+            return override(self)
+
+    Call this from inside the function that needs it, not at module import time
+    — tenant service modules import `cis.models.*` at their own module level, so
+    resolving one while a `cis` model module is still importing risks
+    AppRegistryNotReady.
+
+    A missing tenant module yields None; an ImportError raised from *inside* one
+    is a real breakage and propagates rather than being swallowed into the
+    default, which would hide the failure behind plausible behaviour.
+    """
+    try:
+        module = get_tenant_service(module_name)
+    except ModuleNotFoundError as exc:
+        app = settings.TENANT_SERVICES_APP
+        if exc.name in (f'{app}.services.{module_name}', f'{app}.services', app):
+            return None
+        raise
+    return getattr(module, attr, None)

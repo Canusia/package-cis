@@ -2177,9 +2177,23 @@ class Student(models.Model):
         return StudentRecommendation.has_recommendation(self, term_id)
 
     def needs_recommendation(self, term_id=None):
+        """Whether this student has an applied registration awaiting one.
+
+        Tenants may override by defining
+        ``student_needs_recommendation(student, term_id=None)`` in their
+        ``services/registration.py``. The name is prefixed there because that
+        module also holds the registration-level ``needs_recommendation``; this
+        one asks about the student across all their applied registrations.
+        """
+        from cis.services.tenant_services import get_tenant_override
+        override = get_tenant_override(
+            'registration', 'student_needs_recommendation')
+        if override is not None:
+            return override(self, term_id=term_id)
+
         if self.has_recommendation(term_id):
             return False
-        
+
         records = StudentRegistration.objects.filter(
                 status__in=['applied'],
                 student=self

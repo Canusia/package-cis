@@ -1428,31 +1428,18 @@ def _tenant_registration_override(name):
     """Return the tenant's override for a StudentRegistration rule, or None.
 
     Recommendation eligibility is tenant policy: which grade levels need a
-    recommendation, and which registrations count as "pending", differ per
-    deployment. A tenant opts in by defining the named function in its
-    ``services/registration.py`` (the module that already owns mirror_to_sis);
-    tenants that don't get the defaults below unchanged.
+    recommendation, which terms a filed recommendation covers, and which
+    registrations count as "pending" all differ per deployment. A tenant opts in
+    by defining the named function in its ``services/registration.py`` (the
+    module that already owns mirror_to_sis); tenants that don't get the defaults
+    below unchanged.
 
     Imported inside the function on purpose — a tenant's services module
     imports ``cis.models.*`` at its own module level, so resolving it while
     ``cis.models.section`` is still importing would risk AppRegistryNotReady.
     """
-    from django.conf import settings
-
-    from cis.services.tenant_services import get_tenant_service
-
-    try:
-        module = get_tenant_service('registration')
-    except ModuleNotFoundError as exc:
-        # Only a tenant that ships no registration service falls back. An
-        # ImportError raised from *inside* that module is a real breakage and
-        # must not be swallowed into the defaults.
-        expected = f'{settings.TENANT_SERVICES_APP}.services.registration'
-        if exc.name in (expected, settings.TENANT_SERVICES_APP,
-                        f'{settings.TENANT_SERVICES_APP}.services'):
-            return None
-        raise
-    return getattr(module, name, None)
+    from cis.services.tenant_services import get_tenant_override
+    return get_tenant_override('registration', name)
 
 
 class StudentRegistrationQuerySet(models.QuerySet):
