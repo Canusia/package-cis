@@ -254,7 +254,12 @@ class HSAdministrator(models.Model):
 
         return HSAdministratorPosition.objects.filter(
             highschool__id=highschool_id,
-            status__iexact='active',
+            # Exact 'Active', matching get_highschools(). These three predicates
+            # are a set: an admin listed by get_recommendation_highschools() but
+            # excluded by get_highschools() is shown pending work whose student
+            # page then 404s. `status` is choices-constrained and toggle_status()
+            # writes 'Active', so only an import can produce another casing.
+            status='Active',
             meta__manage_student_recommendation__iexact='yes',
             hsadmin=self
         ).exists()
@@ -268,12 +273,16 @@ class HSAdministrator(models.Model):
         show pending-recommendation work should use this rather than
         get_highschools(), which is every school the admin holds any position
         at.
+
+        The status predicate is exact 'Active' for the same reason — it must
+        also agree with get_highschools(), or this returns a school that one
+        excludes and the admin is shown work they cannot open.
         """
         from cis.models.highschool_administrator import HSAdministratorPosition
 
         highschool_ids = HSAdministratorPosition.objects.filter(
             hsadmin__id=self.id,
-            status__iexact='active',
+            status='Active',
             meta__manage_student_recommendation__iexact='yes',
         ).values_list('highschool', flat=True)
 
