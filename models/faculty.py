@@ -148,3 +148,73 @@ class FacultyCourseCoordinator(models.Model):
 
     class Meta:
         unique_together = (('faculty_coordinator', 'course'))
+
+
+class FacultyTeacherAssignment(models.Model):
+    """Which instructors a faculty member is responsible for, per course and year.
+
+    A faculty member's instructor list is otherwise derived: every teacher
+    holding a TeacherCourseCertificate for any course they administer. That has
+    no notion of a year and no way for CE to say "these three instructors, not
+    all eleven".
+
+    The grain is (user, course, teacher, academic_year) on purpose -- a teacher
+    who appears on two of the faculty's courses is assignable under each, and
+    the fallback stays per-course. Absence of rows for (user, course, year) is
+    itself the signal: that course falls back to the full certificate list, so
+    a half-finished configuration over-shows rather than silently hiding
+    instructors. Unassigning is deleting the row; there is deliberately no
+    `status` field, because "rows exist, none active" and "no rows" would then
+    mean opposite things.
+
+    Keyed on CustomUser rather than FacultyCoordinator, whose own docstring
+    says it is not used any more.
+
+    All the FKs CASCADE: this is configuration, not a record of record, and a
+    stale assignment row must never be the thing that blocks deleting a course
+    or a teacher. `created_by` is bookkeeping and survives as NULL.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    user = models.ForeignKey(
+        'cis.CustomUser',
+        on_delete=models.CASCADE,
+        related_name='faculty_teacher_assignments',
+    )
+    course = models.ForeignKey(
+        'cis.Course',
+        on_delete=models.CASCADE,
+        related_name='faculty_teacher_assignments',
+    )
+    teacher = models.ForeignKey(
+        'cis.Teacher',
+        on_delete=models.CASCADE,
+        related_name='faculty_assignments',
+    )
+    academic_year = models.ForeignKey(
+        'cis.AcademicYear',
+        on_delete=models.CASCADE,
+        related_name='faculty_teacher_assignments',
+    )
+
+    created_on = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        'cis.CustomUser',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='faculty_teacher_assignments_created',
+    )
+
+    class Meta:
+        unique_together = (('user', 'course', 'teacher', 'academic_year'),)
+        indexes = [
+            models.Index(
+                fields=['user', 'course', 'academic_year'],
+                name='cis_fta_user_course_year_idx',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.user} / {self.course} / {self.teacher} ({self.academic_year})'
