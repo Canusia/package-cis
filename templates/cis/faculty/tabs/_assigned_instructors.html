@@ -1,0 +1,150 @@
+{% comment %}
+Assigned Instructor(s) -- the CE screen that writes cis.FacultyTeacherAssignment.
+
+Two things this fragment must keep saying out loud:
+
+1. A course with nothing picked renders the words "All instructors
+   (unassigned)". An empty picker on its own is ambiguous -- "nobody" and
+   "everybody" are opposite readings of the same blank box -- and the fallback
+   is "everybody".
+2. Every course rendered also emits a hidden `course` input. Saving only
+   touches the courses in that list, which is the only thing separating a
+   picker the user cleared from a course that was never on the form (a browser
+   omits an empty multi-select from the POST entirely).
+{% endcomment %}
+<div class="card border-top-0">
+    <div class="card-body">
+
+        <div class="card mb-3">
+            <div class="card-body bg-gray-200">
+                <div class="form-row align-items-end">
+                    <div class="col-md-5">
+                        <label for="ai_academic_year">Academic Year</label>
+                        <select id="ai_academic_year" name="academic_year"
+                                class="form-control form-control-sm js-ai-year">
+                            {% for year in academic_years %}
+                            <option value="{{ year.id }}"{% if year == academic_year %} selected{% endif %}>{{ year }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-7">
+                        <form method="post" action="{{ tab_url }}" class="js-ai-form">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="copy_assigned_instructors">
+                            <input type="hidden" name="academic_year" value="{{ academic_year.id }}">
+                            <div class="form-row align-items-end">
+                                <div class="col">
+                                    <label for="ai_source_year">Copy assignments from</label>
+                                    <select id="ai_source_year" name="source_academic_year"
+                                            class="form-control form-control-sm">
+                                        {% for year in academic_years %}
+                                        {% if year != academic_year %}
+                                        <option value="{{ year.id }}">{{ year }}</option>
+                                        {% endif %}
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-auto">
+                                    <button type="submit" class="btn btn-sm btn-secondary">
+                                        <i class="fas fa-copy"></i>&nbsp;Copy
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% if message %}
+        <div class="alert alert-success">{{ message }}</div>
+        {% endif %}
+
+        {% if not academic_year %}
+        <p class="alert alert-warning">
+            No academic year is selected, so assignments cannot be shown or saved.
+        </p>
+        {% elif not rows %}
+        <p class="alert alert-info">
+            This faculty member does not actively oversee any courses, so there is
+            nothing to assign. Add a course on the Course(s) tab first.
+        </p>
+        {% else %}
+        <p class="alert alert-info">
+            Instructors assigned here are the only ones this faculty member sees for
+            that course in {{ academic_year }}. A course with nothing picked falls
+            back to every certified instructor.
+        </p>
+        <form method="post" action="{{ tab_url }}" class="js-ai-form">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="save_assigned_instructors">
+            <input type="hidden" name="academic_year" value="{{ academic_year.id }}">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th scope="col">Course</th>
+                        <th scope="col">Assigned Instructor(s)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in rows %}
+                    <tr>
+                        <td>
+                            <input type="hidden" name="course" value="{{ row.course.id }}">
+                            {{ row.course.catalog_number }} &mdash; {{ row.course.title }}
+                            {% if row.unassigned %}
+                            <div><span class="badge badge-warning">All instructors (unassigned)</span></div>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if row.teachers %}
+                            <select name="teachers_{{ row.course.id }}" multiple size="5"
+                                    class="form-control form-control-sm">
+                                {% for teacher in row.teachers %}
+                                <option value="{{ teacher.id }}"{% if teacher.id|stringformat:"s" in row.selected %} selected{% endif %}>{{ teacher }}</option>
+                                {% endfor %}
+                            </select>
+                            <small class="form-text text-muted">
+                                Ctrl/Cmd-click to select more than one. Clear the
+                                selection to fall back to all certified instructors.
+                            </small>
+                            {% else %}
+                            <em class="text-muted">No instructor is certified for this course.</em>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <input type="submit" class="btn btn-primary btn-sm" value="Save Assignments">
+        </form>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+jQuery(function ($) {
+    var $pane = $('#assigned_instructors');
+    if (!$pane.length) return;   {# no pane: a non-AJAX POST rendered this fragment on its own #}
+    var url = '{{ tab_url }}';
+
+    function reload(data, method) {
+        $.ajax({ url: url, type: method, data: data })
+            .done(function (html) { $pane.html(html); })   // jQuery .html() runs this script again
+            .fail(function () {
+                $pane.html('<div class="alert alert-danger m-3">Failed to load this tab.</div>');
+            });
+    }
+
+    // Changing the year reloads the tab for that year; the year round-trips as
+    // the `academic_year` parameter, the same name the save and copy forms post.
+    $pane.find('.js-ai-year').on('change', function () {
+        reload({ academic_year: $(this).val() }, 'GET');
+    });
+
+    $pane.find('form.js-ai-form').on('submit', function (e) {
+        e.preventDefault();
+        reload($(this).serialize(), 'POST');
+    });
+});
+</script>

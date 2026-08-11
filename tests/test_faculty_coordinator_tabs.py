@@ -101,7 +101,8 @@ class FacultyCoordinatorLazyTabTests(TestCase):
     def test_registry_exposes_expected_slugs_in_order(self):
         from myce.component_registry.faculty_coordinator import faculty_coordinator_tabs
         self.assertEqual(list(faculty_coordinator_tabs._tabs.keys()),
-                         ['courses', 'class_sections', 'visits'])
+                         ['courses', 'assigned_instructors', 'class_sections',
+                          'visits'])
 
     def test_courses_is_the_default_active_tab(self):
         from myce.component_registry.faculty_coordinator import faculty_coordinator_tabs
