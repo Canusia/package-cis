@@ -64,39 +64,6 @@ def index(request):
     menu = draw_menu(cis_menu, 'students', 'sis_messages')
     template = 'cis/students/sis_messages.html'
     
-    if request.GET.get('get_messages'):
-        import importlib.util
-        if importlib.util.find_spec('ethos.ethos'):
-            from ethos.ethos.library.ethos import Ethos
-        else:
-            from ethos.library.ethos import Ethos
-        coLib = Ethos()
-
-        sis_messages = coLib.get_messages()
-        
-        if sis_messages:
-            for message in sis_messages:
-                if not SIS_Subscription.objects.filter(message__id=message['id']).exists():
-                    mesg = SIS_Subscription(
-                        message=message
-                    )
-                    mesg.save()
-
-                    mesg.process()
-
-            messages.add_message(
-                    request,
-                    messages.SUCCESS,
-                    'Found ' + str(len(sis_messages)) + ' messages',
-                    'list-group-item-success')
-        else:
-            messages.add_message(
-                    request,
-                    messages.SUCCESS,
-                    'Found 0 messages',
-                    'list-group-item-success')
-
-
     return render(
         request,
         template, {
