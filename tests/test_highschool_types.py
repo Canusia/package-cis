@@ -10,18 +10,27 @@ from unittest.mock import patch
 
 from django.contrib.auth.models import Group
 from django.contrib.auth.signals import user_logged_in
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from cis.models.customuser import CustomUser
 from cis.models.highschool import HighSchool, hs_type_choices
 
 
+@override_settings(TENANT_SERVICES_APP='cis.tests.fake_tenant')
 class HsTypeChoicesTests(TestCase):
     def test_choices_come_from_the_tenant_service(self):
+        """Assert the mechanism, not one deployment's wording.
+
+        The vocabulary is tenant-owned, so comparing against a literal list
+        could only ever pass on the tenant that defines it — the defect
+        ewu#42 reports. Compare against whatever the configured service
+        returns instead.
+        """
+        from cis.services.tenant_services import get_tenant_service
+
         self.assertEqual(hs_type_choices(),
-                         [('zone_a', 'Zone A'), ('zone_b', 'Zone B'),
-                          ('zone_c', 'Zone C')])
+                         get_tenant_service('highschool_types').choices())
 
     def test_field_keeps_the_callable_not_the_labels(self):
         """The whole point of the callable: deconstruct() must hand the
@@ -41,8 +50,8 @@ class HsTypeChoicesTests(TestCase):
         from django.db.migrations.state import ProjectState
 
         def relabeled():
-            return [('zone_a', 'Renamed Zone A'), ('zone_b', 'Zone B'),
-                    ('zone_c', 'Zone C')]
+            return [('type_a', 'Renamed Type A'), ('type_b', 'Type B'),
+                    ('type_c', 'Type C')]
 
         with patch('cis.models.highschool.hs_type_choices', relabeled):
             loader = MigrationLoader(None, ignore_no_migrations=True)
@@ -62,13 +71,14 @@ class HsTypeChoicesTests(TestCase):
         self.assertEqual(hs_type_ops, [])
 
 
+@override_settings(TENANT_SERVICES_APP='cis.tests.fake_tenant')
 class HsTypeDisplayTests(TestCase):
     def test_labels_and_display(self):
         hs = HighSchool.objects.create(name='Test HS', code='TST01',
-                                       hs_type=['zone_a', 'zone_c'])
+                                       hs_type=['type_a', 'type_c'])
 
-        self.assertEqual(hs.hs_type_labels, ['Zone A', 'Zone C'])
-        self.assertEqual(hs.hs_type_display, 'Zone A, Zone C')
+        self.assertEqual(hs.hs_type_labels, ['Type A', 'Type C'])
+        self.assertEqual(hs.hs_type_display, 'Type A, Type C')
 
     def test_empty_type_displays_as_blank(self):
         hs = HighSchool.objects.create(name='No Type HS', code='TST02')
@@ -98,6 +108,7 @@ def _reconnect_login_signal(receivers):
     user_logged_in.receivers = receivers
 
 
+@override_settings(TENANT_SERVICES_APP='cis.tests.fake_tenant')
 class SetHsTypeBulkActionTests(TestCase):
     def setUp(self):
         self._saved = _disconnect_login_signal()
@@ -109,7 +120,7 @@ class SetHsTypeBulkActionTests(TestCase):
         self.url = reverse('cis:highschool_bulk_actions')
         self.a = HighSchool.objects.create(name='A HS', code='AAA01')
         self.b = HighSchool.objects.create(name='B HS', code='BBB01',
-                                           hs_type=['zone_c'])
+                                           hs_type=['type_c'])
 
     def tearDown(self):
         _reconnect_login_signal(self._saved)
@@ -124,26 +135,26 @@ class SetHsTypeBulkActionTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = json.loads(response.content)
         self.assertEqual(payload['outcome'], 'modal')
-        self.assertIn('Zone A', payload['html'])
+        self.assertIn('Type A', payload['html'])
         self.assertIn('name="apply" value="1"', payload['html'])
 
     def test_applies_to_every_selected_school(self):
         self._post({'action': 'set_hs_type', 'apply': '1',
                     'ids[]': [str(self.a.pk), str(self.b.pk)],
-                    'hs_type': ['zone_b']})
+                    'hs_type': ['type_b']})
 
         self.a.refresh_from_db()
         self.b.refresh_from_db()
-        self.assertEqual(list(self.a.hs_type), ['zone_b'])
-        self.assertEqual(list(self.b.hs_type), ['zone_b'])
+        self.assertEqual(list(self.a.hs_type), ['type_b'])
+        self.assertEqual(list(self.b.hs_type), ['type_b'])
 
     def test_replaces_rather_than_appends(self):
-        """b starts as zone_c; setting zone_a must not leave zone_c behind."""
+        """b starts as type_c; setting type_a must not leave type_c behind."""
         self._post({'action': 'set_hs_type', 'apply': '1',
-                    'ids[]': [str(self.b.pk)], 'hs_type': ['zone_a']})
+                    'ids[]': [str(self.b.pk)], 'hs_type': ['type_a']})
 
         self.b.refresh_from_db()
-        self.assertEqual(list(self.b.hs_type), ['zone_a'])
+        self.assertEqual(list(self.b.hs_type), ['type_a'])
 
     def test_selecting_none_clears_the_type(self):
         self._post({'action': 'set_hs_type', 'apply': '1',
@@ -155,11 +166,11 @@ class SetHsTypeBulkActionTests(TestCase):
     def test_unknown_code_is_rejected_and_writes_nothing(self):
         response = self._post({'action': 'set_hs_type', 'apply': '1',
                                'ids[]': [str(self.b.pk)],
-                               'hs_type': ['zone_x']})
+                               'hs_type': ['type_x']})
 
         self.assertEqual(response.status_code, 400)
         self.b.refresh_from_db()
-        self.assertEqual(list(self.b.hs_type), ['zone_c'])
+        self.assertEqual(list(self.b.hs_type), ['type_c'])
 
     def test_no_selection_is_rejected(self):
         response = self._post({'action': 'set_hs_type'})
