@@ -2299,13 +2299,26 @@ class StudentRegistration(models.Model):
             return override(
                 student_ids=student_ids, highschool_ids=highschool_ids)
 
-        records = StudentRegistration.objects.none()
+        # No scope means no results. Callers pass the ids they are allowed to
+        # see, so an unscoped call must stay empty rather than falling through
+        # to every pending recommendation in the deployment.
+        if not student_ids and not highschool_ids:
+            return StudentRegistration.objects.none()
 
+        # `reviewer is None` is the definition of "pending" and belongs to both
+        # branches. It used to sit only on the student_ids branch, so a
+        # registration that had been reviewed but whose status was still
+        # 'applied' kept counting as pending for the high-school dashboard,
+        # tab, and API — the two branches answered different questions under
+        # one name.
+        records = StudentRegistration.objects.filter(reviewer__isnull=True)
+
+        # Each argument NARROWS the queryset. Reassigning instead meant that
+        # passing both silently discarded student_ids and returned every
+        # pending registration at those schools, for all students — a strictly
+        # wider set than the caller asked for, with no error.
         if student_ids:
-            records = StudentRegistration.objects.filter(
-                reviewer__isnull=True,
-                student__id__in=student_ids
-            )
+            records = records.filter(student__id__in=student_ids)
 
         if highschool_ids:
             # Scope by the STUDENT's high school, not the section's host high
@@ -2314,16 +2327,23 @@ class StudentRegistration(models.Model):
             # elsewhere, and filtering on the section's school surfaced pending
             # work to admins who hold no recommendation permission for that
             # student.
-            records = StudentRegistration.objects.filter(
+            records = records.filter(
                 status__in=['applied'],
                 student__highschool__id__in=highschool_ids
             )
 
-            skip_ids = []
-            for record in records:
-                if f'{record.student.grade_level}*' not in record.class_section.course.registration_eligibility:
-                    skip_ids.append(record.id)
-            records = records.exclude(id__in=skip_ids)
+            # The eligibility test reads `student.grade_level` and
+            # `course.registration_eligibility` per row. select_related pulls
+            # both in the same query, so this is two queries regardless of row
+            # count rather than one per row plus one.
+            records = records.select_related('student', 'class_section__course')
+            skip_ids = [
+                record.id for record in records
+                if f'{record.student.grade_level}*' not in
+                (record.class_section.course.registration_eligibility or '')
+            ]
+            if skip_ids:
+                records = records.exclude(id__in=skip_ids)
 
         return records
 
