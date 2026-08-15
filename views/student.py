@@ -2194,20 +2194,6 @@ def lookup_by_banner_id(request):
     return JsonResponse({'outcome': 'modal', 'html': html})
 
 
-@student_actions.action('bulk_only', label='Send to SIS', scope=['detail'], method='form')
-def send_to_sis(request):
-    template = 'cis/students/send_to_sis.html'
-    ids = request.POST.getlist('ids[]')
-    students = Student.objects.filter(id__in=ids)
-
-    summary = []
-    for student in students:
-        summary = student.create_and_get_id(request) + summary
-
-    html = render_to_string(template, {'title': 'Send to SIS', 'summary': summary}, request=request)
-    return JsonResponse({'outcome': 'modal', 'html': html})
-
-
 def faa_index(request):
     menu = draw_menu(cis_menu, 'students', 'faas')
     template = 'cis/students/faa_index.html'
