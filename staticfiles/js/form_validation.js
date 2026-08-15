@@ -19,6 +19,21 @@
                 // every unchecked choice.
                 return checkboxGroup(field).filter(':checked').length > 0;
             }
+
+            const parts = datePartGroup(field);
+            if (parts.length > 1) {
+                // A SelectDateWidget renders Month/Day/Year as three <select>s
+                // and Django copies the widget's data-validate-* attrs onto each
+                // one. "Required" means the whole date was chosen, not that this
+                // one part was — evaluating per part let a year-only selection
+                // clear the error while the date was still incomplete.
+                return parts.toArray().every(function (el) {
+                    const partValue = $(el).val();
+                    return partValue !== null && partValue !== undefined &&
+                           String(partValue).trim() !== '';
+                });
+            }
+
             return value !== null && value !== undefined && value.trim() !== '';
         },
 
@@ -79,6 +94,50 @@
         return group.length ? group : field;
     }
 
+    // The sub-select suffixes Django's SelectDateWidget appends to the field
+    // name. Order matters: errorAnchor() puts the message after the last part
+    // present, so the message lands below the whole row.
+    const DATE_PART_SUFFIXES = ['_month', '_day', '_year'];
+
+    /**
+     * Return every <select> belonging to the same SelectDateWidget as this one.
+     *
+     * Unlike a checkbox group the parts do NOT share a name — they are
+     * <base>_month / _day / _year — so they fall through the checkbox branch and
+     * were being validated, flagged and messaged three times over.
+     *
+     * Returns an empty set unless more than one part is present, so a lone
+     * select that merely happens to end in `_year` is not misidentified as a
+     * date widget.
+     */
+    function datePartGroup(field) {
+        const name = field.attr('name');
+        if (!name || !field.is('select')) return $();
+
+        const suffix = DATE_PART_SUFFIXES.find(function (candidate) {
+            return name.endsWith(candidate);
+        });
+        if (!suffix) return $();
+
+        const base = name.slice(0, -suffix.length);
+        const selector = DATE_PART_SUFFIXES.map(function (candidate) {
+            return 'select[name="' + base + candidate + '"]';
+        }).join(', ');
+
+        const parts = field.closest('form').find(selector);
+        return parts.length > 1 ? parts : $();
+    }
+
+    /**
+     * Every element that should carry the is-invalid flag for this field: the
+     * whole checkbox group, the whole date row, or just the field.
+     */
+    function invalidTargets(field) {
+        const parts = datePartGroup(field);
+        if (parts.length > 1) return parts;
+        return checkboxGroup(field);
+    }
+
     /**
      * The element an error message should hang off. For a checkbox group that is
      * the innermost element containing the whole group — Django's own
@@ -87,6 +146,12 @@
      * one per choice. Anything else anchors on the field itself.
      */
     function errorAnchor(field) {
+        // Date widget: anchor on the LAST part so one message sits below the
+        // whole Month/Day/Year row. Anchoring on the field itself inserted the
+        // message between the selects and broke the row onto separate lines.
+        const parts = datePartGroup(field);
+        if (parts.length > 1) return parts.last();
+
         const group = checkboxGroup(field);
         if (group.length < 2) return field;
 
@@ -156,7 +221,7 @@
         clearError(field);
 
         const anchor = errorAnchor(field);
-        checkboxGroup(field).addClass('is-invalid');
+        invalidTargets(field).addClass('is-invalid');
 
         const errorDiv = $('<div class="invalid-feedback" style="display: block;"></div>').text(message);
 
@@ -173,11 +238,11 @@
      * Clear validation error from a field
      */
     function clearError(field) {
-        checkboxGroup(field).removeClass('is-invalid');
+        invalidTargets(field).removeClass('is-invalid');
 
         const anchor = errorAnchor(field);
         if (!anchor.is(field)) {
-            // Checkbox group: the message sits as the container's sibling.
+            // Checkbox group or date row: the message sits as the anchor's sibling.
             anchor.next('.invalid-feedback').remove();
             return;
         }
@@ -273,7 +338,24 @@
 
         // Clear error on input
         form.find('input, select, textarea').on('input change', function() {
-            clearError($(this));
+            const field = $(this);
+
+            // A date widget's parts arrive one change at a time. Clearing on
+            // the first of them made an incomplete date look satisfied, so
+            // re-validate instead and keep the error until the whole date is
+            // chosen. Every other control keeps the original clear-on-input
+            // behaviour, with blur doing the re-validation.
+            if (datePartGroup(field).length > 1 && getValidationRules(field).length > 0) {
+                const result = validateField(field);
+                if (result.valid) {
+                    clearError(field);
+                } else {
+                    showError(field, result.errors[0]);
+                }
+                return;
+            }
+
+            clearError(field);
         });
 
         // Validate on submit
