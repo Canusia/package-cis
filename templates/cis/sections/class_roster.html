@@ -23,6 +23,18 @@
                 <div>{{class_section.course.credit_hours}} credit(s)</div>
                 <div>{{class_section.teacher}}</div>
                 <div>{{class_section.highschool.name}}</div>
+                {% with distribution=class_section.registration_status_distribution %}
+                    {% if distribution %}
+                        {% comment %}
+                        Covers every registration on the section, not only the
+                        'registered' rows listed below — so these counts are
+                        not expected to sum to the table's row count.
+                        {% endcomment %}
+                        <div class="mt-2"><strong>Registrations by status:</strong>
+                            {% for label, count in distribution %}{{ count }} {{ label }}{% if not forloop.last %}, {% endif %}{% endfor %}
+                        </div>
+                    {% endif %}
+                {% endwith %}
             </div>
             <div class="col-12">
                 <div class="table-responsive">

@@ -325,9 +325,44 @@ class ClassSection(MyCEBaseModel):
 
         return note
     
+    def registration_status_distribution(self):
+        """[(status label, count), ...] for every registration on this section.
+
+        Deliberately covers ALL registrations, not just the `registered` ones
+        the roster table lists — a breakdown that only counted what is already
+        on the page would tell the reader nothing. The consequence is that
+        these counts do not sum to the table's row count, which is intended.
+
+        Ordered by STATUS_OPTIONS so the workflow reads in sequence rather than
+        alphabetically. A status stored outside STATUS_OPTIONS still appears,
+        by its raw value, so drifted data stays visible instead of vanishing
+        from the total.
+
+        One aggregate query, not one per status.
+        """
+        from django.db.models import Count
+
+        counts = dict(
+            StudentRegistration.objects
+            .filter(class_section=self)
+            .values_list('status')
+            .annotate(total=Count('id'))
+        )
+
+        distribution = []
+        for code, label in StudentRegistration.STATUS_OPTIONS:
+            total = counts.pop(code, 0)
+            if total:
+                distribution.append((label, total))
+
+        # Whatever is left is a status stored outside STATUS_OPTIONS. Show it
+        # by raw value rather than dropping it, so drifted data is visible.
+        distribution.extend(sorted(counts.items()))
+        return distribution
+
     def download_roster_pdf(self):
         import pdfkit, datetime
-    
+
         base_template = 'cis/sections/class_roster.html'
         template = get_template(base_template)
 
