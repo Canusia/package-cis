@@ -62,7 +62,10 @@ class detailed_students_with_class(forms.Form):
             'student__user',
             'student__highschool__district',
             'class_section__term__academic_year',
-            'class_section__course'
+            'class_section__course',
+            # Instructor columns below read class_section.teacher.user; without
+            # this the export issues two extra queries per row.
+            'class_section__teacher__user',
         ).filter(
             class_section__term__id__in=term_id,
             status__in=status
@@ -135,6 +138,9 @@ class detailed_students_with_class(forms.Form):
             'class_section.class_number': 'Class No.',
             'class_section.section_number': 'Section No.',
             'class_section.course.credit_hours': 'Credits',
+            'class_section.teacher.user.first_name': 'Instructor First Name',
+            'class_section.teacher.user.last_name': 'Instructor Last Name',
+            'class_section.grade_status': 'Class Grade Status',
 
             'note': 'note',
             'sexy_status': 'Status',
