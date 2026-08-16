@@ -94,3 +94,44 @@ class ReportColumnRegistrationTests(TestCase):
         source = inspect.getsource(report)
 
         self.assertIn("'class_section__teacher__user'", source)
+
+
+class ClassRosterInstructorColumnTests(TestCase):
+    """The same instructor columns on the class_roster export (ewu#59 item 1).
+
+    Most of item 1 was already true on ewu — the report is already a flat CSV
+    with term as a multi-select, no report_type/asPDF/asExcel, and CE high
+    school choices unfiltered. The instructor columns were the real gap.
+    """
+
+    def test_report_declares_the_instructor_columns(self):
+        import inspect
+        from cis.reports import class_roster
+
+        source = inspect.getsource(class_roster)
+
+        self.assertIn("'Instructor First Name'", source)
+        self.assertIn("'Instructor Last Name'", source)
+
+    def test_teacher_relation_is_prefetched_and_deferred_fields_included(self):
+        """only() must name the teacher fields or each row re-queries them."""
+        import inspect
+        from cis.reports import class_roster
+
+        source = inspect.getsource(class_roster)
+
+        self.assertIn("'class_section__teacher__user'", source)
+        self.assertIn("'class_section__teacher__user__first_name'", source)
+        self.assertIn("'class_section__teacher__user__last_name'", source)
+
+    def test_report_is_a_csv_export_without_pdf_or_excel(self):
+        """Pins the state item 1 describes as the target."""
+        import inspect
+        from cis.reports import class_roster
+
+        source = inspect.getsource(class_roster)
+
+        self.assertNotIn('def asPDF', source)
+        self.assertNotIn('def asExcel', source)
+        self.assertNotIn('xlsxwriter', source)
+        self.assertIn('roster-export.csv', source)

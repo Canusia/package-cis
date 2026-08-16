@@ -101,6 +101,7 @@ class class_roster(ReportDataSourceMixin, forms.Form):
             'class_section__course',
             'class_section__term',
             'class_section__highschool',
+            'class_section__teacher__user',
             'student__user'
         ).only(
             'id', 'status', 'grade', 'student_id',
@@ -111,6 +112,9 @@ class class_roster(ReportDataSourceMixin, forms.Form):
             'class_section__term__label',
             'class_section__course__name',
             'class_section__highschool__name',
+            'class_section__teacher_id',
+            'class_section__teacher__user__first_name',
+            'class_section__teacher__user__last_name',
             'student__current_student_balance',
             'student__current_school_balance',
             'student__user__first_name',
@@ -192,6 +196,8 @@ class class_roster(ReportDataSourceMixin, forms.Form):
             'class_section.term.label': 'Term',
             'class_section.highschool.name': 'Class Section High School',
             'class_section.highschool.hs_type_display': 'School Type',
+            'class_section.teacher.user.first_name': 'Instructor First Name',
+            'class_section.teacher.user.last_name': 'Instructor Last Name',
             'student.user.first_name': 'Student First Name',
             'student.user.last_name': 'Student Last Name',
             'student.user.psid': 'Student ID',
