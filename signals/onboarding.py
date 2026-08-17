@@ -10,6 +10,8 @@ reseed receiver.
 `user_logged_in` is Django's built-in signal, not part of our generic event
 bus, so it stays as a normal @receiver below.
 """
+import logging
+
 from django.contrib.auth.signals import user_logged_in
 from django.db.models.signals import post_save
 from django.dispatch import receiver
@@ -24,10 +26,12 @@ from cis.models.student import Student
 from cis.services.tenant_services import get_tenant_service
 from cis.utils import active_term
 
+logger = logging.getLogger(__name__)
 
-def _seed_default_steps(student):
+
+def _seed_default_steps(student, term=None):
     for step in all_steps():
-        if step.seeded_when and not step.seeded_when(student):
+        if step.seeded_when and not step.seeded_when(student, term):
             continue
         add_step(
             student,
@@ -36,6 +40,7 @@ def _seed_default_steps(student):
             url_name=step.url_name,
             order=step.order,
             message=step.message,
+            term=term,
         )
 
 
@@ -94,16 +99,41 @@ def seed_on_student_created(sender, instance, created, **kwargs):
     application form - so this one receiver covers them all. There is no
     Student.objects.bulk_create anywhere, which would bypass it.
 
+    The CSV SIS importer sets `account_verified` before calling save(), so
+    those students seed straight to phase two. The legacy
+    `_for_import_get_or_add` path (`cis/models/student.py`) does not touch
+    `account_verified` at all, so students created through it seed as
+    unverified like a normal signup, and pick up phase two on their first
+    login via `reseed_on_term_rollover` (or an explicit verification event).
+
     No-ops when there is no active term: StudentOnboarding.term is a non-null
     FK, so seeding blindly here would raise IntegrityError inside signup, SIS
     import and admin creation alike. The login receiver seeds later instead.
+
+    Everything after the `created` / active-term guards is wrapped in a
+    broad try/except: creating a Student must never fail because onboarding
+    could not be seeded. A raising `seeded_when` predicate, a bad catalog
+    entry, or any other unexpected error here degrades to "no onboarding
+    seeded" rather than propagating out of Model.save() and taking down the
+    signup form (which deletes the just-created CustomUser and re-raises) or
+    the legacy SIS import path (which would otherwise commit the student row
+    with no error surfaced at all).
     """
+    if kwargs.get('raw'):
+        return
     if not created:
         return
-    if active_term() is None:
+    term = active_term()
+    if term is None:
         return
-    get_or_create_for_current_term(instance)
-    _seed_default_steps(instance)
+    try:
+        get_or_create_for_current_term(instance, term=term)
+        _seed_default_steps(instance, term=term)
+    except Exception:
+        logger.exception(
+            'Failed to seed onboarding for newly created student %s',
+            instance.pk,
+        )
 
 
 @receiver(user_logged_in, dispatch_uid='cis.onboarding.reseed_on_term_rollover')
@@ -117,11 +147,23 @@ def reseed_on_term_rollover(sender, request, user, **kwargs):
     update: it fires no post_save and dispatches no EMAIL_VERIFIED, so without
     this the student would stay stuck on phase one forever. `add_step` is
     idempotent, so the cost is one query on an already-seeded record.
+
+    Also completes the `verify_email` step when the student is verified.
+    Neither the queryset-update "Mark as Verified" path nor the legacy SIS
+    importer ever dispatches EMAIL_VERIFIED, so without this the step (and
+    therefore the parent StudentOnboarding row) never completes, leaving the
+    student stuck in `notify_pending_onboarding`'s queryset forever nagging
+    them to verify an account staff already verified. `complete_step` is a
+    documented no-op when the step doesn't exist for the current term, so
+    this is safe to call unconditionally.
     """
     student = Student.objects.filter(user=user).first()
     if student is None:
         return
-    if active_term() is None:
+    term = active_term()
+    if term is None:
         return
-    get_or_create_for_current_term(student)
-    _seed_default_steps(student)
+    get_or_create_for_current_term(student, term=term)
+    _seed_default_steps(student, term=term)
+    if student.account_verified:
+        complete_step(student, key='verify_email', term=term)

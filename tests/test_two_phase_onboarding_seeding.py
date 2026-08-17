@@ -118,6 +118,31 @@ class TwoPhaseSeedingTests(TestCase):
 
         self.assertIn('ferpa', self._keys(student))
 
+    def test_login_completes_verify_email_after_staff_verification(self):
+        # Staff's "Mark as Verified" fires no signal and completes nothing.
+        # The login catch-up must both seed phase two AND complete the
+        # verify_email step itself, or the row never leaves
+        # notify_pending_onboarding's queryset.
+        from cis.signals.onboarding import reseed_on_term_rollover
+
+        student = Student.objects.create(user=_user(), account_verified=False)
+        self.assertEqual(self._keys(student), {'verify_email'})
+
+        Student.objects.filter(pk=student.pk).update(account_verified=True)
+        student.refresh_from_db()
+
+        reseed_on_term_rollover(
+            sender=None, request=None, user=student.user)
+
+        keys = self._keys(student)
+        self.assertIn('ferpa', keys)
+
+        onboarding = StudentOnboarding.objects.get(
+            student=student, term=self.term)
+        step = onboarding.steps.get(key='verify_email')
+        self.assertEqual(step.status, 'completed')
+        self.assertIsNotNone(step.completed_on)
+
     def test_seeding_is_idempotent(self):
         student = Student.objects.create(user=_user(), account_verified=True)
         before = self._keys(student)
@@ -149,3 +174,27 @@ class NoActiveTermTests(TestCase):
         self.assertIsNotNone(student.pk)
         self.assertEqual(
             StudentOnboarding.objects.filter(student=student).count(), 0)
+
+
+class SeedingErrorIsolationTests(TestCase):
+    """A raising seeding step must never take down Student creation.
+
+    Reproduces the failure mode from the review: anything besides
+    `active_term() is None` propagating out of the receiver breaks
+    `Model.save()`, and the signup path deletes the just-created CustomUser
+    and re-raises while the legacy SIS path silently half-completes with the
+    student row already committed and no error surfaced.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        Group.objects.get_or_create(name='student')
+        cls.term = _term(code='ERR1')
+
+    def test_raising_seed_step_still_lets_student_creation_succeed(self):
+        with patch('cis.signals.onboarding.active_term',
+                    return_value=self.term), \
+             patch('cis.signals.onboarding._seed_default_steps',
+                   side_effect=RuntimeError('boom')):
+            student = Student.objects.create(user=_user())
+        self.assertIsNotNone(student.pk)
