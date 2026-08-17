@@ -198,3 +198,87 @@ class SeedingErrorIsolationTests(TestCase):
                    side_effect=RuntimeError('boom')):
             student = Student.objects.create(user=_user())
         self.assertIsNotNone(student.pk)
+
+
+class SeededWhenArityTests(TestCase):
+    """`seeded_when` predicates may take (student) or (student, term).
+
+    v0.0.21 began passing `term` positionally, which raised TypeError on every
+    tenant catalog still declaring `def _pred(student)` — and because
+    `seed_on_student_created` wraps its body in try/except, the breakage
+    degraded to "no onboarding seeded" instead of surfacing. `cis` adapts to
+    whichever arity the tenant declares. See package-cis#7.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        Group.objects.get_or_create(name='student')
+
+    def _step(self, predicate, key='arity_probe'):
+        from student_onboarding.step_registry import StepDefinition
+        return StepDefinition(key=key, label='Probe', seeded_when=predicate)
+
+    def test_one_arg_predicate_is_called_with_one_arg(self):
+        from cis.signals.onboarding import _should_seed
+        seen = []
+
+        def legacy(student):
+            seen.append(student)
+            return True
+
+        self.assertTrue(_should_seed(self._step(legacy), 'STUDENT', 'TERM'))
+        self.assertEqual(seen, ['STUDENT'])
+
+    def test_two_arg_predicate_receives_the_term(self):
+        from cis.signals.onboarding import _should_seed
+        seen = []
+
+        def modern(student, term=None):
+            seen.append((student, term))
+            return True
+
+        self.assertTrue(_should_seed(self._step(modern), 'STUDENT', 'TERM'))
+        self.assertEqual(seen, [('STUDENT', 'TERM')])
+
+    def test_one_arg_predicate_can_still_veto(self):
+        from cis.signals.onboarding import _should_seed
+        self.assertFalse(
+            _should_seed(self._step(lambda student: False), 'S', 'T'))
+
+    def test_varargs_predicate_is_given_the_term(self):
+        from cis.signals.onboarding import _should_seed
+        seen = []
+
+        def flexible(*args):
+            seen.append(args)
+            return True
+
+        self.assertTrue(_should_seed(self._step(flexible), 'S', 'T'))
+        self.assertEqual(seen, [('S', 'T')])
+
+    def test_no_predicate_always_seeds(self):
+        from cis.signals.onboarding import _should_seed
+        self.assertTrue(_should_seed(self._step(None), 'S', 'T'))
+
+    def test_legacy_tenant_catalog_seeds_end_to_end(self):
+        """The regression itself: a one-arg predicate must not silently
+        disable seeding for a real student."""
+        from unittest.mock import patch
+        from student_onboarding.step_registry import (
+            StepDefinition, register, _registry,
+        )
+        from student_onboarding.models import StudentOnboarding
+
+        register(StepDefinition(
+            key='legacy_arity', label='Legacy',
+            seeded_when=lambda student: True,
+        ))
+        self.addCleanup(lambda: _registry.pop('legacy_arity', None))
+
+        term = _term('ARITY1')
+        with patch('cis.signals.onboarding.active_term', return_value=term):
+            student = Student.objects.create(user=_user())
+
+        onboarding = StudentOnboarding.objects.get(student=student, term=term)
+        self.assertIn('legacy_arity',
+                      set(onboarding.steps.values_list('key', flat=True)))

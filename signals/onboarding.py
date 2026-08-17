@@ -10,7 +10,9 @@ reseed receiver.
 `user_logged_in` is Django's built-in signal, not part of our generic event
 bus, so it stays as a normal @receiver below.
 """
+import inspect
 import logging
+from functools import lru_cache
 
 from django.contrib.auth.signals import user_logged_in
 from django.db.models.signals import post_save
@@ -29,9 +31,46 @@ from cis.utils import active_term
 logger = logging.getLogger(__name__)
 
 
+@lru_cache(maxsize=None)
+def _predicate_accepts_term(predicate):
+    """Whether a `seeded_when` predicate takes the optional second `term` arg.
+
+    v0.0.21 started passing `term` positionally, which raised TypeError on
+    every tenant catalog still declaring `def _pred(student)` -- and because
+    `seed_on_student_created` wraps its body in try/except, that degraded to
+    "no onboarding seeded" rather than to anything anyone would notice. The
+    predicates live in tenant repos, so `cis` adapts to them instead of
+    demanding they all change at once. See package-cis#7.
+
+    Cached on the function object: `all_steps()` is a small fixed registry, so
+    this resolves once per predicate per process rather than per student.
+    """
+    try:
+        parameters = inspect.signature(predicate).parameters.values()
+    except (TypeError, ValueError):
+        # Builtins and some C callables have no introspectable signature.
+        # One argument is the older, safer convention.
+        return False
+    if any(p.kind == p.VAR_POSITIONAL for p in parameters):
+        return True
+    positional = [
+        p for p in parameters
+        if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
+    ]
+    return len(positional) >= 2
+
+
+def _should_seed(step, student, term):
+    if not step.seeded_when:
+        return True
+    if _predicate_accepts_term(step.seeded_when):
+        return step.seeded_when(student, term)
+    return step.seeded_when(student)
+
+
 def _seed_default_steps(student, term=None):
     for step in all_steps():
-        if step.seeded_when and not step.seeded_when(student, term):
+        if not _should_seed(step, student, term):
             continue
         add_step(
             student,
