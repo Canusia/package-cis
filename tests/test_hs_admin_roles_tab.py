@@ -142,3 +142,28 @@ class HighSchoolRolesTabTests(HsAdminRoleFixtureMixin, TestCase):
     def test_add_new_role_button_survives_the_conversion(self):
         resp = self.client.get(reverse('cis:hs_admin', args=[self.admin_a.id]))
         self.assertIn('Add New', resp.content.decode())
+
+
+class PasswordResetTabRemovalTests(HsAdminRoleFixtureMixin, TestCase):
+    def setUp(self):
+        self.build_fixture()
+
+    def tearDown(self):
+        self.tear_down_fixture()
+
+    def test_tab_is_gone_from_the_detail_page(self):
+        resp = self.client.get(reverse('cis:hs_admin', args=[self.admin_a.id]))
+        body = resp.content.decode()
+        self.assertNotIn('href="#passwd_reset"', body)
+        self.assertNotIn('Generate Link', body)
+
+    def test_remaining_tabs(self):
+        from myce.component_registry.hs_administrator import hs_administrator_tabs
+        resp = self.client.get(reverse('cis:hs_admin', args=[self.admin_a.id]))
+        tabs = resp.context['detail_tabs']
+        self.assertEqual(list(tabs.keys()), ['highschools', 'notes'])
+
+    def test_the_tab_slug_404s(self):
+        resp = self.client.get(
+            reverse('cis:hs_admin_tab', args=[self.admin_a.id, 'passwd_reset']))
+        self.assertEqual(resp.status_code, 404)

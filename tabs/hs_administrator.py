@@ -6,12 +6,6 @@ from myce.component_registry.hs_administrator import hs_administrator_tabs  # no
 # Tab content functions are added in subsequent tasks.
 
 
-@hs_administrator_tabs.tab(slug='passwd_reset', title='Password Reset', order=20,
-                           template='cis/hs_admin/tabs/_passwd_reset.html')
-def passwd_reset_tab(request, record):
-    return {}
-
-
 @hs_administrator_tabs.tab(slug='notes', title='Notes', order=30,
                            template='cis/hs_admin/tabs/_notes.html')
 def notes_tab(request, record):

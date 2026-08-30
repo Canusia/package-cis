@@ -44,7 +44,7 @@ class HSAdministratorTabDispatchTests(TestCase):
         self.assertEqual(resp.status_code, 404)
 
     def test_lazy_tabs_render(self):
-        for slug in ['passwd_reset', 'notes']:
+        for slug in ['notes']:
             resp = self.client.get(reverse('cis:hs_admin_tab', args=[self.admin.id, slug]))
             self.assertEqual(resp.status_code, 200, slug)
 
@@ -57,8 +57,8 @@ class HSAdministratorTabDispatchTests(TestCase):
         resp = self.client.get(reverse('cis:hs_admin', args=[self.admin.id]))
         self.assertEqual(resp.status_code, 200)
         body = resp.content.decode()
-        for slug in ['highschools', 'passwd_reset', 'notes']:
+        for slug in ['highschools', 'notes']:
             self.assertIn('href="#%s"' % slug, body)
-        self.assertIn('id="passwd_reset" data-tab-url=', body)   # lazy
+        self.assertIn('id="notes" data-tab-url=', body)          # lazy
         self.assertIn('id="highschools"', body)                  # eager active pane present
         self.assertIn('tab_loader.js', body)
