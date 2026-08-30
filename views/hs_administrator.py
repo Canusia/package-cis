@@ -703,6 +703,25 @@ def do_bulk_action(request):
             'message': message,
         })
 
+    if action == 'password_reset_link':
+        valid_ids = []
+        for record_id in ids:
+            try:
+                uuid.UUID(str(record_id))
+            except (ValueError, AttributeError, TypeError):
+                continue
+            valid_ids.append(record_id)
+
+        admin_ids = HSAdministratorPosition.objects.filter(
+            id__in=valid_ids
+        ).values_list('hsadmin__id', flat=True).distinct()
+
+        admins = HSAdministrator.objects.filter(
+            id__in=list(admin_ids)
+        ).select_related('user')
+
+        return render_reset_links(request, admins)
+
     if action == 'change_password':
         return manage_change_password(request)
 
@@ -739,6 +758,24 @@ def manage_edit_status(request):
         'form_action': str(reverse('cis:hs_admin_do_bulk_action')),
         'status': 'display',
     })
+
+def render_reset_links(request, admins):
+    """Render the bulk password-reset-link modal for the given administrators."""
+    rows = []
+    for admin in admins:
+        rows.append({
+            'name': f"{admin.user.last_name}, {admin.user.first_name}",
+            'email': admin.user.email,
+            'link': admin.user.get_password_reset_link(),
+        })
+
+    rows.sort(key=lambda r: r['name'])
+
+    return render(request, 'cis/hs_admin/reset_links.html', {
+        'title': 'Password Reset Links',
+        'rows': rows,
+    })
+
 
 def manage_change_password(request):
     template = 'cis/hs_admin/change_password.html'

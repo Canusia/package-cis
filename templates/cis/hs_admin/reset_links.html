@@ -1,0 +1,46 @@
+{% extends 'cis/ajax-base.html' %}
+
+{%block title %}{{title}}{% endblock %}
+
+{% block body %}
+
+<div class="card">
+    <div class="card-body">
+        <h3 class="card-title">{{title}}</h3>
+        <div class="card-text">
+            <p class="alert alert-info">
+                These links are single-use and expire. Copy and send them to the
+                administrator; they are not emailed automatically.
+            </p>
+            <div class="table-responsive">
+                <table class="table table-striped table-sm">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Password Reset Link</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in rows %}
+                        <tr>
+                            <td>{{ row.name }}</td>
+                            <td>{{ row.email }}</td>
+                            <td>
+                                <input type="text" class="form-control form-control-sm reset-link"
+                                       value="{{ row.link }}" readonly
+                                       onclick="this.select(); document.execCommand('copy');">
+                                <small class="text-muted">Click to copy</small>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="3">No administrators selected.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div> {% comment %} end card {% endcomment %}
+
+{% endblock %}

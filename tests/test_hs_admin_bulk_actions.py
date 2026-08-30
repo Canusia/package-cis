@@ -152,3 +152,43 @@ class BulkDeleteRolesTests(HsAdminRoleFixtureMixin, TestCase):
         })
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()['message'], 'Successfully deleted 1 role(s).')
+
+
+class BulkResetLinkTests(HsAdminRoleFixtureMixin, TestCase):
+    def setUp(self):
+        self.build_fixture()
+        self.url = reverse('cis:hs_admin_do_bulk_action')
+
+    def tearDown(self):
+        self.tear_down_fixture()
+
+    def test_lists_one_row_per_distinct_administrator(self):
+        resp = self.client.get(self.url, {
+            'action': 'password_reset_link',
+            # Both of admin_a's roles are selected: the admin must appear once.
+            'ids[]': [str(self.role_a1.id), str(self.role_a2.id),
+                      str(self.role_b1.id)],
+        })
+        self.assertEqual(resp.status_code, 200)
+        body = resp.content.decode()
+        self.assertEqual(body.count('admin_a@example.com'), 1)
+        self.assertIn('admin_b@example.com', body)
+
+    def test_each_row_carries_a_reset_link(self):
+        resp = self.client.get(self.url, {
+            'action': 'password_reset_link',
+            'ids[]': [str(self.role_a1.id)],
+        })
+        body = resp.content.decode()
+        # The real password_reset_confirm path is 'password_reset/<uidb64>/<token>'
+        # (see myce/urls.py); '/reset/' does not appear anywhere in it.
+        self.assertIn('/password_reset/', body)
+        self.assertIn('Alpha', body)
+
+    def test_malformed_ids_are_ignored(self):
+        resp = self.client.get(self.url, {
+            'action': 'password_reset_link',
+            'ids[]': ['not-a-uuid'],
+        })
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotIn('admin_a@example.com', resp.content.decode())
