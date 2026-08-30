@@ -14,6 +14,7 @@ from django.views.decorators.clickjacking import xframe_options_exempt
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.shortcuts import get_object_or_404, redirect, render
 from django.http import HttpResponse, JsonResponse
+from django.views.decorators.http import require_POST
 
 from rest_framework import viewsets
 from rest_framework.decorators import api_view
@@ -148,6 +149,33 @@ def delete_record(request, record_id):
         'message': 'Successfully deleted record',
         'status': 'success'
     })
+
+
+@require_POST
+def revoke_hs_admin_role(request, user_id):
+    """Remove the highschool_admin role for a user who holds no roles left.
+
+    Called from the prompt that follows an administrator delete, and from the
+    Dangling Accounts tab for anyone that prompt was declined or missed for.
+    """
+    from cis.services.hs_admin_role import revoke_hs_admin_access
+
+    user = get_object_or_404(CustomUser, pk=user_id)
+    name = f'{user.first_name} {user.last_name}'.strip()
+
+    if not revoke_hs_admin_access(user):
+        return JsonResponse({
+            'status': 'error',
+            'message': f'{name} still holds a high school role. '
+                       'High school administrator access was left in place.',
+        })
+
+    retained = [r for r in user.get_roles()]
+    message = f'{name} no longer has high school administrator access.'
+    if retained:
+        message += f' Their {", ".join(retained)} access is unchanged.'
+
+    return JsonResponse({'status': 'success', 'message': message})
 
 @xframe_options_exempt
 def delete_access_request(request, record_id):

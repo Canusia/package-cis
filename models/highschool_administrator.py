@@ -202,16 +202,14 @@ class HSAdministrator(models.Model):
 
     @staticmethod
     def delete_record(record):
+        """Delete the administrator record. The CustomUser is never deleted.
 
-        user = record.user
+        CustomUser is protected by many foreign keys, so deleting it here would
+        raise ProtectedError for most real accounts. Revoking the
+        highschool_admin group is a separate, explicit step —
+        cis.services.hs_admin_role.revoke_hs_admin_access.
+        """
         record.delete()
-
-        # try to remove base user account if this was the only role
-        try:
-            user.delete()
-        except:
-            pass
-
         return True
 
     @property

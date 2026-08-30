@@ -97,6 +97,7 @@ from cis.views.hs_administrator import (
     download_hs_member_template,
     delete_record as delete_hs_admin,
     delete_role as delete_hs_admin_role,
+    revoke_hs_admin_role,
     access_requests as hs_admin_access_requests,
     access_request as hs_admin_access_request,
     access_request_tab,
@@ -632,6 +633,11 @@ urlpatterns = [
         'highschool_admin/role/delete/<uuid:record_id>',
         user_passes_test(user_has_cis_role, login_url='/')(delete_hs_admin_role),
         name='delete_hs_admin_role'
+    ),
+    path(
+        'highschool_admin/revoke_role/<int:user_id>',
+        user_passes_test(user_has_cis_role, login_url='/')(revoke_hs_admin_role),
+        name='revoke_hs_admin_role'
     ),
     path(
         'highschool_admin/access_requests',
