@@ -670,6 +670,32 @@ def do_bulk_action(request):
     if action == 'edit_status':
         return manage_edit_status(request)
 
+    if action == 'delete':
+        if request.method != 'POST':
+            # Deletion over GET would be CSRF-reachable from any page.
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Delete requires POST.',
+            }, status=405)
+
+        post_ids = request.POST.getlist('ids[]')
+        deleted = 0
+        for record_id in post_ids:
+            try:
+                uuid.UUID(str(record_id))
+            except (ValueError, AttributeError, TypeError):
+                continue
+            try:
+                HSAdministratorPosition.objects.filter(pk=record_id).delete()
+                deleted += 1
+            except Exception:
+                continue
+
+        return JsonResponse({
+            'status': 'success',
+            'message': f'Successfully deleted {deleted} role(s).',
+        })
+
     if action == 'change_password':
         return manage_change_password(request)
 

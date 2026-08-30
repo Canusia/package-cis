@@ -91,3 +91,52 @@ class BulkEditStatusTests(HsAdminRoleFixtureMixin, TestCase):
         self.assertEqual(resp.status_code, 400)
         self.assertEqual(
             HSAdministratorPosition.objects.filter(status='Inactive').count(), 1)
+
+
+class BulkDeleteRolesTests(HsAdminRoleFixtureMixin, TestCase):
+    def setUp(self):
+        self.build_fixture()
+        self.url = reverse('cis:hs_admin_do_bulk_action')
+
+    def tearDown(self):
+        self.tear_down_fixture()
+
+    def test_deletes_only_the_selected_roles(self):
+        resp = self.client.post(self.url, {
+            'action': 'delete',
+            'ids[]': [str(self.role_a1.id)],
+        })
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()['status'], 'success')
+        self.assertFalse(
+            HSAdministratorPosition.objects.filter(id=self.role_a1.id).exists())
+        self.assertTrue(
+            HSAdministratorPosition.objects.filter(id=self.role_a2.id).exists())
+
+    def test_the_administrator_survives_the_delete(self):
+        self.client.post(self.url, {
+            'action': 'delete',
+            'ids[]': [str(self.role_a1.id), str(self.role_a2.id)],
+        })
+        self.admin_a.refresh_from_db()
+        self.assertEqual(
+            HSAdministratorPosition.objects.filter(hsadmin=self.admin_a).count(), 0)
+
+    def test_get_is_refused(self):
+        """Deletion must not be reachable by a GET."""
+        resp = self.client.get(self.url, {
+            'action': 'delete',
+            'ids[]': [str(self.role_a1.id)],
+        })
+        self.assertEqual(resp.status_code, 405)
+        self.assertTrue(
+            HSAdministratorPosition.objects.filter(id=self.role_a1.id).exists())
+
+    def test_malformed_ids_are_skipped(self):
+        resp = self.client.post(self.url, {
+            'action': 'delete',
+            'ids[]': ['not-a-uuid', str(self.role_a1.id)],
+        })
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(
+            HSAdministratorPosition.objects.filter(id=self.role_a1.id).exists())
