@@ -51,7 +51,7 @@ class HSAdministratorTabDispatchTests(TestCase):
     def test_highschools_tab_is_active_and_renders(self):
         resp = self.client.get(reverse('cis:hs_admin_tab', args=[self.admin.id, 'highschools']))
         self.assertEqual(resp.status_code, 200)
-        self.assertIn('dataTable', resp.content.decode())
+        self.assertIn('records_roles', resp.content.decode())
 
     def test_detail_page_renders_tabs_loop(self):
         resp = self.client.get(reverse('cis:hs_admin', args=[self.admin.id]))
