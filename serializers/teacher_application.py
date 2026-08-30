@@ -39,6 +39,7 @@ class TeacherApplicationSerializer(serializers.ModelSerializer):
     class Meta:
         model = TeacherApplication
         fields = '__all__'
+        ref_name = 'CisTeacherApplication'
 
         datatables_always_serializer = [
             'id',
@@ -56,6 +57,7 @@ class ApplicantSchoolCourseSerializer(serializers.ModelSerializer):
     class Meta:
         model = ApplicantSchoolCourse
         fields = '__all__'
+        ref_name = 'CisApplicantSchoolCourse'
         
 class ApplicantCourseReviewerSerializer(serializers.ModelSerializer):
     reviewer = CustomUserSerializer()
@@ -65,3 +67,4 @@ class ApplicantCourseReviewerSerializer(serializers.ModelSerializer):
     class Meta:
         model = ApplicantCourseReviewer
         fields = '__all__'
+        ref_name = 'CisApplicantCourseReviewer'
