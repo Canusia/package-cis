@@ -11,6 +11,7 @@ accounts in the highschool_admin group with no HSAdministrator record — the
 import logging
 
 from django.contrib.auth.models import Group
+from django.db import transaction
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,13 @@ def revoke_hs_admin_access(user):
 
     Never touches any other role, and never deletes the user account.
 
+    Everything after the guard runs inside one transaction: a role created
+    between the guard passing and the record delete running would otherwise
+    raise ProtectedError after the group had already been removed, stripping
+    access from a working administrator — exactly what the guard exists to
+    prevent. This makes the service stricter than the applicant_role.py
+    precedent it mirrors; that is deliberate, not an inconsistency to fix.
+
     Returns True if the role was revoked.
     """
     from cis.models.highschool_administrator import HSAdministrator
@@ -51,14 +59,16 @@ def revoke_hs_admin_access(user):
     if has_remaining_hs_admin_roles(user):
         return False
 
-    try:
-        user.groups.remove(Group.objects.get(name=HS_ADMIN_GROUP))
-    except Group.DoesNotExist:
-        logger.warning('%s group missing; run init_groups', HS_ADMIN_GROUP)
+    with transaction.atomic():
+        try:
+            user.groups.remove(Group.objects.get(name=HS_ADMIN_GROUP))
+        except Group.DoesNotExist:
+            logger.warning('%s group missing; run init_groups', HS_ADMIN_GROUP)
 
-    records = HSAdministrator.objects.filter(user=user)
-    HSAdministratorNote.objects.filter(hsadmin__in=records).delete()
-    records.delete()
+        records = HSAdministrator.objects.filter(user=user)
+        HSAdministratorNote.objects.filter(hsadmin__in=records).delete()
+        records.delete()
 
-    logger.info('Revoked %s role for user %s', HS_ADMIN_GROUP, user.pk)
+        logger.info('Revoked %s role for user %s', HS_ADMIN_GROUP, user.pk)
+
     return True
