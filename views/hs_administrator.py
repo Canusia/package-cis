@@ -40,6 +40,7 @@ from cis.forms.highschool import (
 from cis.models.note import HSAdministratorNote
 from cis.menu import cis_menu, draw_menu
 build_hs_admins_table_config = get_table_config('hs_admins_table').build_config
+build_hs_admin_people_table_config = get_table_config('hs_admin_people_table').build_config
 from myce.component_registry.hs_administrator import hs_administrator_tabs
 from myce.component_registry.access_request import access_request_tabs
 
@@ -617,11 +618,19 @@ def index(request):
                 api_url='/ce/api/hs-administrator-position?format=datatables',
                 details_prefix='/ce/highschool_admin/',
                 bulk_actions={
-                    'toggle_status': {
-                        'label': 'Toggle Status',
+                    'edit_status': {
+                        'label': 'Edit Status',
                         'icon': 'fas fa-edit',
                         'btn_class': 'btn-primary',
-                        'confirm': 'Are you sure you want to toggle status on the selected records?',
+                        'confirm': None,
+                    },
+                    'delete': {
+                        'label': 'Delete',
+                        'icon': 'fas fa-trash-alt',
+                        'btn_class': 'btn-danger',
+                        'confirm': 'Are you sure you want to delete the selected role(s)? '
+                                   'The administrator accounts are not removed.',
+                        'method': 'POST',
                     },
                     'toggle_student_recommendation': {
                         'label': 'Toggle Student Rec.',
@@ -635,8 +644,42 @@ def index(request):
                         'btn_class': 'btn-primary',
                         'confirm': None,
                     },
+                    'password_reset_link': {
+                        'label': 'Generate Reset Link',
+                        'icon': 'fas fa-link',
+                        'btn_class': 'btn-primary',
+                        'confirm': None,
+                    },
                 },
                 bulk_actions_url=reverse('cis:hs_admin_do_bulk_action'),
+            ),
+            'hs_admin_people_table': build_hs_admin_people_table_config(
+                variant='hs_admin_people_index',
+                api_url='/ce/api/hs-administrator?format=datatables',
+                details_prefix='/ce/highschool_admin/',
+                bulk_actions={
+                    'delete': {
+                        'label': 'Delete',
+                        'icon': 'fas fa-trash-alt',
+                        'btn_class': 'btn-danger',
+                        'confirm': 'Are you sure you want to delete the selected administrator(s)? '
+                                   'Administrators who still hold roles are skipped.',
+                        'method': 'POST',
+                    },
+                    'change_password': {
+                        'label': 'Change Password',
+                        'icon': 'fas fa-edit',
+                        'btn_class': 'btn-primary',
+                        'confirm': None,
+                    },
+                    'password_reset_link': {
+                        'label': 'Generate Reset Link',
+                        'icon': 'fas fa-link',
+                        'btn_class': 'btn-primary',
+                        'confirm': None,
+                    },
+                },
+                bulk_actions_url=reverse('cis:hs_admin_do_person_bulk_action'),
             ),
         }
     )

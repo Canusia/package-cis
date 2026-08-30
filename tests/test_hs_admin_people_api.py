@@ -45,3 +45,50 @@ class HsAdministratorPeopleApiTests(HsAdminRoleFixtureMixin, TestCase):
         resp = self.client.get('/ce/api/hs-administrator-position/?format=datatables')
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(len(resp.json()['data']), 3)
+
+
+from django.urls import reverse
+
+
+class HsAdminIndexTabsTests(HsAdminRoleFixtureMixin, TestCase):
+    def setUp(self):
+        self.build_fixture()
+        self.url = reverse('cis:hs_admins')
+
+    def tearDown(self):
+        self.tear_down_fixture()
+
+    def test_both_tabs_render(self):
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, 200)
+        body = resp.content.decode()
+        self.assertIn('href="#all"', body)
+        self.assertIn('href="#people"', body)
+        self.assertIn('records_all', body)
+        self.assertIn('records_people', body)
+
+    def test_people_tab_points_at_the_administrator_api(self):
+        body = self.client.get(self.url).content.decode()
+        self.assertIn('/ce/api/hs-administrator?format=datatables', body)
+
+    def test_toggle_status_is_replaced_by_edit_status(self):
+        body = self.client.get(self.url).content.decode()
+        self.assertIn("slug: 'edit_status'", body)
+        self.assertNotIn("slug: 'toggle_status'", body)
+        self.assertIn("slug: 'toggle_student_recommendation'", body)
+
+    def test_role_tab_bulk_actions(self):
+        body = self.client.get(self.url).content.decode()
+        for slug in ['edit_status', 'delete', 'toggle_student_recommendation',
+                     'change_password', 'password_reset_link']:
+            self.assertIn("slug: '%s'" % slug, body)
+
+    def test_people_tab_posts_to_the_person_endpoint(self):
+        body = self.client.get(self.url).content.decode()
+        self.assertIn(
+            reverse('cis:hs_admin_do_person_bulk_action'), body)
+
+    def test_page_loads_the_shared_bulk_helper_not_an_inline_copy(self):
+        body = self.client.get(self.url).content.decode()
+        self.assertIn('bulk_action.js', body)
+        self.assertNotIn('function do_bulk_action(', body)
