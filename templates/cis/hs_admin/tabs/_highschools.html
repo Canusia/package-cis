@@ -8,41 +8,9 @@
                         data-updater=""><i class="fa fas-light fa-plus-circle"></i>&nbsp;Add New
                         Role</a></div>
                 <div class="table-responsive">
-                    <table class="table dataTable table-striped">
-                        <thead>
-                            <tr>
-                                <th>High School</th>
-                                <th>Position</th>
-                                <th>Status</th>
-                                <th>Since</th>
-                                <th>Manage Student Rec.</th>
-                                <th></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for r in roles %}
-                            <tr>
-                                <td>
-                                    <a href="#" class="ajax-add_new" data-parent="{{record.id}}"
-                                        data-id="{{r.id}}" data-modal="modal-add_new"
-                                        data-model="hsadministratorrole"
-                                        data-updater="">{{r.highschool.name}}</a>
-                                </td>
-                                <td>{{r.position.name}}</td>
-                                <td>{{r.status}}</td>
-                                <td>{{r.since|date:'m/d/Y'}}</td>
-                                <td>{{r.meta.manage_student_recommendation}}</td>
-                                <td><a href="#" class="btn btn-sm btn-primary ajax-add_new" data-parent="{{record.id}}"
-                                    data-id="{{r.id}}" data-modal="modal-add_new"
-                                    data-model="hsadministratorrole"
-                                    data-updater="">Edit</a></td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div> <!-- end table-responsive -->
-            </div> <!-- end card-body -->
-
-        </div> <!-- end card -->
+                    {% include roles_table.partial_template with config=roles_table %}
+                </div> {% comment %} end table-responsive {% endcomment %}
+            </div> {% comment %} end card-body {% endcomment %}
+        </div> {% comment %} end card {% endcomment %}
     </div>
 </div>

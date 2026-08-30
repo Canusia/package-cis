@@ -105,3 +105,40 @@ class HsAdministratorPositionFilterTests(HsAdminRoleFixtureMixin, TestCase):
             '&hsadmin=PLACEHOLDER')
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()['data'], [])
+
+
+class HighSchoolRolesTabTests(HsAdminRoleFixtureMixin, TestCase):
+    def setUp(self):
+        self.build_fixture()
+
+    def tearDown(self):
+        self.tear_down_fixture()
+
+    def test_tab_renders_the_datatable_partial(self):
+        resp = self.client.get(reverse('cis:hs_admin', args=[self.admin_a.id]))
+        self.assertEqual(resp.status_code, 200)
+        body = resp.content.decode()
+        self.assertIn('records_roles', body)
+        self.assertIn('hs_admins_table.js', body)
+        self.assertIn('bulk_action.js', body)
+
+    def test_table_is_scoped_to_this_administrator(self):
+        resp = self.client.get(reverse('cis:hs_admin', args=[self.admin_a.id]))
+        self.assertIn(f'hsadmin={self.admin_a.id}', resp.content.decode())
+
+    def test_tab_exposes_edit_status_and_delete_only(self):
+        resp = self.client.get(reverse('cis:hs_admin', args=[self.admin_a.id]))
+        body = resp.content.decode()
+        self.assertIn("slug: 'edit_status'", body)
+        self.assertIn("slug: 'delete'", body)
+        self.assertNotIn("slug: 'change_password'", body)
+
+    def test_delete_button_is_wired_to_post(self):
+        resp = self.client.get(reverse('cis:hs_admin', args=[self.admin_a.id]))
+        body = resp.content.decode()
+        delete_spec = body[body.index("slug: 'delete'"):]
+        self.assertIn("method: 'POST'", delete_spec[:400])
+
+    def test_add_new_role_button_survives_the_conversion(self):
+        resp = self.client.get(reverse('cis:hs_admin', args=[self.admin_a.id]))
+        self.assertIn('Add New', resp.content.decode())
