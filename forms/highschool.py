@@ -765,3 +765,116 @@ class HSModelForm(ModelForm):
         if not data:
             self._errors['name'] = self.error_class(['Min. 5 chars'])
         return data
+
+
+def _looks_like_uuid(value):
+    import uuid as _uuid
+    try:
+        _uuid.UUID(str(value))
+        return True
+    except (ValueError, AttributeError, TypeError):
+        return False
+
+
+class BulkStatusChangeForm(forms.Form):
+    """Set the status on a set of HSAdministratorPosition rows, optionally
+    recording a note against each affected administrator.
+
+    Mirrors BulkPasswordChangeForm: instantiated with a list of record ids for
+    the GET (modal render) pass, and with `data` for the POST (apply) pass.
+    """
+    record_ids = forms.MultipleChoiceField(
+        required=True,
+        label='Records to Update',
+        widget=forms.CheckboxSelectMultiple,
+        choices=[]
+    )
+
+    status = forms.ChoiceField(
+        required=True,
+        label='Status',
+        choices=[]
+    )
+
+    note = forms.CharField(
+        required=False,
+        label='Note',
+        widget=forms.Textarea(attrs={'rows': 3}),
+        help_text='Optional. Recorded on each affected administrator\'s Notes tab.'
+    )
+
+    action = forms.CharField(
+        widget=forms.HiddenInput,
+        initial='edit_status'
+    )
+
+    def __init__(self, record_ids=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        from cis.models.highschool_administrator import HSAdministratorPosition
+
+        self.fields['status'].choices = HSAdministratorPosition.STATUS_OPTIONS
+
+        if record_ids is None and kwargs.get('data') is not None:
+            record_ids = kwargs['data'].getlist('record_ids')
+
+        # Choices are always rebuilt from the database, so a client-supplied id
+        # that is not a real position (or not a valid UUID) fails validation
+        # rather than reaching the queryset.
+        records = HSAdministratorPosition.objects.filter(
+            id__in=[r for r in (record_ids or []) if _looks_like_uuid(r)]
+        ).select_related('hsadmin__user', 'highschool', 'position')
+
+        choices = []
+        initial = []
+        for record in records:
+            label = (
+                f"{record.hsadmin.user.last_name}, {record.hsadmin.user.first_name}"
+                f" - {record.highschool.name} ({record.position.name})"
+            )
+            choices.append((str(record.id), label))
+            initial.append(str(record.id))
+
+        self.fields['record_ids'].choices = choices
+        self.fields['record_ids'].initial = initial
+
+    def save(self, request):
+        """Apply the status and write one note per affected administrator.
+
+        Returns (updated_count, notes_created_count).
+        """
+        from cis.models.highschool_administrator import HSAdministratorPosition
+        from cis.models.note import HSAdministratorNote
+
+        data = self.cleaned_data
+        status = data['status']
+        note_text = (data.get('note') or '').strip()
+
+        records = HSAdministratorPosition.objects.filter(
+            id__in=data['record_ids']
+        ).select_related('hsadmin__user', 'highschool', 'position')
+
+        per_admin = {}
+        updated = 0
+        for record in records:
+            record.status = status
+            record.save()
+            updated += 1
+            per_admin.setdefault(record.hsadmin, []).append(
+                f"{record.highschool.name} ({record.position.name})"
+            )
+
+        notes_created = 0
+        if note_text:
+            for hsadmin, places in per_admin.items():
+                note = HSAdministratorNote()
+                note.hsadmin = hsadmin
+                note.createdby = request.user
+                note.note = (
+                    f"Status set to {status} for: " + ', '.join(sorted(places))
+                    + f"\n\n{note_text}"
+                )
+                note.save()
+                notes_created += 1
+
+        return updated, notes_created

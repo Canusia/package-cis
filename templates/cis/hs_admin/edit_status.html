@@ -1,0 +1,23 @@
+{% extends 'cis/ajax-base.html' %}
+
+{%block title %}{{title}}{% endblock %}
+
+{% load templatehelpers %}
+{% load crispy_forms_tags %}
+
+{% block body %}
+
+<div class="card">
+    <div class="card-body">
+        <h3 class="card-title">{{title}}</h3>
+        <div class="card-text">
+            <form action="{{form_action|safe}}" id="{{id}}" method="post" class="frm_bulk_action" enctype="multipart/form-data">
+                {% csrf_token %}
+                {{ form | crispy }}
+                <input type="submit" class="btn btn-primary btn-sm" value="Update Record(s)">
+            </form>
+        </div>
+    </div>
+</div> {% comment %} end card {% endcomment %}
+
+{% endblock %}

@@ -667,8 +667,45 @@ def do_bulk_action(request):
 
         return JsonResponse(data)
 
+    if action == 'edit_status':
+        return manage_edit_status(request)
+
     if action == 'change_password':
         return manage_change_password(request)
+
+def manage_edit_status(request):
+    """Render (GET) or apply (POST) the bulk status change modal."""
+    template = 'cis/hs_admin/edit_status.html'
+
+    from cis.forms.highschool import BulkStatusChangeForm
+
+    if request.method == 'POST':
+        form = BulkStatusChangeForm(data=request.POST)
+
+        if form.is_valid():
+            updated, notes_created = form.save(request)
+            return JsonResponse({
+                'status': 'success',
+                'message': f'Successfully updated {updated} record(s).',
+                'action': 'reload_table',
+            })
+
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Please correct the errors and try again.',
+            'errors': form.errors.as_json(),
+        }, status=400)
+
+    ids = request.GET.getlist('ids[]')
+    form = BulkStatusChangeForm(ids)
+
+    return render(request, template, {
+        'title': 'Edit Status',
+        'form': form,
+        'id': 'frm_bulk_status',
+        'form_action': str(reverse('cis:hs_admin_do_bulk_action')),
+        'status': 'display',
+    })
 
 def manage_change_password(request):
     template = 'cis/hs_admin/change_password.html'
