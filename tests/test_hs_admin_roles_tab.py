@@ -143,6 +143,12 @@ class HighSchoolRolesTabTests(HsAdminRoleFixtureMixin, TestCase):
         resp = self.client.get(reverse('cis:hs_admin', args=[self.admin_a.id]))
         self.assertIn('Add New', resp.content.decode())
 
+    def test_tab_renders_the_name_headers(self):
+        resp = self.client.get(reverse('cis:hs_admin', args=[self.admin_a.id]))
+        body = resp.content.decode()
+        self.assertIn('data-name="hsadmin.user.last_name"', body)
+        self.assertIn('data-name="hsadmin.user.first_name"', body)
+
 
 class PasswordResetTabRemovalTests(HsAdminRoleFixtureMixin, TestCase):
     def setUp(self):
