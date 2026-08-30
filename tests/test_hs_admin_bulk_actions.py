@@ -3,7 +3,8 @@ import uuid
 from django.test import TestCase
 from django.urls import reverse
 
-from cis.models.highschool_administrator import HSAdministratorPosition
+from cis.models.highschool_administrator import (
+    HSAdministrator, HSAdministratorPosition)
 from cis.models.note import HSAdministratorNote
 from cis.tests.test_hs_admin_roles_tab import HsAdminRoleFixtureMixin
 
@@ -192,3 +193,69 @@ class BulkResetLinkTests(HsAdminRoleFixtureMixin, TestCase):
         })
         self.assertEqual(resp.status_code, 200)
         self.assertNotIn('admin_a@example.com', resp.content.decode())
+
+
+class PersonBulkActionTests(HsAdminRoleFixtureMixin, TestCase):
+    def setUp(self):
+        self.build_fixture()
+        self.url = reverse('cis:hs_admin_do_person_bulk_action')
+
+    def tearDown(self):
+        self.tear_down_fixture()
+
+    def test_reset_links_take_administrator_ids_directly(self):
+        resp = self.client.get(self.url, {
+            'action': 'password_reset_link',
+            'ids[]': [str(self.admin_a.id)],
+        })
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('admin_a@example.com', resp.content.decode())
+
+    def test_delete_removes_an_administrator_with_no_roles(self):
+        HSAdministratorPosition.objects.filter(hsadmin=self.admin_b).delete()
+        resp = self.client.post(self.url, {
+            'action': 'delete',
+            'ids[]': [str(self.admin_b.id)],
+        })
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(
+            HSAdministrator.objects.filter(id=self.admin_b.id).exists())
+        self.assertIn('1 deleted', resp.json()['message'])
+
+    def test_delete_skips_an_administrator_that_still_holds_roles(self):
+        """HSAdministratorPosition.hsadmin is on_delete=PROTECT: report the skip
+        rather than cascading the roles away."""
+        resp = self.client.post(self.url, {
+            'action': 'delete',
+            'ids[]': [str(self.admin_a.id)],
+        })
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(
+            HSAdministrator.objects.filter(id=self.admin_a.id).exists())
+        message = resp.json()['message']
+        self.assertIn('0 deleted', message)
+        self.assertIn('1 skipped', message)
+
+    def test_delete_is_refused_over_get(self):
+        HSAdministratorPosition.objects.filter(hsadmin=self.admin_b).delete()
+        resp = self.client.get(self.url, {
+            'action': 'delete',
+            'ids[]': [str(self.admin_b.id)],
+        })
+        self.assertEqual(resp.status_code, 405)
+        self.assertTrue(
+            HSAdministrator.objects.filter(id=self.admin_b.id).exists())
+
+    def test_change_password_renders_the_existing_modal(self):
+        resp = self.client.get(self.url, {
+            'action': 'change_password',
+            'ids[]': [str(self.admin_a.id)],
+        })
+        self.assertEqual(resp.status_code, 200)
+        body = resp.content.decode()
+        self.assertIn('name="new_password"', body)
+        self.assertIn('Alpha', body)
+
+    def test_unknown_action_is_a_400(self):
+        resp = self.client.get(self.url, {'action': 'nope', 'ids[]': []})
+        self.assertEqual(resp.status_code, 400)

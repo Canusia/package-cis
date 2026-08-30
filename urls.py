@@ -102,6 +102,7 @@ from cis.views.hs_administrator import (
     access_request_tab,
     delete_access_request,
     do_bulk_action,
+    do_person_bulk_action,
     HSAdministratorViewSet,
     HSAdministratorAccessRequestViewSet,
     HSAdministratorPositionViewSet
@@ -651,6 +652,11 @@ urlpatterns = [
     path(
         'highschool_admin/do_bulk_action/',
         user_passes_test(user_has_cis_role, login_url='/')(do_bulk_action), name='hs_admin_do_bulk_action'
+    ),
+    path(
+        'highschool_admin/do_person_bulk_action',
+        user_passes_test(user_has_cis_role, login_url='/')(do_person_bulk_action),
+        name='hs_admin_do_person_bulk_action'
     ),
     path(
         'academic_years/',

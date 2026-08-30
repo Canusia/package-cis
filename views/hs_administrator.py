@@ -777,7 +777,7 @@ def render_reset_links(request, admins):
     })
 
 
-def manage_change_password(request):
+def manage_change_password(request, admin_ids=None):
     template = 'cis/hs_admin/change_password.html'
 
     from cis.forms.highschool import BulkPasswordChangeForm
@@ -802,19 +802,85 @@ def manage_change_password(request):
             }
         return JsonResponse(data, status=400)
 
-    ids = request.GET.getlist('ids[]')
+    if admin_ids is None:
+        ids = request.GET.getlist('ids[]')
+        admin_ids = HSAdministratorPosition.objects.filter(
+            id__in=ids
+        ).values_list('hsadmin__id', flat=True)
 
-    hs_admin_ids = HSAdministratorPosition.objects.filter(
-        id__in=ids
-    ).values_list('hsadmin__id', flat=True)
-
-    form = BulkPasswordChangeForm(hs_admin_ids)
+    form = BulkPasswordChangeForm(admin_ids)
     context = {
         'title': 'Change Password',
         'form': form,
         'id': 'frm_bulk_password',
-        'form_action': str(reverse('cis:hs_admin_do_bulk_action')),
+        'form_action': request.path,
         'status': 'display'
     }
-    
+
     return render(request, template, context)
+
+
+def do_person_bulk_action(request):
+    """Bulk actions for the Distinct Administrators tab.
+
+    Rows there are HSAdministrator records, so `ids[]` are administrator ids —
+    unlike do_bulk_action, whose ids are HSAdministratorPosition rows.
+    """
+    action = request.GET.get('action')
+    ids = request.GET.getlist('ids[]')
+
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        ids = request.POST.getlist('ids[]') or ids
+
+    valid_ids = []
+    for record_id in ids:
+        try:
+            uuid.UUID(str(record_id))
+        except (ValueError, AttributeError, TypeError):
+            continue
+        valid_ids.append(record_id)
+
+    if action == 'password_reset_link':
+        admins = HSAdministrator.objects.filter(
+            id__in=valid_ids).select_related('user')
+        return render_reset_links(request, admins)
+
+    if action == 'change_password':
+        return manage_change_password(request, admin_ids=valid_ids)
+
+    if action == 'delete':
+        if request.method != 'POST':
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Delete requires POST.',
+            }, status=405)
+
+        deleted = skipped = 0
+        for record_id in valid_ids:
+            try:
+                record = HSAdministrator.objects.get(pk=record_id)
+            except HSAdministrator.DoesNotExist:
+                skipped += 1
+                continue
+            try:
+                HSAdministratorNote.objects.filter(hsadmin=record).delete()
+                HSAdministrator.delete_record(record)
+                deleted += 1
+            except Exception:
+                # Roles reference the administrator with on_delete=PROTECT.
+                # Report the skip; deleting their roles is a separate decision.
+                skipped += 1
+
+        return JsonResponse({
+            'status': 'success',
+            'message': (
+                f'{deleted} deleted, {skipped} skipped '
+                '(skipped administrators still hold roles).'
+            ),
+        })
+
+    return JsonResponse({
+        'status': 'error',
+        'message': 'Unknown action.',
+    }, status=400)
