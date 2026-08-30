@@ -1,5 +1,6 @@
 import csv
 import io
+import uuid
 from datetime import datetime
 
 from django.db import IntegrityError
@@ -56,7 +57,21 @@ class HSAdministratorPositionViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [CIS_user_only]
 
     def get_queryset(self):
-        return HSAdministratorPosition.objects.all()
+        records = HSAdministratorPosition.objects.all()
+
+        hsadmin_id = self.request.GET.get('hsadmin')
+        if hsadmin_id:
+            # Guard a client-supplied hsadmin: a non-UUID value would raise
+            # ValidationError -> 500 in the filter below. Treat a
+            # present-but-malformed id as "no match". (Same idiom as the
+            # PT-1 term_id guard and the TeacherUpload teacher_id guard.)
+            try:
+                uuid.UUID(str(hsadmin_id))
+            except (ValueError, AttributeError, TypeError):
+                return HSAdministratorPosition.objects.none()
+            records = records.filter(hsadmin__id=hsadmin_id)
+
+        return records
 
 class HSAdministratorViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = HSAdministratorSerializer
