@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 
 from django.db import IntegrityError
-from django.db.models import Q
+from django.db.models import Q, Count
 from django.conf import settings
 
 from django.urls import reverse_lazy, reverse
@@ -78,7 +78,12 @@ class HSAdministratorViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [CIS_user_only]
 
     def get_queryset(self):
-        return HSAdministrator.objects.all()
+        # school_count must be a real annotation, not a SerializerMethodField:
+        # rest_framework_datatables orders and filters server-side using the
+        # column's data-name, and a non-ORM path raises FieldError -> 500.
+        return HSAdministrator.objects.select_related('user').annotate(
+            school_count=Count('hsadministratorposition')
+        )
 
 class HSAdministratorAccessRequestViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = HSAdministratorAccessRequestSerializer

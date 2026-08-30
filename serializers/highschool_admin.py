@@ -41,7 +41,14 @@ class HSAdministratorSerializer(serializers.ModelSerializer):
     ce_url = serializers.CharField(
         read_only=True
     )
-    
+    # Populated by the annotation in HSAdministratorViewSet.get_queryset.
+    # required=False keeps the field optional when this serializer is nested
+    # inside HighSchoolAdministratorSerializer, whose instances are un-annotated.
+    school_count = serializers.IntegerField(
+        read_only=True,
+        required=False
+    )
+
     class Meta:
         model = HSAdministrator
         fields = '__all__'
