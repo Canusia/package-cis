@@ -680,20 +680,27 @@ def do_bulk_action(request):
 
         post_ids = request.POST.getlist('ids[]')
         deleted = 0
+        failed = 0
         for record_id in post_ids:
             try:
                 uuid.UUID(str(record_id))
             except (ValueError, AttributeError, TypeError):
                 continue
             try:
-                HSAdministratorPosition.objects.filter(pk=record_id).delete()
-                deleted += 1
+                count, _ = HSAdministratorPosition.objects.filter(pk=record_id).delete()
+                deleted += count
             except Exception:
+                failed += 1
                 continue
+
+        if failed:
+            message = f'Successfully deleted {deleted} role(s), {failed} failed.'
+        else:
+            message = f'Successfully deleted {deleted} role(s).'
 
         return JsonResponse({
             'status': 'success',
-            'message': f'Successfully deleted {deleted} role(s).',
+            'message': message,
         })
 
     if action == 'change_password':

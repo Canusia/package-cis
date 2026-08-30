@@ -1,3 +1,5 @@
+import uuid
+
 from django.test import TestCase
 from django.urls import reverse
 
@@ -140,3 +142,13 @@ class BulkDeleteRolesTests(HsAdminRoleFixtureMixin, TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertFalse(
             HSAdministratorPosition.objects.filter(id=self.role_a1.id).exists())
+
+    def test_deletion_count_is_truthful(self):
+        """Count reflects rows actually deleted, not well-formed-but-nonexistent IDs."""
+        nonexistent_id = str(uuid.uuid4())
+        resp = self.client.post(self.url, {
+            'action': 'delete',
+            'ids[]': [str(self.role_a1.id), nonexistent_id],
+        })
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()['message'], 'Successfully deleted 1 role(s).')
