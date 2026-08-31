@@ -257,6 +257,50 @@ class BulkDeleteRoleRevocationTests(FacultyRoleFixtureMixin, TestCase):
         self.assertTrue(User.objects.filter(pk=self.user_a.pk).exists())
         self.assertTrue(User.objects.filter(pk=self.user_b.pk).exists())
 
+    def test_successful_delete_removes_both_children_and_revokes_the_role(self):
+        """The central claim of FacultyCoordinator.delete_record is that it
+        clears BOTH real children (FacultyCourseCoordinator,
+        FacultyCoordinatorNote) and then the record itself. Every other test
+        in this file either mocks the delete or never attaches both children
+        to a record that is actually, successfully deleted -- so nothing
+        proves the happy path end to end. Drop either cleanup line from
+        delete_record and this is the test that catches it: the child row
+        left behind would make record.delete() raise a real ProtectedError,
+        which the view reports as 'left in place' rather than deleted, and
+        this test's assertions on resp.json()['message'] and the row counts
+        would fail.
+
+        Runs through the bulk-action view (not just the model method) so the
+        delete-then-revoke chain is proven together on a real record, per
+        the coordinator's fix-round-1 request.
+        """
+        course = self._make_course('HAPPYPATH')
+        course_coordinator = FacultyCourseCoordinator.objects.create(
+            faculty_coordinator=self.coord_b, course=course, status='Active')
+        note = FacultyCoordinatorNote.objects.create(
+            faculty_coordinator=self.coord_b, note='keep me until deleted',
+            createdby=self.ce_user)
+
+        resp = self._delete([self.coord_b.id])
+
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.json()
+        self.assertIn('Deleted 1', payload['message'])
+        self.assertNotIn('left in place', payload['message'])
+        self.assertNotIn('failed unexpectedly', payload['message'])
+
+        self.assertFalse(
+            FacultyCoordinator.objects.filter(id=self.coord_b.id).exists())
+        self.assertFalse(
+            FacultyCourseCoordinator.objects.filter(
+                pk=course_coordinator.pk).exists())
+        self.assertFalse(
+            FacultyCoordinatorNote.objects.filter(pk=note.pk).exists())
+
+        self.assertTrue(User.objects.filter(pk=self.user_b.pk).exists())
+        self.user_b.refresh_from_db()
+        self.assertNotIn('faculty', self.user_b.get_roles())
+
     def test_get_is_refused(self):
         resp = self.client.get(self.url, {
             'action': 'delete',
