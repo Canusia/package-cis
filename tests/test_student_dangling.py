@@ -241,3 +241,23 @@ class DanglingTabTests(DanglingStudentFixtureMixin, TestCase):
 
     def test_do_dangling_bulk_action_url_resolves(self):
         self.assertTrue(reverse('cis:student_do_dangling_bulk_action'))
+
+    def test_students_index_renders_dangling_tab(self):
+        resp = self.client.get(reverse('cis:students'))
+        self.assertEqual(resp.status_code, 200)
+        body = resp.content.decode()
+        self.assertIn('href="#dangling"', body)
+        self.assertIn('Dangling Accounts', body)
+        self.assertIn('records_student_dangling', body)
+
+    def test_students_index_does_not_shadow_the_shared_bulk_action_helper(self):
+        """myce_tenant_configs/staticfiles/js/bulk_action.js assigns
+        window.do_bulk_action for the Dangling Accounts tab's buttons. A
+        page-level `function do_bulk_action(...)` declaration would be
+        hoisted and silently shadow that global for every table on this
+        page (this bit the instructors page — see
+        cis/templates/cis/teachers/teachers.html's do_legacy_bulk_action)."""
+        resp = self.client.get(reverse('cis:students'))
+        self.assertEqual(resp.status_code, 200)
+        body = resp.content.decode()
+        self.assertNotIn('function do_bulk_action(', body)

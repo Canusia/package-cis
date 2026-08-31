@@ -63,6 +63,7 @@ build_students_table_config                = get_table_config('students_table').
 build_student_recommendations_table_config = get_table_config('student_recommendations_table').build_config
 build_support_docs_table_config            = get_table_config('support_docs_table').build_config
 build_student_notes_table_config           = get_table_config('student_notes_table').build_config
+build_student_dangling_table_config        = get_table_config('student_dangling_table').build_config
 from myce.component_registry.student import student_actions, student_tabs
 from myce.component_registry.support_docs import support_docs_actions
 from cis.settings.registrations import RegistrationForm
@@ -1767,6 +1768,30 @@ def index(request):
                 ),
                 bulk_actions_url=reverse('cis:student_bulk_actions'),
                 filter_form_selector='#dirty_students_filter',
+            ),
+            'student_dangling_table': build_student_dangling_table_config(
+                variant='student_dangling_index',
+                api_url='/ce/api/student-dangling?format=datatables',
+                bulk_actions={
+                    'revoke_access': {
+                        'label': 'Remove Student Access',
+                        'icon': 'fas fa-user-slash',
+                        'btn_class': 'btn-primary',
+                        'confirm': 'Remove student access from the '
+                                   'selected account(s)? Their other roles are unchanged.',
+                        'method': 'POST',
+                    },
+                    'delete_account': {
+                        'label': 'Delete Account',
+                        'icon': 'fas fa-trash-alt',
+                        'btn_class': 'btn-danger',
+                        'confirm': 'Permanently delete the selected account(s)? Only accounts '
+                                   'with no other roles and no references elsewhere are '
+                                   'deleted; the rest are skipped and reported.',
+                        'method': 'POST',
+                    },
+                },
+                bulk_actions_url=reverse('cis:student_do_dangling_bulk_action'),
             ),
         }
     )
