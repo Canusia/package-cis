@@ -104,9 +104,11 @@ from cis.views.hs_administrator import (
     delete_access_request,
     do_bulk_action,
     do_person_bulk_action,
+    do_dangling_bulk_action,
     HSAdministratorViewSet,
     HSAdministratorAccessRequestViewSet,
-    HSAdministratorPositionViewSet
+    HSAdministratorPositionViewSet,
+    DanglingHSAdminViewSet
 )
 
 from cis.views.academic_year import (
@@ -374,6 +376,7 @@ router_viewsets = {
     'hs-administrator-position': HSAdministratorPositionViewSet,
     'hs-position': HSPositionViewSet,
     'hs-administrator-access-request': HSAdministratorAccessRequestViewSet,
+    'hs-administrator-dangling': DanglingHSAdminViewSet,
 
     'term': TermViewSet,
     'academic-year': AcademicYearViewSet,
@@ -663,6 +666,11 @@ urlpatterns = [
         'highschool_admin/do_person_bulk_action',
         user_passes_test(user_has_cis_role, login_url='/')(do_person_bulk_action),
         name='hs_admin_do_person_bulk_action'
+    ),
+    path(
+        'highschool_admin/do_dangling_bulk_action',
+        user_passes_test(user_has_cis_role, login_url='/')(do_dangling_bulk_action),
+        name='hs_admin_do_dangling_bulk_action'
     ),
     path(
         'academic_years/',

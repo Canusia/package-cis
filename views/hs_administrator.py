@@ -51,7 +51,7 @@ from ..serializers.highschool import (
     HSAdministratorAccessRequestSerializer
 )
 from ..serializers.highschool_admin import (
-    HSAdministratorSerializer
+    HSAdministratorSerializer, DanglingHSAdminSerializer
 )
 from cis.utils import CIS_user_only
 
@@ -89,6 +89,24 @@ class HSAdministratorViewSet(viewsets.ReadOnlyModelViewSet):
         return HSAdministrator.objects.select_related('user').annotate(
             school_count=Count('hsadministratorposition')
         )
+
+class DanglingHSAdminViewSet(viewsets.ReadOnlyModelViewSet):
+    """Accounts left in the highschool_admin group with no HSAdministrator record.
+
+    They appear on no other tab: the administrator tabs are driven by
+    HSAdministrator/HSAdministratorPosition rows, which these users no longer
+    have. This is the only place staff can reach them.
+    """
+    serializer_class = DanglingHSAdminSerializer
+    permission_classes = [CIS_user_only]
+
+    def get_queryset(self):
+        from cis.services.hs_admin_role import HS_ADMIN_GROUP
+
+        return CustomUser.objects.filter(
+            groups__name=HS_ADMIN_GROUP,
+            hsadministrator__isnull=True,
+        ).prefetch_related('groups').distinct()
 
 class HSAdministratorAccessRequestViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = HSAdministratorAccessRequestSerializer
@@ -1010,3 +1028,81 @@ def do_person_bulk_action(request):
         'status': 'error',
         'message': 'Unknown action.',
     }, status=400)
+
+
+def do_dangling_bulk_action(request):
+    """Bulk actions for the Dangling Accounts tab.
+
+    `ids[]` are CustomUser ids — an integer AutoField, unlike the UUID
+    primary keys used by HSAdministrator and HSAdministratorPosition, so the
+    id guard below validates with int(), not uuid.UUID(). Both actions are
+    POST-only: one drops a role, the other deletes an account.
+    """
+    action = request.POST.get('action') or request.GET.get('action')
+    ids = request.POST.getlist('ids[]') or request.GET.getlist('ids[]')
+
+    if action not in ('revoke_access', 'delete_account'):
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Unknown action.',
+        }, status=400)
+
+    if request.method != 'POST':
+        return JsonResponse({
+            'status': 'error',
+            'message': 'This action requires POST.',
+        }, status=405)
+
+    valid_ids = []
+    for record_id in ids:
+        try:
+            valid_ids.append(int(record_id))
+        except (ValueError, TypeError):
+            continue
+
+    from cis.services.hs_admin_role import revoke_hs_admin_access
+
+    users = CustomUser.objects.filter(id__in=valid_ids)
+
+    if action == 'revoke_access':
+        revoked = skipped = 0
+        for user in users:
+            if revoke_hs_admin_access(user):
+                revoked += 1
+            else:
+                skipped += 1
+
+        return JsonResponse({
+            'status': 'success',
+            'message': (
+                f'{revoked} account(s) no longer have high school administrator '
+                f'access, {skipped} skipped (they still hold high school roles).'
+            ),
+        })
+
+    deleted = skipped = 0
+    for user in users:
+        # Only ever delete an account that this tab is responsible for: no
+        # administrator record, and no other role to keep it alive.
+        if HSAdministrator.objects.filter(user=user).exists():
+            skipped += 1
+            continue
+        if [r for r in user.get_roles() if r != 'highschool_admin']:
+            skipped += 1
+            continue
+        try:
+            user.delete()
+            deleted += 1
+        except Exception:
+            # ProtectedError: the account is referenced elsewhere (notes they
+            # authored, records they created). Report it instead of swallowing
+            # it, which is the bug that created these accounts.
+            skipped += 1
+
+    return JsonResponse({
+        'status': 'success',
+        'message': (
+            f'{deleted} account(s) deleted, {skipped} skipped '
+            '(skipped accounts hold other roles or are referenced elsewhere).'
+        ),
+    })
