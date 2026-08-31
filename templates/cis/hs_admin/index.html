@@ -29,10 +29,10 @@
 
                 <ul class="nav nav-tabs">
                     <li class="nav-item">
-                        <a class="nav-link active" data-toggle="tab" href="#all">All Administrators</a>
+                        <a class="nav-link active" data-toggle="tab" href="#all">By Role</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" data-toggle="tab" href="#people">Distinct Administrators</a>
+                        <a class="nav-link" data-toggle="tab" href="#people">School Administrators</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" data-toggle="tab" href="#dangling">Dangling Accounts</a>
@@ -74,7 +74,7 @@
 </main>
 
 <script>
-    {% comment %} The Distinct Administrators table initialises inside a hidden
+    {% comment %} The School Administrators table initialises inside a hidden
     tab pane, where DataTables' Select extension measures every column as
     zero-width. Re-measure when its tab is shown. {% endcomment %}
     jQuery(function ($) {
