@@ -13,6 +13,7 @@ from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.shortcuts import get_object_or_404, redirect, render
 from django.http import JsonResponse, HttpResponse
 from django.views.decorators.clickjacking import xframe_options_exempt
+from django.views.decorators.http import require_POST
 from django.utils.safestring import mark_safe
 from django.template.loader import get_template, render_to_string
 
@@ -793,26 +794,68 @@ def delete_note(request):
     }
     return JsonResponse(data)
 
+@require_POST
 def delete_record(request, record_id):
     record = get_object_or_404(Student, pk=record_id)
     if not can_access_student(request.user, record):
         return JsonResponse({'status': 'error',
             'message': 'You are not authorized to access this student.'}, status=403)
+
+    user = record.user
     try:
         Student.delete_record(record)
-
-        data = {
-            'status':'success',
-            'message':'Successfully deleted record',
-            'action': 'reload'
-        }
     except Exception as e:
-        data = {
-            'status':'error',
-            'message':'Unable to delete record. ' + str(e),
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Unable to delete record. ' + str(e),
             'action': ''
-        }
-    return JsonResponse(data)
+        }, status=400)
+
+    # The student role is revoked only if staff say so, from the follow-up
+    # prompt this response drives. The account is never deleted here.
+    from cis.services.student_role import STUDENT
+    from cis.services.role_access import has_remaining_records
+
+    revocable = not has_remaining_records(STUDENT, user)
+
+    return JsonResponse({
+        'status': 'success',
+        'message': 'Successfully deleted record',
+        'action': 'reload',
+        'student_role_revocable': revocable,
+        'student_name': f'{user.first_name} {user.last_name}'.strip(),
+        'other_roles': [r for r in user.get_roles() if r != 'student'],
+        'revoke_url': str(reverse('cis:revoke_student_role', args=[user.id])),
+        'redirect': str(reverse('cis:students')),
+    })
+
+
+@require_POST
+def revoke_student_role(request, user_id):
+    """Remove the student role for a user who holds no Student record.
+
+    Called from the prompt that follows a student delete, and from the
+    Dangling Accounts tab for anyone that prompt was declined or missed for.
+    """
+    from cis.services.student_role import STUDENT
+    from cis.services.role_access import revoke_access
+
+    user = get_object_or_404(CustomUser, pk=user_id)
+    name = f'{user.first_name} {user.last_name}'.strip()
+
+    if not revoke_access(STUDENT, user):
+        return JsonResponse({
+            'status': 'error',
+            'message': f'{name} still has a student record. '
+                       'Student access was left in place.',
+        })
+
+    retained = [r for r in user.get_roles()]
+    message = f'{name} no longer has student access.'
+    if retained:
+        message += f' Their {", ".join(retained)} access is unchanged.'
+
+    return JsonResponse({'status': 'success', 'message': message})
 
 def data_export_import(request):
     """
@@ -1657,6 +1700,7 @@ def delete_student(request):
     if not ids:
         return JsonResponse({'outcome': 'alert', 'status': 'error', 'title': 'Error', 'message': 'No record selected.'})
     record = get_object_or_404(Student, pk=ids[0])
+    user = record.user
     try:
         Student.delete_record(record)
         # Not onActionComplete: that ends in location.reload(), which reloads
@@ -1664,10 +1708,25 @@ def delete_student(request):
         # iframe, so the user gets a page-load error. onRecordDeleted closes
         # the modal and returns to the index instead, matching the
         # `a.delete` handler and common_methods.js.
+        #
+        # The student role is revoked only if staff say so, from the
+        # follow-up prompt this response drives. The account is never
+        # deleted here.
+        from cis.services.student_role import STUDENT
+        from cis.services.role_access import has_remaining_records
+
+        revocable = not has_remaining_records(STUDENT, user)
+
         return JsonResponse({
             'outcome': 'call',
             'fn': 'onRecordDeleted',
-            'args': {'title': 'Done', 'message': 'Record deleted.', 'status': 'success'},
+            'args': {
+                'title': 'Done', 'message': 'Record deleted.', 'status': 'success',
+                'student_role_revocable': revocable,
+                'student_name': f'{user.first_name} {user.last_name}'.strip(),
+                'other_roles': [r for r in user.get_roles() if r != 'student'],
+                'revoke_url': str(reverse('cis:revoke_student_role', args=[user.id])),
+            },
         })
     except Exception as e:
         return JsonResponse({

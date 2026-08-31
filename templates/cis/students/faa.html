@@ -33,15 +33,29 @@
                     href='{% url 'impersonate-start' record.user.id %}'><i class="fa fa-ghost"></i></a>
 
                     <script>
+                        function _faa_csrfToken() {
+                            var name = 'csrftoken=';
+                            var parts = document.cookie ? document.cookie.split(';') : [];
+                            for (var i = 0; i < parts.length; i++) {
+                                var c = parts[i].trim();
+                                if (c.indexOf(name) === 0) return decodeURIComponent(c.substring(name.length));
+                            }
+                            return '';
+                        }
+
                         jQuery(document).ready(function ($) {
+                            // The a.delete trigger above is commented out today, but
+                            // student_delete is POST-only now, so this handler is
+                            // hardened to match rather than left as a broken GET.
                             $("a.delete").on("click", function () {
                                 if (!confirm("Are you sure you want to permanently delete this record and all the related information?"))
                                     return;
 
                                 $.blockUI();
                                 $.ajax({
-                                    type: 'GET',
+                                    type: 'POST',
                                     url: "{% url 'cis:student_delete' record.id%}",
+                                    headers: { 'X-CSRFToken': _faa_csrfToken() },
                                     success: function (response) {
                                         $.unblockUI();
                                         swal(

@@ -257,6 +257,7 @@ from cis.views.student import (
     mod_settings as student_settings,
     data_export_import as student_exports,
     delete_record as student_delete,
+    revoke_student_role,
     delete_support_doc,
     faa_index,
     delete_faa,
@@ -1037,6 +1038,11 @@ urlpatterns = [
         'student/delete/<uuid:record_id>',
         user_passes_test(user_has_cis_role, login_url='/')(student_delete),
         name='student_delete'
+    ),
+    path(
+        'student/revoke_role/<int:user_id>',
+        user_passes_test(user_has_cis_role, login_url='/')(revoke_student_role),
+        name='revoke_student_role'
     ),
     path(
         'student/note/delete',

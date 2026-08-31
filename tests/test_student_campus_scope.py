@@ -234,8 +234,15 @@ class StudentCampusGateViewTests(_NoLoginSignal):
 
     # 3. delete_record --------------------------------------------------------
     def test_delete_out_of_scope_403_and_record_survives(self):
-        resp = self.client.get(reverse('cis:student_delete', args=[self.stu_b.id]))
+        # student_delete is POST-only (hardened against CSRF via GET); the
+        # scope check runs inside the view, after the method guard.
+        resp = self.client.post(reverse('cis:student_delete', args=[self.stu_b.id]))
         self.assertEqual(resp.status_code, 403)
+        self.assertTrue(Student.objects.filter(pk=self.stu_b.id).exists())
+
+    def test_delete_get_is_refused(self):
+        resp = self.client.get(reverse('cis:student_delete', args=[self.stu_b.id]))
+        self.assertEqual(resp.status_code, 405)
         self.assertTrue(Student.objects.filter(pk=self.stu_b.id).exists())
 
     # 4. bulk gate ------------------------------------------------------------

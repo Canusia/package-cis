@@ -1980,43 +1980,49 @@ class Student(models.Model):
 
     @staticmethod
     def delete_record(record):
+        from django.db import transaction
 
-        # Remove all classes
-        registrations = record.get_registrations()
-        registrations.delete()
+        with transaction.atomic():
+            # Remove all classes
+            registrations = record.get_registrations()
+            registrations.delete()
 
-        StudentCampusID.objects.filter(
-            student=record
-        ).delete()
+            StudentCampusID.objects.filter(
+                student=record
+            ).delete()
 
-        StudentRecommendation.objects.filter(
-            student=record
-        ).delete()
+            StudentRecommendation.objects.filter(
+                student=record
+            ).delete()
 
-        StudentAgreement.objects.filter(
-            student=record
-        ).delete()
+            StudentAgreement.objects.filter(
+                student=record
+            ).delete()
 
-        StudentFerpa.objects.filter(
-            student=record
-        ).delete()
+            StudentFerpa.objects.filter(
+                student=record
+            ).delete()
 
-        ParentConsent.objects.filter(
-            student=record
-        ).delete()
+            ParentConsent.objects.filter(
+                student=record
+            ).delete()
 
-        StudentNote.objects.filter(
-            student=record
-        ).delete()
+            StudentNote.objects.filter(
+                student=record
+            ).delete()
 
-        user = record.user
-        record.delete()
-
-        # try to remove base user account if this was the only role
-        try:
-            user.delete()
-        except:
-            pass
+            # The account is never deleted here. CustomUser is protected by
+            # many foreign keys, so user.delete() raises ProtectedError for
+            # most real accounts; swallowing that is what left accounts
+            # carrying the student group with no Student record. Revoking
+            # the group is a separate explicit step --
+            # cis.services.role_access.revoke_access. Wrapping this whole
+            # cleanup (and the related-record deletes above) in one atomic
+            # block means a failure partway through cannot destroy a
+            # student's consents or FERPA records while leaving the student
+            # record behind -- either everything above and record.delete()
+            # succeed together, or none of it is kept.
+            record.delete()
 
         return True
 

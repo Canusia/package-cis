@@ -14,7 +14,18 @@
 </script>
 
 <script src="{% static 'js/change_history.js' %}"></script>
+<script src="{% static 'js/student_detail.js' %}"></script>
 <script>
+function _csrfToken() {
+    var name = 'csrftoken=';
+    var parts = document.cookie ? document.cookie.split(';') : [];
+    for (var i = 0; i < parts.length; i++) {
+        var c = parts[i].trim();
+        if (c.indexOf(name) === 0) return decodeURIComponent(c.substring(name.length));
+    }
+    return '';
+}
+
 jQuery(document).ready(function () {
     $(document).on("click", "a.delete_student_note", function () {
         if (!confirm("Are you sure you want to permanently delete this record and all the related information?"))
@@ -34,13 +45,18 @@ jQuery(document).ready(function () {
         });
     });
 
+    // The plain a.delete trigger below is not rendered on this page today
+    // (deletion is driven by the Actions dropdown -> delete_student registry
+    // action -> onRecordDeleted below), but student_delete is POST-only now,
+    // so this handler is hardened to match rather than left as a broken GET.
     $("a.delete").on("click", function () {
         if (!confirm("Are you sure you want to permanently delete this record and all the related information?"))
             return;
         $.blockUI();
         $.ajax({
-            type: 'GET',
+            type: 'POST',
             url: student_delete_url,
+            headers: { 'X-CSRFToken': _csrfToken() },
             success: function(response) {
                 $.unblockUI();
                 swal("", response.message, response.status);
@@ -55,7 +71,18 @@ jQuery(document).ready(function () {
 // the #details iframe, so that surfaces as a page-load error. Close the modal
 // and refresh the index behind it instead — same convention as the
 // `a.delete` handler above and cis/staticfiles/js/common_methods.js.
+//
+// When the delete leaves the account with no Student record, args carries
+// the same revoke fields as the plain delete_record view
+// (student_role_revocable, student_name, other_roles, revoke_url); offer the
+// same follow-up prompt as student_detail.js's a.student-delete handler
+// before returning to the index.
 function onRecordDeleted(args) {
+    function finish() {
+        window.parent.closeModal();
+        window.parent.location.reload();
+    }
+
     var span = document.createElement('span');
     span.innerHTML = (args && args.message) || 'Record deleted.';
     swal({
@@ -63,8 +90,11 @@ function onRecordDeleted(args) {
         content: span,
         icon: (args && args.status) || 'success'
     }).then(function () {
-        window.parent.closeModal();
-        window.parent.location.reload();
+        if (args && args.student_role_revocable && window.offerStudentRoleRevocation) {
+            window.offerStudentRoleRevocation(args, finish);
+        } else {
+            finish();
+        }
     });
 }
 
