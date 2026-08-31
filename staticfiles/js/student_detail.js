@@ -13,13 +13,30 @@ jQuery(function ($) {
   'use strict';
 
   function csrfToken() {
-    var name = 'csrftoken=';
+    // Prefer the token exposed by logged-base.html via Django's csrf_token
+    // context variable -- it is the token value itself, independent of
+    // whatever CSRF_COOKIE_NAME this tenant configures (e.g. ewu_csrftoken).
+    if (window.CSRF_TOKEN) return window.CSRF_TOKEN;
+
+    // Fallback for pages that don't extend logged-base.html: scan cookies.
+    // Try the Django default name first, then tolerate any tenant-prefixed
+    // cookie name (ewu_csrftoken, nnu_csrftoken, ...) by matching the suffix.
     var parts = document.cookie ? document.cookie.split(';') : [];
+    var suffixMatch = null;
     for (var i = 0; i < parts.length; i++) {
       var c = parts[i].trim();
-      if (c.indexOf(name) === 0) return decodeURIComponent(c.substring(name.length));
+      var eq = c.indexOf('=');
+      if (eq === -1) continue;
+      var cookieName = c.substring(0, eq);
+      if (cookieName === 'csrftoken') {
+        return decodeURIComponent(c.substring(eq + 1));
+      }
+      if (suffixMatch === null && cookieName.length > 'csrftoken'.length &&
+          cookieName.slice(-'csrftoken'.length) === 'csrftoken') {
+        suffixMatch = decodeURIComponent(c.substring(eq + 1));
+      }
     }
-    return '';
+    return suffixMatch || '';
   }
 
   // 403s and 500s return HTML, not JSON, so responseJSON is undefined.
