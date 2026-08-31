@@ -1741,23 +1741,52 @@ def delete_student(request):
     confirm='Are you sure? This will permanently delete selected UNVERIFIED accounts. Verified accounts will be skipped.',
 )
 def bulk_delete(request):
+    from django.db.models import ProtectedError
+
+    from cis.services.student_role import STUDENT
+    from cis.services.role_access import revoke_access
+
     ids = request.POST.getlist('ids[]')
     students = Student.objects.filter(id__in=ids)
 
     verified_count = students.filter(account_verified=True).count()
     unverified = students.filter(account_verified=False)
-    deleted_count = 0
 
+    deleted = blocked = errored = 0
     for student in unverified:
+        user = student.user
         try:
             Student.delete_record(student)
-            deleted_count += 1
+        except ProtectedError:
+            # A PROTECT child (e.g. a supporting document) was never
+            # cleared. This is the ordinary, explainable reason a delete
+            # cannot proceed, so it is counted separately from an
+            # unexpected failure below and the account is left untouched.
+            blocked += 1
+            continue
         except Exception:
-            pass
+            # An unexpected failure, not the well-understood "still
+            # referenced" case above. Count and log it separately so the
+            # operator isn't told the wrong reason, and it doesn't vanish
+            # the way the original bug swallowed every exception silently.
+            logger.exception('Unexpected error deleting Student %s', student.pk)
+            errored += 1
+            continue
 
-    message = f'Deleted {deleted_count} unverified account(s).'
+        deleted += 1
+
+        # The account itself is never deleted here; revoke_access only
+        # drops the student group once no Student record remains for it,
+        # so this is a no-op if the user somehow holds another one.
+        revoke_access(STUDENT, user)
+
+    message = f'Deleted {deleted} unverified account(s).'
     if verified_count > 0:
         message += f' Skipped {verified_count} verified account(s).'
+    if blocked:
+        message += f' {blocked} account(s) left in place (still referenced elsewhere).'
+    if errored:
+        message += f' {errored} account(s) failed unexpectedly.'
 
     return JsonResponse({
         'outcome': 'call',

@@ -119,6 +119,48 @@ class DeleteRecordKeepsTheAccountTests(StudentRoleFixtureMixin, TestCase):
     def test_delete_record_returns_true_on_success(self):
         self.assertTrue(Student.delete_record(self.student_b))
 
+    def test_real_protect_failure_does_not_destroy_earlier_deletions(self):
+        """No mocking: StudentSupportingDocument has a real PROTECT FK to
+        Student (models/student.py ~2977) that Student.delete_record does
+        not clear (the cleared set is StudentRegistration, StudentCampusID,
+        StudentRecommendation, StudentAgreement, StudentFerpa, ParentConsent,
+        StudentNote -- StudentSupportingDocument is not among them). Leaving
+        one behind makes record.delete() raise a genuine ProtectedError, the
+        actual production failure mode this task exists to guard against.
+
+        media is assigned a plain string rather than an uploaded file so this
+        test never touches the S3-backed PrivateMediaStorage backend --
+        same idiom as test_student_campus_scope.py.
+        """
+        from cis.models.course import Campus
+        from cis.models.term import AcademicYear, Term
+        from cis.models.student import StudentCampusID, StudentSupportingDocument
+        from django.db.models import ProtectedError
+
+        academic_year = AcademicYear.objects.create(name='AY-role-revocation')
+        term = Term.objects.create(
+            academic_year=academic_year, code='FA', label='Fall-role-revocation')
+
+        campus = Campus.objects.create(
+            name='Test Campus Real Protect', code='TESTCAMPUSREALPROTECT')
+        campus_id = StudentCampusID.objects.create(
+            student=self.student_b, campus=campus, user_id='12345')
+
+        doc = StudentSupportingDocument.objects.create(
+            student=self.student_b, term=term, media='test/fake_doc.pdf')
+
+        with self.assertRaises(ProtectedError):
+            Student.delete_record(self.student_b)
+
+        self.assertTrue(
+            StudentSupportingDocument.objects.filter(pk=doc.pk).exists(),
+            'the record that blocked the delete must still exist')
+        self.assertTrue(
+            StudentCampusID.objects.filter(pk=campus_id.pk).exists(),
+            'the earlier deletion must be rolled back, not left destroyed')
+        self.assertTrue(Student.objects.filter(id=self.student_b.id).exists())
+        self.assertTrue(CustomUser.objects.filter(pk=self.user_b.pk).exists())
+
     def test_partial_failure_does_not_destroy_other_related_records(self):
         """A failure partway through the cleanup must not destroy consents or
         FERPA records while leaving the student behind -- the whole cleanup
@@ -227,3 +269,76 @@ class DeleteViewPayloadTests(StudentRoleFixtureMixin, TestCase):
     def test_account_survives_the_delete(self):
         self._delete(self.student_b)
         self.assertTrue(CustomUser.objects.filter(pk=self.user_b.pk).exists())
+
+
+class BulkDeleteRoleRevocationTests(StudentRoleFixtureMixin, TestCase):
+    """cis.views.student.bulk_delete (the 'Delete Selected' bulk action on
+    the students index) must follow the same account-safe contract as the
+    single-record delete: never delete the account, revoke the role once no
+    Student record remains, and never destroy a blocked record's related
+    rows."""
+
+    def setUp(self):
+        self.build_fixture()
+        self.user_a.groups.add(self.student_group)
+        self.user_b.groups.add(self.student_group)
+
+    def tearDown(self):
+        self.tear_down_fixture()
+
+    def _bulk_delete(self, ids):
+        from django.test import RequestFactory
+
+        from cis.views.student import bulk_delete
+
+        request = RequestFactory().post(
+            '/ce/students/actions/', {'ids[]': [str(i) for i in ids]})
+        request.user = self.ce_user
+        return bulk_delete(request)
+
+    def test_deletable_student_is_deleted_and_role_revoked(self):
+        self._bulk_delete([self.student_b.id])
+
+        self.assertFalse(Student.objects.filter(id=self.student_b.id).exists())
+        self.user_b.refresh_from_db()
+        self.assertNotIn('student', self.user_b.get_roles())
+        self.assertTrue(CustomUser.objects.filter(pk=self.user_b.pk).exists())
+
+    def test_student_blocked_by_protect_child_is_skipped_and_survives(self):
+        from cis.models.term import AcademicYear, Term
+        from cis.models.student import StudentSupportingDocument
+
+        academic_year = AcademicYear.objects.create(name='AY-bulk-delete')
+        term = Term.objects.create(
+            academic_year=academic_year, code='FA', label='Fall-bulk-delete')
+        doc = StudentSupportingDocument.objects.create(
+            student=self.student_b, term=term, media='test/fake_doc.pdf')
+
+        import json
+
+        resp = self._bulk_delete([self.student_b.id])
+
+        payload = json.loads(resp.content)['args']
+        self.assertIn('left in place', payload['message'])
+
+        self.assertTrue(Student.objects.filter(id=self.student_b.id).exists())
+        self.assertTrue(
+            StudentSupportingDocument.objects.filter(pk=doc.pk).exists())
+        self.user_b.refresh_from_db()
+        self.assertIn('student', self.user_b.get_roles())
+
+    def test_account_always_survives(self):
+        from cis.models.term import AcademicYear, Term
+        from cis.models.student import StudentSupportingDocument
+
+        academic_year = AcademicYear.objects.create(name='AY-bulk-delete-2')
+        term = Term.objects.create(
+            academic_year=academic_year, code='FA', label='Fall-bulk-delete-2')
+        StudentSupportingDocument.objects.create(
+            student=self.student_b, term=term, media='test/fake_doc.pdf')
+
+        self._bulk_delete([self.student_a.id, self.student_b.id])
+
+        self.assertTrue(CustomUser.objects.filter(pk=self.user_a.pk).exists())
+        self.assertTrue(CustomUser.objects.filter(pk=self.user_b.pk).exists())
+
