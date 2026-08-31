@@ -1,5 +1,6 @@
 import csv
 import io
+import logging
 import uuid
 from datetime import datetime
 
@@ -53,6 +54,8 @@ from ..serializers.highschool_admin import (
     HSAdministratorSerializer
 )
 from cis.utils import CIS_user_only
+
+logger = logging.getLogger(__name__)
 
 class HSAdministratorPositionViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = HighSchoolAdministratorSerializer
@@ -703,8 +706,9 @@ def index(request):
                         'label': 'Delete',
                         'icon': 'fas fa-trash-alt',
                         'btn_class': 'btn-danger',
-                        'confirm': 'Are you sure you want to delete the selected administrator(s)? '
-                                   'Administrators who still hold roles are skipped.',
+                        'confirm': 'Are you sure you want to delete the selected administrator '
+                                   'record(s)? The user accounts are not deleted; administrators '
+                                   'who still hold high school roles are left in place.',
                         'method': 'POST',
                     },
                     'change_password': {
@@ -940,28 +944,55 @@ def do_person_bulk_action(request):
                 'message': 'Delete requires POST.',
             }, status=405)
 
-        deleted = skipped = 0
+        from django.db.models import ProtectedError
+
+        from cis.services.hs_admin_role import (
+            has_remaining_hs_admin_roles, revoke_hs_admin_access,
+        )
+
+        deleted = left_in_place = errored = 0
         for record_id in valid_ids:
             try:
                 record = HSAdministrator.objects.get(pk=record_id)
             except HSAdministrator.DoesNotExist:
-                skipped += 1
+                left_in_place += 1
                 continue
+
+            user = record.user
             try:
                 HSAdministratorNote.objects.filter(hsadmin=record).delete()
                 HSAdministrator.delete_record(record)
                 deleted += 1
+            except ProtectedError:
+                # Roles reference the record with PROTECT. Removing their roles
+                # is a separate, explicit decision.
+                left_in_place += 1
+                continue
             except Exception:
-                # Roles reference the administrator with on_delete=PROTECT.
-                # Report the skip; deleting their roles is a separate decision.
-                skipped += 1
+                # An unexpected failure, not the well-understood "still holds
+                # roles" case above. Count it separately so the operator isn't
+                # told the wrong reason for the failure.
+                logger.exception(
+                    'Unexpected error deleting HSAdministrator %s', record_id)
+                errored += 1
+                continue
+
+            # The account itself is never deleted; drop the role only when the
+            # user has nothing left at any high school.
+            if not has_remaining_hs_admin_roles(user):
+                revoke_hs_admin_access(user)
+
+        message = (
+            f'{deleted} administrator record(s) deleted, '
+            f'{left_in_place} account(s) left in place '
+            '(those administrators still hold high school roles).'
+        )
+        if errored:
+            message += f' {errored} record(s) failed unexpectedly.'
 
         return JsonResponse({
             'status': 'success',
-            'message': (
-                f'{deleted} deleted, {skipped} skipped '
-                '(skipped administrators still hold roles).'
-            ),
+            'message': message,
         })
 
     return JsonResponse({

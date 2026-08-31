@@ -3,6 +3,7 @@ import uuid
 from django.test import TestCase
 from django.urls import reverse
 
+from cis.models import CustomUser
 from cis.models.highschool_administrator import (
     HSAdministrator, HSAdministratorPosition)
 from cis.models.note import HSAdministratorNote
@@ -211,7 +212,7 @@ class PersonBulkActionTests(HsAdminRoleFixtureMixin, TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertIn('admin_a@example.com', resp.content.decode())
 
-    def test_delete_removes_an_administrator_with_no_roles(self):
+    def test_delete_removes_the_record_and_keeps_the_account(self):
         HSAdministratorPosition.objects.filter(hsadmin=self.admin_b).delete()
         resp = self.client.post(self.url, {
             'action': 'delete',
@@ -220,11 +221,25 @@ class PersonBulkActionTests(HsAdminRoleFixtureMixin, TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertFalse(
             HSAdministrator.objects.filter(id=self.admin_b.id).exists())
-        self.assertIn('1 deleted', resp.json()['message'])
+        self.assertTrue(CustomUser.objects.filter(pk=self.user_b.pk).exists())
+        self.assertIn('1 administrator record(s) deleted', resp.json()['message'])
 
-    def test_delete_skips_an_administrator_that_still_holds_roles(self):
-        """HSAdministratorPosition.hsadmin is on_delete=PROTECT: report the skip
-        rather than cascading the roles away."""
+    def test_delete_revokes_the_role_when_no_roles_remain(self):
+        from django.contrib.auth.models import Group
+        hs_group, _ = Group.objects.get_or_create(name='highschool_admin')
+        self.user_b.groups.add(hs_group)
+        HSAdministratorPosition.objects.filter(hsadmin=self.admin_b).delete()
+
+        self.client.post(self.url, {
+            'action': 'delete',
+            'ids[]': [str(self.admin_b.id)],
+        })
+        self.user_b.refresh_from_db()
+        self.assertNotIn('highschool_admin', self.user_b.get_roles())
+
+    def test_delete_leaves_an_administrator_that_still_holds_roles(self):
+        """admin_a's two roles reference the record with PROTECT: report it as
+        left in place rather than cascading their roles away."""
         resp = self.client.post(self.url, {
             'action': 'delete',
             'ids[]': [str(self.admin_a.id)],
@@ -232,9 +247,7 @@ class PersonBulkActionTests(HsAdminRoleFixtureMixin, TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(
             HSAdministrator.objects.filter(id=self.admin_a.id).exists())
-        message = resp.json()['message']
-        self.assertIn('0 deleted', message)
-        self.assertIn('1 skipped', message)
+        self.assertIn('1 account(s) left in place', resp.json()['message'])
 
     def test_delete_is_refused_over_get(self):
         HSAdministratorPosition.objects.filter(hsadmin=self.admin_b).delete()
