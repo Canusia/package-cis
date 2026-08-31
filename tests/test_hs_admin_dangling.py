@@ -131,7 +131,10 @@ class DanglingBulkActionTests(DanglingAccountFixtureMixin, TestCase):
 
     def test_delete_account_skips_a_protected_user(self):
         """A user referenced by a PROTECT foreign key cannot be deleted; the
-        count must say so rather than the failure being swallowed."""
+        count must say so rather than the failure being swallowed, and it
+        must be reported as the ordinary "skipped" case (a PROTECT
+        reference is expected and explainable) rather than folded into the
+        "failed unexpectedly" bucket reserved for a genuine surprise."""
         note = HSAdministratorNote()
         note.hsadmin = self.admin_a
         note.createdby = self.dangling_plain
@@ -145,7 +148,9 @@ class DanglingBulkActionTests(DanglingAccountFixtureMixin, TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(
             CustomUser.objects.filter(pk=self.dangling_plain.pk).exists())
-        self.assertIn('1 skipped', resp.json()['message'])
+        message = resp.json()['message']
+        self.assertIn('1 skipped', message)
+        self.assertNotIn('failed unexpectedly', message)
 
     def test_delete_account_refuses_a_user_that_has_a_record(self):
         resp = self.client.post(self.url, {

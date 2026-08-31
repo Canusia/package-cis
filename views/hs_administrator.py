@@ -1080,7 +1080,9 @@ def do_dangling_bulk_action(request):
             ),
         })
 
-    deleted = skipped = 0
+    from django.db.models import ProtectedError
+
+    deleted = skipped = errored = 0
     for user in users:
         # Only ever delete an account that this tab is responsible for: no
         # administrator record, and no other role to keep it alive.
@@ -1093,16 +1095,30 @@ def do_dangling_bulk_action(request):
         try:
             user.delete()
             deleted += 1
-        except Exception:
-            # ProtectedError: the account is referenced elsewhere (notes they
-            # authored, records they created). Report it instead of swallowing
-            # it, which is the bug that created these accounts.
+        except ProtectedError:
+            # The account is referenced elsewhere (notes they authored,
+            # records they created) via a PROTECT foreign key. This is the
+            # ordinary, explainable reason a dangling account cannot be
+            # deleted, so it is counted with the other skips.
             skipped += 1
+        except Exception:
+            # An unexpected failure, not one of the well-understood skip
+            # cases above. Count and log it separately so the operator isn't
+            # told the wrong reason for the failure, and it doesn't vanish
+            # the way the original bug swallowed ProtectedError silently.
+            logger.exception(
+                'Unexpected error deleting CustomUser %s', user.pk)
+            errored += 1
+
+    message = (
+        f'{deleted} account(s) deleted, {skipped} skipped '
+        '(skipped accounts hold other roles, have an administrator record, '
+        'or are referenced elsewhere).'
+    )
+    if errored:
+        message += f' {errored} account(s) failed unexpectedly.'
 
     return JsonResponse({
         'status': 'success',
-        'message': (
-            f'{deleted} account(s) deleted, {skipped} skipped '
-            '(skipped accounts hold other roles or are referenced elsewhere).'
-        ),
+        'message': message,
     })
