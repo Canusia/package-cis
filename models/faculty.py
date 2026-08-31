@@ -109,6 +109,39 @@ class FacultyCoordinator(models.Model):
         return FacultyImporter().process_csv(dictReader)
 
     @staticmethod
+    def delete_record(record):
+        """Delete a FacultyCoordinator and the rows it owns.
+
+        The only two models pointing at FacultyCoordinator are PROTECT:
+        FacultyCourseCoordinator.faculty_coordinator and
+        FacultyCoordinatorNote.faculty_coordinator. Both are cleared first,
+        inside the same transaction.atomic() as the record delete, so a
+        failure partway through cannot destroy the coordinator's course
+        assignments or notes while leaving the record behind -- either
+        everything succeeds together, or none of it is kept.
+
+        The account is never deleted here. CustomUser is protected by many
+        foreign keys, so user.delete() raises ProtectedError for most real
+        accounts; swallowing that is the bug this whole body of work exists
+        to remove. Revoking the group is a separate explicit step --
+        cis.services.role_access.revoke_access.
+        """
+        from django.db import transaction
+
+        with transaction.atomic():
+            FacultyCourseCoordinator.objects.filter(
+                faculty_coordinator=record
+            ).delete()
+
+            FacultyCoordinatorNote.objects.filter(
+                faculty_coordinator=record
+            ).delete()
+
+            record.delete()
+
+        return True
+
+    @staticmethod
     def export_to_excel(records):
         """
         Write records to an Excel file

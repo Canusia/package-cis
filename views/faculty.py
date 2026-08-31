@@ -1,5 +1,7 @@
 import io
 import csv
+import logging
+import uuid
 
 from django.db import IntegrityError
 from django.db.models import Q
@@ -48,6 +50,8 @@ from cis.forms.teacher import (
 from cis.menu import cis_menu, draw_menu
 
 from myce.component_registry.faculty_coordinator import faculty_coordinator_tabs
+
+logger = logging.getLogger(__name__)
 
 
 class CourseAdministratorViewSet(viewsets.ReadOnlyModelViewSet):
@@ -131,6 +135,17 @@ def index(request):
                         'icon': 'fas fa-edit',
                         'btn_class': 'btn-primary',
                         'confirm': None,
+                    },
+                    'delete': {
+                        'label': 'Delete',
+                        'icon': 'fas fa-trash',
+                        'btn_class': 'btn-danger',
+                        'method': 'POST',
+                        'confirm': (
+                            'Delete the selected faculty coordinator record(s) '
+                            'and their course-coordinator rows and notes? '
+                            'The user account is NOT deleted.'
+                        ),
                     },
                 },
                 filter_form_selector='#faculty_filter',
@@ -346,18 +361,95 @@ def do_bulk_action(request):
 
     if request.method == 'POST':
         action = request.POST.get('action')
-        
+
     if action == 'change_status':
         return manage_status(request)
 
     if action == 'change_course_administrator_status':
         return manage_course_administrator_status(request)
 
-    data = {
+    if action != 'delete':
+        # Checked before the delete branch's own POST-only guard so an
+        # unknown action over GET is rejected here and never reaches any
+        # mutation.
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Unknown action.',
+        }, status=400)
+
+    if request.method != 'POST':
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Delete requires POST.',
+        }, status=405)
+
+    return do_faculty_coordinator_bulk_delete(request)
+
+
+def do_faculty_coordinator_bulk_delete(request):
+    """Delete selected FacultyCoordinator records.
+
+    ids[] are FacultyCoordinator ids, which are UUIDs -- unlike CustomUser
+    pks, which are integers. The account is never deleted; the `faculty`
+    group is revoked as a separate explicit step once no FacultyCoordinator
+    record remains for the user -- cis.services.role_access.revoke_access.
+    """
+    from django.db.models import ProtectedError
+
+    from cis.services.faculty_role import FACULTY
+    from cis.services.role_access import revoke_access
+
+    ids = request.POST.getlist('ids[]')
+
+    valid_ids = []
+    for record_id in ids:
+        try:
+            valid_ids.append(uuid.UUID(str(record_id)))
+        except (ValueError, AttributeError, TypeError):
+            # Malformed id (e.g. a stale/forged value) -- skip rather than
+            # 500ing on a bad UUID.
+            continue
+
+    deleted = left_in_place = errored = 0
+    for record_id in valid_ids:
+        try:
+            record = FacultyCoordinator.objects.get(pk=record_id)
+        except FacultyCoordinator.DoesNotExist:
+            continue
+
+        user = record.user
+        try:
+            FacultyCoordinator.delete_record(record)
+        except ProtectedError:
+            # A PROTECT child was never cleared. The well-understood, ordinary
+            # reason a delete cannot proceed -- counted separately from an
+            # unexpected failure below so the operator isn't told the wrong
+            # reason for the failure.
+            left_in_place += 1
+            continue
+        except Exception:
+            logger.exception(
+                'Unexpected error deleting FacultyCoordinator %s', record_id)
+            errored += 1
+            continue
+
+        deleted += 1
+
+        # The account itself is never deleted; revoke_access only drops the
+        # faculty group once no FacultyCoordinator record remains for it.
+        revoke_access(FACULTY, user)
+
+    message = f'Deleted {deleted} faculty coordinator record(s).'
+    if left_in_place:
+        message += f' {left_in_place} record(s) left in place (still referenced elsewhere).'
+    if errored:
+        message += f' {errored} record(s) failed unexpectedly.'
+
+    return JsonResponse({
         'status': 'success',
-        'message': 'invalid action passed'
-    }
-    return JsonResponse(data)
+        'message': message,
+        'action': 'reload_page',
+    })
 
 def manage_status(request):
     template = 'cis/faculty/update_course_administrator_status.html'
