@@ -176,3 +176,41 @@ class DanglingBulkActionTests(DanglingAccountFixtureMixin, TestCase):
         self.assertEqual(resp.status_code, 200)
         self.dangling_student.refresh_from_db()
         self.assertNotIn('highschool_admin', self.dangling_student.get_roles())
+
+
+class DanglingTabTests(DanglingAccountFixtureMixin, TestCase):
+    def setUp(self):
+        self.build_fixture()
+        self.build_dangling()
+        self.url = reverse('cis:hs_admins')
+
+    def tearDown(self):
+        self.tear_down_fixture()
+
+    def test_third_tab_renders(self):
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, 200)
+        body = resp.content.decode()
+        self.assertIn('href="#dangling"', body)
+        self.assertIn('records_dangling', body)
+
+    def test_tab_points_at_the_dangling_api(self):
+        body = self.client.get(self.url).content.decode()
+        self.assertIn('/ce/api/hs-administrator-dangling?format=datatables', body)
+
+    def test_tab_bulk_actions(self):
+        body = self.client.get(self.url).content.decode()
+        self.assertIn("slug: 'revoke_access'", body)
+        self.assertIn("slug: 'delete_account'", body)
+
+    def test_both_actions_are_wired_to_post(self):
+        body = self.client.get(self.url).content.decode()
+        revoke = body[body.index("slug: 'revoke_access'"):]
+        self.assertIn("method: 'POST'", revoke[:400])
+        delete = body[body.index("slug: 'delete_account'"):]
+        self.assertIn("method: 'POST'", delete[:400])
+
+    def test_tab_posts_to_the_dangling_endpoint(self):
+        body = self.client.get(self.url).content.decode()
+        self.assertIn(
+            reverse('cis:hs_admin_do_dangling_bulk_action'), body)

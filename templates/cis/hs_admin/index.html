@@ -34,6 +34,9 @@
                     <li class="nav-item">
                         <a class="nav-link" data-toggle="tab" href="#people">Distinct Administrators</a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-toggle="tab" href="#dangling">Dangling Accounts</a>
+                    </li>
                 </ul>
 
                 <div class="tab-content">
@@ -48,6 +51,18 @@
                         <div class="bg-white border border-top-0">
                             <div class="col-12 pt-3 mb-3">
                                 {% include hs_admin_people_table.partial_template with config=hs_admin_people_table %}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="tab-pane" id="dangling">
+                        <div class="bg-white border border-top-0">
+                            <div class="col-12 pt-3 mb-3">
+                                <p class="alert alert-info">
+                                    Accounts that still carry high school administrator access but
+                                    have no administrator record. Remove their access, or delete the
+                                    account when nothing else references it.
+                                </p>
+                                {% include hs_admin_dangling_table.partial_template with config=hs_admin_dangling_table %}
                             </div>
                         </div>
                     </div>

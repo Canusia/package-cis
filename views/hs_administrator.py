@@ -43,6 +43,7 @@ from cis.models.note import HSAdministratorNote
 from cis.menu import cis_menu, draw_menu
 build_hs_admins_table_config = get_table_config('hs_admins_table').build_config
 build_hs_admin_people_table_config = get_table_config('hs_admin_people_table').build_config
+build_hs_admin_dangling_table_config = get_table_config('hs_admin_dangling_table').build_config
 from myce.component_registry.hs_administrator import hs_administrator_tabs
 from myce.component_registry.access_request import access_request_tabs
 
@@ -743,6 +744,30 @@ def index(request):
                     },
                 },
                 bulk_actions_url=reverse('cis:hs_admin_do_person_bulk_action'),
+            ),
+            'hs_admin_dangling_table': build_hs_admin_dangling_table_config(
+                variant='hs_admin_dangling_index',
+                api_url='/ce/api/hs-administrator-dangling?format=datatables',
+                bulk_actions={
+                    'revoke_access': {
+                        'label': 'Remove HS Admin Access',
+                        'icon': 'fas fa-user-slash',
+                        'btn_class': 'btn-primary',
+                        'confirm': 'Remove high school administrator access from the '
+                                   'selected account(s)? Their other roles are unchanged.',
+                        'method': 'POST',
+                    },
+                    'delete_account': {
+                        'label': 'Delete Account',
+                        'icon': 'fas fa-trash-alt',
+                        'btn_class': 'btn-danger',
+                        'confirm': 'Permanently delete the selected account(s)? Only accounts '
+                                   'with no other roles and no references elsewhere are '
+                                   'deleted; the rest are skipped and reported.',
+                        'method': 'POST',
+                    },
+                },
+                bulk_actions_url=reverse('cis:hs_admin_do_dangling_bulk_action'),
             ),
         }
     )
