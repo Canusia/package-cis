@@ -249,6 +249,24 @@ class PersonBulkActionTests(HsAdminRoleFixtureMixin, TestCase):
             HSAdministrator.objects.filter(id=self.admin_a.id).exists())
         self.assertIn('1 account(s) left in place', resp.json()['message'])
 
+    def test_delete_does_not_destroy_notes_when_the_record_survives(self):
+        """delete_record raising ProtectedError must roll back the note
+        deletion too, or the surviving admin loses their notes silently."""
+        note = HSAdministratorNote.objects.create(
+            hsadmin=self.admin_a, note='keep me', createdby=self.staff)
+
+        resp = self.client.post(self.url, {
+            'action': 'delete',
+            'ids[]': [str(self.admin_a.id)],
+        })
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(
+            HSAdministrator.objects.filter(id=self.admin_a.id).exists())
+        self.assertTrue(
+            HSAdministratorNote.objects.filter(pk=note.pk).exists())
+        self.assertIn('1 account(s) left in place', resp.json()['message'])
+
     def test_delete_is_refused_over_get(self):
         HSAdministratorPosition.objects.filter(hsadmin=self.admin_b).delete()
         resp = self.client.get(self.url, {

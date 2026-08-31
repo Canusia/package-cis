@@ -944,25 +944,32 @@ def do_person_bulk_action(request):
                 'message': 'Delete requires POST.',
             }, status=405)
 
+        from django.db import transaction
         from django.db.models import ProtectedError
 
         from cis.services.hs_admin_role import (
             has_remaining_hs_admin_roles, revoke_hs_admin_access,
         )
 
-        deleted = left_in_place = errored = 0
+        deleted = left_in_place = not_found = errored = 0
         for record_id in valid_ids:
             try:
                 record = HSAdministrator.objects.get(pk=record_id)
             except HSAdministrator.DoesNotExist:
-                left_in_place += 1
+                # No such record (e.g. a stale browser tab) — not a case of
+                # "still holds roles", so it gets its own count.
+                not_found += 1
                 continue
 
             user = record.user
             try:
-                HSAdministratorNote.objects.filter(hsadmin=record).delete()
-                HSAdministrator.delete_record(record)
-                deleted += 1
+                # All-or-nothing: if delete_record raises ProtectedError, the
+                # note deletion below must roll back too, or the record
+                # survives (reported as "left in place") with its notes
+                # already gone.
+                with transaction.atomic():
+                    HSAdministratorNote.objects.filter(hsadmin=record).delete()
+                    HSAdministrator.delete_record(record)
             except ProtectedError:
                 # Roles reference the record with PROTECT. Removing their roles
                 # is a separate, explicit decision.
@@ -977,6 +984,8 @@ def do_person_bulk_action(request):
                 errored += 1
                 continue
 
+            deleted += 1
+
             # The account itself is never deleted; drop the role only when the
             # user has nothing left at any high school.
             if not has_remaining_hs_admin_roles(user):
@@ -987,6 +996,8 @@ def do_person_bulk_action(request):
             f'{left_in_place} account(s) left in place '
             '(those administrators still hold high school roles).'
         )
+        if not_found:
+            message += f' {not_found} id(s) not found.'
         if errored:
             message += f' {errored} record(s) failed unexpectedly.'
 
