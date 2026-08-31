@@ -127,6 +127,7 @@ def index(request):
     from cis.services.table_configs import get_table_config
     build_faculty_coords_table_config = get_table_config('faculty_coords_table').build_config
     build_faculty_table_config = get_table_config('faculty_table').build_config
+    build_faculty_dangling_table_config = get_table_config('faculty_dangling_table').build_config
 
     from cis.campus_gate import get_accessible_campuses
     from cis.utils import get_default_campus
@@ -175,6 +176,30 @@ def index(request):
                     },
                 },
                 filter_form_selector='#faculty_filter',
+            ),
+            'faculty_dangling_table': build_faculty_dangling_table_config(
+                variant='faculty_dangling_index',
+                api_url='/ce/api/faculty-dangling?format=datatables',
+                bulk_actions={
+                    'revoke_access': {
+                        'label': 'Remove Faculty Access',
+                        'icon': 'fas fa-user-slash',
+                        'btn_class': 'btn-primary',
+                        'confirm': 'Remove faculty access from the '
+                                   'selected account(s)? Their other roles are unchanged.',
+                        'method': 'POST',
+                    },
+                    'delete_account': {
+                        'label': 'Delete Account',
+                        'icon': 'fas fa-trash-alt',
+                        'btn_class': 'btn-danger',
+                        'confirm': 'Permanently delete the selected account(s)? Only accounts '
+                                   'with no other roles and no references elsewhere are '
+                                   'deleted; the rest are skipped and reported.',
+                        'method': 'POST',
+                    },
+                },
+                bulk_actions_url=reverse('cis:faculty_do_dangling_bulk_action'),
             ),
         }
     )

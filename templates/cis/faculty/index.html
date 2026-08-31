@@ -31,6 +31,9 @@
                 <li class="nav-item">
                     <a class="nav-link" data-toggle="tab" href="#all">By Course</a>
                 </li>
+                <li class="nav-item">
+                    <a class="nav-link" data-toggle="tab" href="#dangling">Dangling Accounts</a>
+                </li>
             </ul>
 
             <div class="tab-content">
@@ -60,6 +63,21 @@
                         </div>
                     </div>
                 </div>
+
+                <div class="tab-pane" id="dangling">
+                    <div class="bg-white border border-top-0">
+                        <div class="card border-top-0">
+                            <div class="card-body">
+                                <p class="alert alert-info">
+                                    Accounts that still carry faculty access but
+                                    have no faculty coordinator record. Remove their access, or
+                                    delete the account when nothing else references it.
+                                </p>
+                                {% include faculty_dangling_table.partial_template with config=faculty_dangling_table %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -76,7 +94,13 @@
         });
     });
 
-    function do_bulk_action(action, dt) {
+    // Renamed from do_bulk_action: myce_tenant_configs/staticfiles/js/bulk_action.js
+    // assigns window.do_bulk_action for every table on this page (including the
+    // Dangling Accounts tab). A plain top-level declaration of that same name
+    // here would be hoisted and would silently shadow that global for every
+    // other table's bulk-action buttons on this page (this bit the instructors
+    // page -- see cis/templates/cis/teachers/teachers.html's rename).
+    function do_legacy_bulk_action(action, dt) {
         if (!dt.rows('.selected').any()) {
             alert("Please select a row and try again.");
             return;
