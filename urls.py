@@ -202,6 +202,8 @@ from cis.views.teacher import (
     TeacherUploadViewSet,
     AllTeacherUploadViewSet,
     download_instructor_template,
+    DanglingInstructorViewSet,
+    do_dangling_bulk_action as instructor_do_dangling_bulk_action,
 )
 
 from cis.views.college_instructor import (
@@ -401,6 +403,7 @@ router_viewsets = {
     'teacher-notes': TeacherNotesViewSet,
     'teacher-uploads': TeacherUploadViewSet,
     'all-teacher-uploads': AllTeacherUploadViewSet,
+    'instructor-dangling': DanglingInstructorViewSet,
 
     'campus': CampusViewSet,
     'highschool-served': HighSchoolServedByCampusViewSet,
@@ -850,6 +853,11 @@ urlpatterns = [
     path('instructor/<uuid:record_id>/tab/<slug:tab_slug>/', user_passes_test(user_has_cis_role, login_url='/')(instructor_tab), name='instructor_tab'),
     path('instructor/add_new', user_passes_test(user_has_cis_role, login_url='/')(instructor_add_new), name='instructor_add_new'),
     path('instructor/download_template', user_passes_test(user_has_cis_role, login_url='/')(download_instructor_template), name='instructor_download_template'),
+    path(
+        'instructor/do_dangling_bulk_action',
+        user_passes_test(user_has_cis_role, login_url='/')(instructor_do_dangling_bulk_action),
+        name='instructor_do_dangling_bulk_action'
+    ),
 
     path(
         'credentials/',

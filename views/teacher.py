@@ -1,3 +1,5 @@
+import logging
+
 from django.db import IntegrityError
 from django.db.models import Q
 from django.contrib import messages
@@ -45,7 +47,8 @@ from cis.forms.teacher import (
 )
 
 from ..serializers.teacher import (
-    TeacherSerializer, TeacherUploadSerializer, TeacherUploadListSerializer
+    TeacherSerializer, TeacherUploadSerializer, TeacherUploadListSerializer,
+    DanglingInstructorSerializer
 )
 from ..serializers.highschool import HighSchoolTeacherSerializer, TeacherCourseSerializer
 from ..serializers.note import TeacherNoteSerializer
@@ -62,6 +65,8 @@ from cis.utils import (
 )
 from cis.menu import cis_menu, draw_menu
 from cis.services.faculty_scope import visible_teachers
+
+logger = logging.getLogger(__name__)
 
 class TeacherCourseViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = TeacherCourseSerializer
@@ -323,6 +328,22 @@ class TeacherViewSet(viewsets.ReadOnlyModelViewSet):
             return records.filter(user=user)
 
         return records.none()
+
+class DanglingInstructorViewSet(viewsets.ReadOnlyModelViewSet):
+    """Accounts left in the instructor group with no Teacher record.
+
+    They appear on no other tab: the instructor tabs are driven by Teacher
+    records, which these users no longer have. This is the only place staff
+    can reach them.
+    """
+    serializer_class = DanglingInstructorSerializer
+    permission_classes = [CIS_user_only]
+
+    def get_queryset(self):
+        from cis.services.role_access import dangling_users
+        from cis.services.instructor_role import INSTRUCTOR
+
+        return dangling_users(INSTRUCTOR)
 
 class TeacherNotesViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = TeacherNoteSerializer
@@ -1102,3 +1123,100 @@ def add_new_course_certificate(request):
             'base_template': base_template,
             'menu': draw_menu(cis_menu, 'faculty', 'instructors')
         })
+
+
+def do_dangling_bulk_action(request):
+    """Bulk actions for the Instructor Dangling Accounts tab.
+
+    `ids[]` are CustomUser ids — an integer AutoField, unlike the UUID
+    primary keys used elsewhere in this file, so the id guard below
+    validates with int(), not uuid.UUID(). Both actions are POST-only: one
+    drops a role, the other deletes an account. The unknown-action check
+    runs before the POST-only check, so an unknown action arriving over GET
+    cannot reach a mutation.
+    """
+    action = request.POST.get('action') or request.GET.get('action')
+    ids = request.POST.getlist('ids[]') or request.GET.getlist('ids[]')
+
+    if action not in ('revoke_access', 'delete_account'):
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Unknown action.',
+        }, status=400)
+
+    if request.method != 'POST':
+        return JsonResponse({
+            'status': 'error',
+            'message': 'This action requires POST.',
+        }, status=405)
+
+    valid_ids = []
+    for record_id in ids:
+        try:
+            valid_ids.append(int(record_id))
+        except (ValueError, TypeError):
+            continue
+
+    from cis.services.instructor_role import INSTRUCTOR
+    from cis.services.role_access import revoke_access
+
+    users = CustomUser.objects.filter(id__in=valid_ids)
+
+    if action == 'revoke_access':
+        revoked = skipped = 0
+        for user in users:
+            if revoke_access(INSTRUCTOR, user):
+                revoked += 1
+            else:
+                skipped += 1
+
+        return JsonResponse({
+            'status': 'success',
+            'message': (
+                f'{revoked} account(s) no longer have instructor access, '
+                f'{skipped} skipped (they still hold a Teacher record).'
+            ),
+        })
+
+    from django.db.models import ProtectedError
+
+    deleted = skipped = errored = 0
+    for user in users:
+        # Only ever delete an account that this tab is responsible for: no
+        # Teacher record, and no other role to keep it alive.
+        if Teacher.objects.filter(user=user).exists():
+            skipped += 1
+            continue
+        if [r for r in user.get_roles() if r != 'instructor']:
+            skipped += 1
+            continue
+        try:
+            user.delete()
+            deleted += 1
+        except ProtectedError:
+            # The account is referenced elsewhere (notes they authored,
+            # records they created) via a PROTECT foreign key. This is the
+            # ordinary, explainable reason a dangling account cannot be
+            # deleted, so it is counted with the other skips.
+            skipped += 1
+        except Exception:
+            # An unexpected failure, not one of the well-understood skip
+            # cases above. Count and log it separately so the operator isn't
+            # told the wrong reason for the failure, and it doesn't vanish
+            # the way the original bug swallowed ProtectedError silently.
+            logger.exception(
+                'Unexpected error deleting CustomUser %s', user.pk)
+            errored += 1
+
+    message = (
+        f'{deleted} account(s) deleted, {skipped} skipped '
+        '(skipped accounts hold other roles, have a Teacher record, '
+        'or are referenced elsewhere).'
+    )
+    if errored:
+        message += f' {errored} account(s) failed unexpectedly.'
+
+    return JsonResponse({
+        'status': 'success',
+        'message': message,
+    })
