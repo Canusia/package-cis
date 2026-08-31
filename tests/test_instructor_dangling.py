@@ -230,3 +230,14 @@ class DanglingTabTests(DanglingInstructorFixtureMixin, TestCase):
         body = self.client.get(self.url).content.decode()
         self.assertIn('href="#all"', body)
         self.assertIn('records_all', body)
+
+    def test_legacy_bulk_action_function_does_not_shadow_the_shared_global(self):
+        """myce_tenant_configs/staticfiles/js/bulk_action.js assigns
+        window.do_bulk_action, which the Dangling Accounts table's POST
+        actions depend on. A plain top-level `function do_bulk_action(...)`
+        declared inline on this page would be hoisted and would overwrite
+        that assignment for every table on the page, silently downgrading
+        the dangling table's bulk actions to legacy GET calls that the
+        endpoint then 405s (fix round 1)."""
+        body = self.client.get(self.url).content.decode()
+        self.assertNotIn('function do_bulk_action(', body)

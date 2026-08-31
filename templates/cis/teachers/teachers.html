@@ -138,7 +138,12 @@
                     
                     let bulk_action_url = "{%url 'cis:teacher_bulk_actions'%}"
 
-                    function do_bulk_action(url, action, dt) {
+                    // Renamed from do_bulk_action: myce_tenant_configs/staticfiles/js/bulk_action.js
+                    // assigns window.do_bulk_action for every table on this page. A plain
+                    // top-level declaration of that same name here would be hoisted and would
+                    // shadow that global for every other table's bulk-action buttons (bit the
+                    // Dangling Accounts and instructors tables until this rename).
+                    function do_legacy_bulk_action(url, action, dt) {
                             
                             if(!dt.rows('.selected').any()) {
                                     alert("Please select a row and try again.")
@@ -228,7 +233,7 @@
                                         text: '<i class="fas fa-edit text-white"></i>&nbsp;Change Password',
                                         titleAttr: 'Change Password',
                                         action: function ( e, dt, node, config ) {
-                                            do_bulk_action(bulk_action_url, 'change_password_by_hs', dt)
+                                            do_legacy_bulk_action(bulk_action_url, 'change_password_by_hs', dt)
                                         }
                                     },
                                 ],
