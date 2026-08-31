@@ -153,6 +153,7 @@ def access_requests(request):
         }
     )
 
+@require_POST
 def delete_record(request, record_id):
     record = get_object_or_404(HSAdministrator, pk=record_id)
     user = record.user
@@ -856,6 +857,11 @@ def do_bulk_action(request):
     if action == 'change_password':
         return manage_change_password(request)
 
+    return JsonResponse({
+        'status': 'error',
+        'message': 'Unknown action.',
+    }, status=400)
+
 def manage_edit_status(request):
     """Render (GET) or apply (POST) the bulk status change modal."""
     template = 'cis/hs_admin/edit_status.html'
@@ -935,8 +941,15 @@ def manage_change_password(request, admin_ids=None):
 
     if admin_ids is None:
         ids = request.GET.getlist('ids[]')
+        valid_ids = []
+        for record_id in ids:
+            try:
+                uuid.UUID(str(record_id))
+            except (ValueError, AttributeError, TypeError):
+                continue
+            valid_ids.append(record_id)
         admin_ids = HSAdministratorPosition.objects.filter(
-            id__in=ids
+            id__in=valid_ids
         ).values_list('hsadmin__id', flat=True)
 
     form = BulkPasswordChangeForm(admin_ids)

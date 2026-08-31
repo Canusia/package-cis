@@ -93,8 +93,9 @@ jQuery(function ($) {
 
     $.blockUI();
     $.ajax({
-      type: 'GET',
+      type: 'POST',
       url: url,
+      headers: { 'X-CSRFToken': csrfToken() },
       success: function (response) {
         $.unblockUI();
         swal({

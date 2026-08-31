@@ -196,6 +196,32 @@ class BulkResetLinkTests(HsAdminRoleFixtureMixin, TestCase):
         self.assertNotIn('admin_a@example.com', resp.content.decode())
 
 
+class BulkChangePasswordTests(HsAdminRoleFixtureMixin, TestCase):
+    def setUp(self):
+        self.build_fixture()
+        self.url = reverse('cis:hs_admin_do_bulk_action')
+
+    def tearDown(self):
+        self.tear_down_fixture()
+
+    def test_malformed_ids_are_skipped_not_fatal(self):
+        """A malformed HSAdministratorPosition id must not raise a
+        ValidationError when filtering — it should just be ignored, matching
+        the delete and password_reset_link branches."""
+        resp = self.client.get(self.url, {
+            'action': 'change_password',
+            'ids[]': ['notauuid', str(self.role_a1.id)],
+        })
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b'name="new_password"', resp.content)
+        self.assertIn(b'Alpha', resp.content)
+
+    def test_unknown_action_is_a_400(self):
+        resp = self.client.get(self.url, {'action': 'nope', 'ids[]': []})
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.json()['message'], 'Unknown action.')
+
+
 class PersonBulkActionTests(HsAdminRoleFixtureMixin, TestCase):
     def setUp(self):
         self.build_fixture()

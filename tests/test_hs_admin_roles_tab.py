@@ -126,11 +126,12 @@ class HighSchoolRolesTabTests(HsAdminRoleFixtureMixin, TestCase):
         resp = self.client.get(reverse('cis:hs_admin', args=[self.admin_a.id]))
         self.assertIn(f'hsadmin={self.admin_a.id}', resp.content.decode())
 
-    def test_tab_exposes_edit_status_and_delete_only(self):
+    def test_tab_exposes_edit_status_delete_and_reset_link(self):
         resp = self.client.get(reverse('cis:hs_admin', args=[self.admin_a.id]))
         body = resp.content.decode()
         self.assertIn("slug: 'edit_status'", body)
         self.assertIn("slug: 'delete'", body)
+        self.assertIn("slug: 'password_reset_link'", body)
         self.assertNotIn("slug: 'change_password'", body)
 
     def test_delete_button_is_wired_to_post(self):

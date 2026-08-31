@@ -142,7 +142,7 @@ class DeleteViewPayloadTests(HsAdminRoleFixtureMixin, TestCase):
         self.tear_down_fixture()
 
     def _delete(self, admin):
-        return self.client.get(reverse('cis:delete_hs_admin', args=[admin.id]))
+        return self.client.post(reverse('cis:delete_hs_admin', args=[admin.id]))
 
     def test_delete_offers_the_revoke_when_no_roles_remain(self):
         HSAdministratorPosition.objects.filter(hsadmin=self.admin_b).delete()

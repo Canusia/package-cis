@@ -44,6 +44,12 @@ def highschools_tab(request, record):
                                'The administrator account is not removed.',
                     'method': 'POST',
                 },
+                'password_reset_link': {
+                    'label': 'Generate Reset Link',
+                    'icon': 'fas fa-link',
+                    'btn_class': 'btn-primary',
+                    'confirm': None,
+                },
             },
             bulk_actions_url=reverse('cis:hs_admin_do_bulk_action'),
         ),
