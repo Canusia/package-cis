@@ -34,6 +34,9 @@
                     <li class="nav-item">
                         <a class="nav-link" data-toggle="tab" href="#files">Files</a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-toggle="tab" href="#dangling">Dangling Accounts</a>
+                    </li>
                 </ul>
 
                 <div class="tab-content">
@@ -100,9 +103,32 @@
                         </div>
                     </div>
                     <!-- end tab # files -->
+
+                    <div class="tab-pane" id="dangling">
+                        <div class="bg-white border border-top-0">
+                            <div class="col-12 pt-3 mb-3">
+                                <p class="alert alert-info">
+                                    Accounts that still carry instructor access but
+                                    have no instructor record. Remove their access, or delete the
+                                    account when nothing else references it.
+                                </p>
+                                {% include instructor_dangling_table.partial_template with config=instructor_dangling_table %}
+                            </div>
+                        </div>
+                    </div>
+                    <!-- end tab # dangling -->
                 </div>
                 <!-- end tab-content -->
                 <script>
+                    {% comment %} The Dangling Accounts table initialises inside a hidden
+                    tab pane, where DataTables' Select extension measures every column as
+                    zero-width. Re-measure when its tab is shown. {% endcomment %}
+                    jQuery(function ($) {
+                        $('a[data-toggle="tab"]').on('shown.bs.tab', function () {
+                            $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
+                        });
+                    });
+
                     var table_teacher_highschool;
                     var table_teacher_uploads;
                     setInterval(function() {
