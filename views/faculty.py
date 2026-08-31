@@ -17,7 +17,11 @@ from rest_framework import viewsets
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from cis.serializers.faculty import FacultySerializer, CourseAdministratorSerializer
+from cis.serializers.faculty import (
+    FacultySerializer,
+    CourseAdministratorSerializer,
+    DanglingFacultySerializer,
+)
 
 from cis.models.course import (
     Course,
@@ -93,6 +97,28 @@ class FacultyViewSet(viewsets.ReadOnlyModelViewSet):
         return FacultyCoordinator.objects.select_related(
             'user', 'department',
         ).order_by('user__last_name', 'user__first_name')
+
+
+class DanglingFacultyViewSet(viewsets.ReadOnlyModelViewSet):
+    """Accounts left in the faculty group with no FacultyCoordinator record.
+
+    They appear on no other tab: the faculty tabs are driven by
+    FacultyCoordinator records, which these users no longer have. This is
+    the only place staff can reach them.
+
+    FacultyCoordinator's docstring notes the model is "not used any more" --
+    this endpoint is audit-and-revoke only. There is no delete-record path
+    for FacultyCoordinator, and this view does not add one.
+    """
+    serializer_class = DanglingFacultySerializer
+    permission_classes = [CIS_user_only]
+
+    def get_queryset(self):
+        from cis.services.role_access import dangling_users
+        from cis.services.faculty_role import FACULTY
+
+        return dangling_users(FACULTY)
+
 
 def index(request):
     '''
@@ -450,6 +476,108 @@ def do_faculty_coordinator_bulk_delete(request):
         'message': message,
         'action': 'reload_page',
     })
+
+def do_dangling_bulk_action(request):
+    """Bulk actions for the Faculty Dangling Accounts tab.
+
+    `ids[]` are CustomUser ids — an integer AutoField, unlike the UUID
+    primary keys used by do_faculty_coordinator_bulk_delete above (which
+    operates on FacultyCoordinator ids). The id guard below validates with
+    int(), not uuid.UUID(). Both actions are POST-only: one drops the
+    faculty group, the other deletes an account. The unknown-action check
+    runs before the POST-only check, so an unknown action arriving over GET
+    cannot reach a mutation.
+
+    delete_account here removes only a bare CustomUser with no
+    FacultyCoordinator record and no other role -- it never deletes a
+    FacultyCoordinator record. FacultyCoordinator has no delete path in this
+    plan; see cis.views.faculty.do_faculty_coordinator_bulk_delete for that.
+    """
+    action = request.POST.get('action') or request.GET.get('action')
+    ids = request.POST.getlist('ids[]') or request.GET.getlist('ids[]')
+
+    if action not in ('revoke_access', 'delete_account'):
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Unknown action.',
+        }, status=400)
+
+    if request.method != 'POST':
+        return JsonResponse({
+            'status': 'error',
+            'message': 'This action requires POST.',
+        }, status=405)
+
+    valid_ids = []
+    for record_id in ids:
+        try:
+            valid_ids.append(int(record_id))
+        except (ValueError, TypeError):
+            continue
+
+    from cis.services.faculty_role import FACULTY
+    from cis.services.role_access import revoke_access
+
+    users = CustomUser.objects.filter(id__in=valid_ids)
+
+    if action == 'revoke_access':
+        revoked = skipped = 0
+        for user in users:
+            if revoke_access(FACULTY, user):
+                revoked += 1
+            else:
+                skipped += 1
+
+        return JsonResponse({
+            'status': 'success',
+            'message': (
+                f'{revoked} account(s) no longer have faculty access, '
+                f'{skipped} skipped (they still hold a FacultyCoordinator '
+                'record).'
+            ),
+        })
+
+    from django.db.models import ProtectedError
+
+    deleted = skipped = errored = 0
+    for user in users:
+        # Only ever delete an account that this tab is responsible for: no
+        # FacultyCoordinator record, and no other role to keep it alive.
+        if FacultyCoordinator.objects.filter(user=user).exists():
+            skipped += 1
+            continue
+        if [r for r in user.get_roles() if r != 'faculty']:
+            skipped += 1
+            continue
+        try:
+            user.delete()
+            deleted += 1
+        except ProtectedError:
+            # The account is referenced elsewhere via a PROTECT foreign key.
+            # This is the ordinary, explainable reason a dangling account
+            # cannot be deleted, so it is counted with the other skips.
+            skipped += 1
+        except Exception:
+            # An unexpected failure, not one of the well-understood skip
+            # cases above. Count and log it separately so the operator isn't
+            # told the wrong reason for the failure.
+            logger.exception(
+                'Unexpected error deleting CustomUser %s', user.pk)
+            errored += 1
+
+    message = (
+        f'{deleted} account(s) deleted, {skipped} skipped '
+        '(skipped accounts hold other roles, have a FacultyCoordinator '
+        'record, or are referenced elsewhere).'
+    )
+    if errored:
+        message += f' {errored} account(s) failed unexpectedly.'
+
+    return JsonResponse({
+        'status': 'success',
+        'message': message,
+    })
+
 
 def manage_status(request):
     template = 'cis/faculty/update_course_administrator_status.html'

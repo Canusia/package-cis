@@ -24,6 +24,35 @@ class FacultySerializer(serializers.ModelSerializer):
             'ce_url'
         ]
 
+class DanglingFacultySerializer(serializers.ModelSerializer):
+    """Accounts in the faculty group with no FacultyCoordinator record.
+
+    Rows are CustomUser, so every field is flat — unlike FacultySerializer,
+    whose user fields are nested.
+    """
+    last_login = serializers.DateTimeField(
+        format='%m/%d/%Y %I:%M %p',
+        read_only=True
+    )
+    other_roles = serializers.SerializerMethodField()
+
+    class Meta:
+        model = get_user_model()
+        fields = [
+            'id',
+            'first_name',
+            'last_name',
+            'email',
+            'primary_phone',
+            'last_login',
+            'other_roles',
+        ]
+        datatables_always_serialize = ['id', 'other_roles']
+
+    def get_other_roles(self, obj):
+        return [r for r in obj.get_roles() if r != 'faculty']
+
+
 class CourseAdministratorSerializer(serializers.ModelSerializer):
     course = CourseSerializer()
     user = CustomUserSerializer()

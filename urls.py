@@ -220,7 +220,9 @@ from cis.views.faculty import (
     download_faculty_template,
     do_bulk_action as faculty_bulk_actions,
     FacultyViewSet,
-    CourseAdministratorViewSet
+    CourseAdministratorViewSet,
+    DanglingFacultyViewSet,
+    do_dangling_bulk_action as faculty_do_dangling_bulk_action,
 )
 
 
@@ -437,6 +439,7 @@ router_viewsets = {
     'student-dangling': DanglingStudentViewSet,
     
     'faculty': FacultyViewSet,
+    'faculty-dangling': DanglingFacultyViewSet,
     'course_administrator': CourseAdministratorViewSet,
 
     'cronlog': CronLogViewSet,
@@ -886,7 +889,12 @@ urlpatterns = [
         user_passes_test(user_has_cis_role, login_url='/')(faculty_bulk_actions),
         name='faculty_bulk_actions'
     ),
-    
+    path(
+        'faculty/do_dangling_bulk_action',
+        user_passes_test(user_has_cis_role, login_url='/')(faculty_do_dangling_bulk_action),
+        name='faculty_do_dangling_bulk_action'
+    ),
+
     # Future sections - views moved to future_sections app
     # URL now included directly in myce/urls.py at path('ce/future_sections/', ...)
     path(
