@@ -60,10 +60,14 @@ def dangling_users(policy):
 
     accessor = policy.model.__name__.lower()
 
+    # Downstream consumers (dangling-account list/serializer views) render
+    # user.get_roles(), which reads self.groups.all() per row. Without this
+    # prefetch that is an extra query per row on every page of a server-side
+    # DataTable — an N+1 that's invisible in a unit test.
     return CustomUser.objects.filter(
         groups__name=policy.group_name,
         **{f'{accessor}__isnull': True},
-    ).distinct()
+    ).prefetch_related('groups').distinct()
 
 
 def revoke_access(policy, user):
