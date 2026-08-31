@@ -130,3 +130,63 @@ class RevokeRoleEndpointTests(HsAdminRoleFixtureMixin, TestCase):
         self.user_b.groups.add(student_group)
         resp = self.client.post(self._url(self.user_b))
         self.assertIn('student', resp.json()['message'])
+
+
+class DeleteViewPayloadTests(HsAdminRoleFixtureMixin, TestCase):
+    def setUp(self):
+        self.build_fixture()
+        self.hs_group, _ = Group.objects.get_or_create(name='highschool_admin')
+        self.user_b.groups.add(self.hs_group)
+
+    def tearDown(self):
+        self.tear_down_fixture()
+
+    def _delete(self, admin):
+        return self.client.get(reverse('cis:delete_hs_admin', args=[admin.id]))
+
+    def test_delete_offers_the_revoke_when_no_roles_remain(self):
+        HSAdministratorPosition.objects.filter(hsadmin=self.admin_b).delete()
+        resp = self._delete(self.admin_b)
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.json()
+        self.assertEqual(payload['status'], 'success')
+        self.assertTrue(payload['hs_admin_role_revocable'])
+        self.assertIn('Beta', payload['admin_name'])
+        self.assertEqual(
+            payload['revoke_url'],
+            reverse('cis:revoke_hs_admin_role', args=[self.user_b.id]))
+
+    def test_delete_does_not_offer_the_revoke_while_roles_remain(self):
+        """admin_a keeps two roles, so the record delete fails and nothing is
+        offered."""
+        resp = self._delete(self.admin_a)
+        self.assertEqual(resp.status_code, 400)
+        self.assertTrue(
+            HSAdministrator.objects.filter(id=self.admin_a.id).exists())
+
+    def test_other_roles_are_reported(self):
+        student_group, _ = Group.objects.get_or_create(name='student')
+        self.user_b.groups.add(student_group)
+        HSAdministratorPosition.objects.filter(hsadmin=self.admin_b).delete()
+        payload = self._delete(self.admin_b).json()
+        self.assertIn('student', payload['other_roles'])
+        self.assertNotIn('highschool_admin', payload['other_roles'])
+
+    def test_account_survives_the_delete(self):
+        HSAdministratorPosition.objects.filter(hsadmin=self.admin_b).delete()
+        self._delete(self.admin_b)
+        self.assertTrue(CustomUser.objects.filter(pk=self.user_b.pk).exists())
+
+
+class DetailPageRevokeWiringTests(HsAdminRoleFixtureMixin, TestCase):
+    def setUp(self):
+        self.build_fixture()
+
+    def tearDown(self):
+        self.tear_down_fixture()
+
+    def test_detail_page_loads_the_prompt_script(self):
+        resp = self.client.get(reverse('cis:hs_admin', args=[self.admin_a.id]))
+        body = resp.content.decode()
+        self.assertIn('hs_admin_detail.js', body)
+        self.assertIn('hs-admin-delete', body)

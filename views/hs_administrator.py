@@ -133,21 +133,34 @@ def access_requests(request):
 
 def delete_record(request, record_id):
     record = get_object_or_404(HSAdministrator, pk=record_id)
+    user = record.user
 
     try:
         HSAdministratorNote.objects.filter(
             hsadmin=record
         ).delete()
-        
+
         HSAdministrator.delete_record(record)
     except Exception as e:
         return JsonResponse({
             'message': 'Unable to delete record' + str(e),
             'status': 'error'
         }, status=400)
+
+    # The highschool_admin role is revoked only if staff say so, from the
+    # follow-up prompt this response drives. The account is never deleted here.
+    from cis.services.hs_admin_role import has_remaining_hs_admin_roles
+
+    revocable = not has_remaining_hs_admin_roles(user)
+
     return JsonResponse({
         'message': 'Successfully deleted record',
-        'status': 'success'
+        'status': 'success',
+        'hs_admin_role_revocable': revocable,
+        'admin_name': f'{user.first_name} {user.last_name}'.strip(),
+        'other_roles': [r for r in user.get_roles() if r != 'highschool_admin'],
+        'revoke_url': str(reverse('cis:revoke_hs_admin_role', args=[user.id])),
+        'redirect': str(reverse_lazy('cis:hs_admins')),
     })
 
 

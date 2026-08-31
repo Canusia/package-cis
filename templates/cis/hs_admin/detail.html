@@ -8,6 +8,7 @@
 {% block body %}
 
 <script src="{% static 'js/common_methods.js' %}"></script>
+<script src="{% static 'js/hs_admin_detail.js' %}"></script>
 <script>
     jQuery(function ($) {
         $('.dataTable').DataTable();
@@ -41,7 +42,7 @@
                             {% csrf_token %}
                             {{ form | crispy }}
                             <input type="submit" class="btn btn-primary btn-sm" value="Update">
-                            <a data-url="{% url 'cis:delete_hs_admin' record.id%}" class="btn btn-sm btn-danger delete-record"><i class="fa fa-trash-alt text-light"></i></a>
+                            <a data-url="{% url 'cis:delete_hs_admin' record.id%}" class="btn btn-sm btn-danger hs-admin-delete"><i class="fa fa-trash-alt text-light"></i></a>
                         </form>
                     </div>
                 </div>
