@@ -682,8 +682,8 @@ def index(request):
                 api_url='/ce/api/hs-administrator-position?format=datatables',
                 details_prefix='/ce/highschool_admin/',
                 bulk_actions={
-                    'edit_status': {
-                        'label': 'Edit Status',
+                    'edit': {
+                        'label': 'Edit',
                         'icon': 'fas fa-edit',
                         'btn_class': 'btn-primary',
                         'confirm': None,
@@ -695,12 +695,6 @@ def index(request):
                         'confirm': 'Are you sure you want to delete the selected role(s)? '
                                    'The administrator accounts are not removed.',
                         'method': 'POST',
-                    },
-                    'toggle_student_recommendation': {
-                        'label': 'Toggle Student Rec.',
-                        'icon': 'fas fa-edit',
-                        'btn_class': 'btn-primary',
-                        'confirm': 'Are you sure you want to toggle student recommendation on the selected records?',
                     },
                     'change_password': {
                         'label': 'Change Password',
@@ -799,8 +793,8 @@ def do_bulk_action(request):
 
         return JsonResponse(data)
 
-    if action == 'edit_status':
-        return manage_edit_status(request)
+    if action == 'edit':
+        return manage_edit_role(request)
 
     if action == 'delete':
         if request.method != 'POST':
@@ -862,14 +856,14 @@ def do_bulk_action(request):
         'message': 'Unknown action.',
     }, status=400)
 
-def manage_edit_status(request):
-    """Render (GET) or apply (POST) the bulk status change modal."""
-    template = 'cis/hs_admin/edit_status.html'
+def manage_edit_role(request):
+    """Render (GET) or apply (POST) the combined bulk role-edit modal."""
+    template = 'cis/hs_admin/edit_role.html'
 
-    from cis.forms.highschool import BulkStatusChangeForm
+    from cis.forms.highschool import BulkRoleEditForm
 
     if request.method == 'POST':
-        form = BulkStatusChangeForm(data=request.POST)
+        form = BulkRoleEditForm(data=request.POST)
 
         if form.is_valid():
             updated, notes_created = form.save(request)
@@ -886,12 +880,12 @@ def manage_edit_status(request):
         }, status=400)
 
     ids = request.GET.getlist('ids[]')
-    form = BulkStatusChangeForm(ids)
+    form = BulkRoleEditForm(ids)
 
     return render(request, template, {
-        'title': 'Edit Status',
+        'title': 'Edit Role',
         'form': form,
-        'id': 'frm_bulk_status',
+        'id': 'frm_bulk_role_edit',
         'form_action': str(reverse('cis:hs_admin_do_bulk_action')),
         'status': 'display',
     })

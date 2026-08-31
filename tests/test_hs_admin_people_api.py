@@ -71,16 +71,18 @@ class HsAdminIndexTabsTests(HsAdminRoleFixtureMixin, TestCase):
         body = self.client.get(self.url).content.decode()
         self.assertIn('/ce/api/hs-administrator?format=datatables', body)
 
-    def test_toggle_status_is_replaced_by_edit_status(self):
+    def test_the_two_toggles_are_replaced_by_one_edit_action(self):
+        """'edit_status' and 'toggle_student_recommendation' were merged into a
+        single 'edit' form; neither toggle button survives on the page."""
         body = self.client.get(self.url).content.decode()
-        self.assertIn("slug: 'edit_status'", body)
+        self.assertIn("slug: 'edit'", body)
         self.assertNotIn("slug: 'toggle_status'", body)
-        self.assertIn("slug: 'toggle_student_recommendation'", body)
+        self.assertNotIn("slug: 'toggle_student_recommendation'", body)
+        self.assertNotIn("slug: 'edit_status'", body)
 
     def test_role_tab_bulk_actions(self):
         body = self.client.get(self.url).content.decode()
-        for slug in ['edit_status', 'delete', 'toggle_student_recommendation',
-                     'change_password', 'password_reset_link']:
+        for slug in ['edit', 'delete', 'change_password', 'password_reset_link']:
             self.assertIn("slug: '%s'" % slug, body)
 
     def test_people_tab_posts_to_the_person_endpoint(self):

@@ -484,7 +484,7 @@ class HSAdministratorForm(forms.Form):
     last_name = forms.CharField(label='Last Name', max_length=128)
     email = forms.EmailField(label='Primary Email')
 
-    primary_phone = forms.CharField(label='Work Phone', max_length=20)
+    primary_phone = forms.CharField(label='Work Phone', max_length=20, required=False)
     secondary_phone = forms.CharField(label='Cell Phone', max_length=20, required=False)
 
     def clean_email(self):
@@ -776,9 +776,20 @@ def _looks_like_uuid(value):
         return False
 
 
-class BulkStatusChangeForm(forms.Form):
-    """Set the status on a set of HSAdministratorPosition rows, optionally
-    recording a note against each affected administrator.
+UNCHANGED = ''
+UNCHANGED_LABEL = '\u2014 leave unchanged \u2014'
+
+
+class BulkRoleEditForm(forms.Form):
+    """Edit a set of HSAdministratorPosition rows in one pass.
+
+    Combines what used to be two separate bulk actions - 'edit_status' and the
+    'toggle_student_recommendation' toggle - into a single 'edit' form, so
+    staff set both attributes (and record a note) in one round trip.
+
+    Each attribute defaults to 'leave unchanged'. A bulk edit that always wrote
+    every field would silently overwrite the student-recommendation flag on
+    every selected row whenever someone only meant to change status.
 
     Mirrors BulkPasswordChangeForm: instantiated with a list of record ids for
     the GET (modal render) pass, and with `data` for the POST (apply) pass.
@@ -791,9 +802,19 @@ class BulkStatusChangeForm(forms.Form):
     )
 
     status = forms.ChoiceField(
-        required=True,
+        required=False,
         label='Status',
         choices=[]
+    )
+
+    manage_student_recommendation = forms.ChoiceField(
+        required=False,
+        label='Manage Student Recommendation',
+        choices=[],
+        help_text=(
+            'Only takes effect while the role is Active. Setting the status to '
+            'Inactive clears this automatically.'
+        )
     )
 
     note = forms.CharField(
@@ -805,7 +826,7 @@ class BulkStatusChangeForm(forms.Form):
 
     action = forms.CharField(
         widget=forms.HiddenInput,
-        initial='edit_status'
+        initial='edit'
     )
 
     def __init__(self, record_ids=None, *args, **kwargs):
@@ -813,7 +834,12 @@ class BulkStatusChangeForm(forms.Form):
 
         from cis.models.highschool_administrator import HSAdministratorPosition
 
-        self.fields['status'].choices = HSAdministratorPosition.STATUS_OPTIONS
+        self.fields['status'].choices = (
+            [(UNCHANGED, UNCHANGED_LABEL)] + list(HSAdministratorPosition.STATUS_OPTIONS)
+        )
+        self.fields['manage_student_recommendation'].choices = [
+            (UNCHANGED, UNCHANGED_LABEL), ('Yes', 'Yes'), ('No', 'No'),
+        ]
 
         if record_ids is None and kwargs.get('data') is not None:
             record_ids = kwargs['data'].getlist('record_ids')
@@ -838,8 +864,27 @@ class BulkStatusChangeForm(forms.Form):
         self.fields['record_ids'].choices = choices
         self.fields['record_ids'].initial = initial
 
+    def clean(self):
+        """At least one attribute must actually change.
+
+        Without this, submitting the form with both selects left on
+        'leave unchanged' would report "Successfully updated N record(s)"
+        while writing nothing.
+        """
+        cleaned = super().clean()
+
+        if not cleaned.get('status') and not cleaned.get('manage_student_recommendation'):
+            raise forms.ValidationError(
+                'Choose a status or a student-recommendation value to apply.'
+            )
+
+        return cleaned
+
     def save(self, request):
-        """Apply the status and write one note per affected administrator.
+        """Apply the chosen attributes and write one note per affected admin.
+
+        Only attributes the user actually chose are written; anything left on
+        'leave unchanged' is not touched on any selected row.
 
         Returns (updated_count, notes_created_count).
         """
@@ -847,7 +892,8 @@ class BulkStatusChangeForm(forms.Form):
         from cis.models.note import HSAdministratorNote
 
         data = self.cleaned_data
-        status = data['status']
+        status = data.get('status')
+        recommendation = data.get('manage_student_recommendation')
         note_text = (data.get('note') or '').strip()
 
         records = HSAdministratorPosition.objects.filter(
@@ -857,12 +903,22 @@ class BulkStatusChangeForm(forms.Form):
         per_admin = {}
         updated = 0
         for record in records:
-            record.status = status
+            if status:
+                record.status = status
+            if recommendation:
+                record.meta['manage_student_recommendation'] = recommendation
             record.save()
             updated += 1
             per_admin.setdefault(record.hsadmin, []).append(
                 f"{record.highschool.name} ({record.position.name})"
             )
+
+        changes = []
+        if status:
+            changes.append(f'Status set to {status}')
+        if recommendation:
+            changes.append(f'Manage student recommendation set to {recommendation}')
+        summary = '; '.join(changes)
 
         notes_created = 0
         if note_text:
@@ -871,7 +927,7 @@ class BulkStatusChangeForm(forms.Form):
                 note.hsadmin = hsadmin
                 note.createdby = request.user
                 note.note = (
-                    f"Status set to {status} for: " + ', '.join(sorted(places))
+                    f"{summary} for: " + ', '.join(sorted(places))
                     + f"\n\n{note_text}"
                 )
                 note.save()

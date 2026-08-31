@@ -20,19 +20,20 @@ class BulkEditStatusTests(HsAdminRoleFixtureMixin, TestCase):
 
     def test_get_renders_the_modal_form(self):
         resp = self.client.get(self.url, {
-            'action': 'edit_status',
+            'action': 'edit',
             'ids[]': [str(self.role_a1.id), str(self.role_a2.id)],
         })
         self.assertEqual(resp.status_code, 200)
         body = resp.content.decode()
         self.assertIn('name="status"', body)
+        self.assertIn('name="manage_student_recommendation"', body)
         self.assertIn('name="note"', body)
         self.assertIn('Central High', body)
         self.assertIn('frm_bulk_action', body)
 
     def test_post_sets_the_status_on_every_selected_role(self):
         resp = self.client.post(self.url, {
-            'action': 'edit_status',
+            'action': 'edit',
             'record_ids': [str(self.role_a1.id), str(self.role_b1.id)],
             'status': 'Inactive',
             'note': '',
@@ -46,7 +47,7 @@ class BulkEditStatusTests(HsAdminRoleFixtureMixin, TestCase):
 
     def test_note_is_written_once_per_affected_admin(self):
         self.client.post(self.url, {
-            'action': 'edit_status',
+            'action': 'edit',
             'record_ids': [str(self.role_a1.id), str(self.role_a2.id),
                            str(self.role_b1.id)],
             'status': 'Inactive',
@@ -66,7 +67,7 @@ class BulkEditStatusTests(HsAdminRoleFixtureMixin, TestCase):
 
     def test_no_note_is_written_when_the_box_is_empty(self):
         self.client.post(self.url, {
-            'action': 'edit_status',
+            'action': 'edit',
             'record_ids': [str(self.role_a1.id)],
             'status': 'Inactive',
             'note': '   ',
@@ -75,7 +76,7 @@ class BulkEditStatusTests(HsAdminRoleFixtureMixin, TestCase):
 
     def test_invalid_status_is_rejected(self):
         resp = self.client.post(self.url, {
-            'action': 'edit_status',
+            'action': 'edit',
             'record_ids': [str(self.role_a1.id)],
             'status': 'Banana',
             'note': '',
@@ -87,7 +88,7 @@ class BulkEditStatusTests(HsAdminRoleFixtureMixin, TestCase):
     def test_ids_outside_the_selection_are_ignored(self):
         """record_ids is client-supplied; only real position ids may be written."""
         resp = self.client.post(self.url, {
-            'action': 'edit_status',
+            'action': 'edit',
             'record_ids': [str(self.role_a1.id), 'not-a-uuid'],
             'status': 'Inactive',
             'note': '',
@@ -95,6 +96,83 @@ class BulkEditStatusTests(HsAdminRoleFixtureMixin, TestCase):
         self.assertEqual(resp.status_code, 400)
         self.assertEqual(
             HSAdministratorPosition.objects.filter(status='Inactive').count(), 1)
+
+
+    def test_sets_the_student_recommendation_flag(self):
+        resp = self.client.post(self.url, {
+            'action': 'edit',
+            'record_ids': [str(self.role_a1.id)],
+            'status': '',
+            'manage_student_recommendation': 'Yes',
+            'note': '',
+        })
+        self.assertEqual(resp.status_code, 200)
+        self.role_a1.refresh_from_db()
+        self.assertEqual(
+            self.role_a1.meta.get('manage_student_recommendation'), 'Yes')
+        self.assertEqual(self.role_a1.status, 'Active')  # untouched
+
+    def test_leaving_a_field_unchanged_does_not_overwrite_it(self):
+        """Editing only the status must not wipe the student-recommendation
+        flag on every selected row."""
+        self.role_a1.meta['manage_student_recommendation'] = 'Yes'
+        self.role_a1.save()
+
+        self.client.post(self.url, {
+            'action': 'edit',
+            'record_ids': [str(self.role_a1.id)],
+            'status': 'Active',
+            'manage_student_recommendation': '',
+            'note': '',
+        })
+        self.role_a1.refresh_from_db()
+        self.assertEqual(self.role_a1.status, 'Active')
+        self.assertEqual(
+            self.role_a1.meta.get('manage_student_recommendation'), 'Yes')
+
+    def test_going_inactive_clears_the_flag_via_the_signal(self):
+        """Pre-existing behaviour, asserted so the combined form does not look
+        like the cause: the post_save receiver in cis/signals/highschool_admin.py
+        forces manage_student_recommendation to 'No' for any non-Active role."""
+        self.role_a1.meta['manage_student_recommendation'] = 'Yes'
+        self.role_a1.save()
+
+        self.client.post(self.url, {
+            'action': 'edit',
+            'record_ids': [str(self.role_a1.id)],
+            'status': 'Inactive',
+            'manage_student_recommendation': '',
+            'note': '',
+        })
+        self.role_a1.refresh_from_db()
+        self.assertEqual(self.role_a1.status, 'Inactive')
+        self.assertEqual(
+            self.role_a1.meta.get('manage_student_recommendation'), 'No')
+
+    def test_changing_nothing_is_rejected(self):
+        """Both selects left on 'leave unchanged' would otherwise report
+        success while writing nothing."""
+        resp = self.client.post(self.url, {
+            'action': 'edit',
+            'record_ids': [str(self.role_a1.id)],
+            'status': '',
+            'manage_student_recommendation': '',
+            'note': '',
+        })
+        self.assertEqual(resp.status_code, 400)
+
+    def test_note_records_both_changes(self):
+        self.client.post(self.url, {
+            'action': 'edit',
+            'record_ids': [str(self.role_a1.id)],
+            'status': 'Inactive',
+            'manage_student_recommendation': 'No',
+            'note': 'End of year.',
+        })
+        note = HSAdministratorNote.objects.get(hsadmin=self.admin_a)
+        self.assertIn('Status set to Inactive', note.note)
+        self.assertIn('Manage student recommendation set to No', note.note)
+        self.assertIn('End of year.', note.note)
 
 
 class BulkDeleteRolesTests(HsAdminRoleFixtureMixin, TestCase):

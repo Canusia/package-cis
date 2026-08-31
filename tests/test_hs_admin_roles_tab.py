@@ -126,10 +126,10 @@ class HighSchoolRolesTabTests(HsAdminRoleFixtureMixin, TestCase):
         resp = self.client.get(reverse('cis:hs_admin', args=[self.admin_a.id]))
         self.assertIn(f'hsadmin={self.admin_a.id}', resp.content.decode())
 
-    def test_tab_exposes_edit_status_delete_and_reset_link(self):
+    def test_tab_exposes_edit_delete_and_reset_link(self):
         resp = self.client.get(reverse('cis:hs_admin', args=[self.admin_a.id]))
         body = resp.content.decode()
-        self.assertIn("slug: 'edit_status'", body)
+        self.assertIn("slug: 'edit'", body)
         self.assertIn("slug: 'delete'", body)
         self.assertIn("slug: 'password_reset_link'", body)
         self.assertNotIn("slug: 'change_password'", body)
@@ -174,3 +174,42 @@ class PasswordResetTabRemovalTests(HsAdminRoleFixtureMixin, TestCase):
         resp = self.client.get(
             reverse('cis:hs_admin_tab', args=[self.admin_a.id, 'passwd_reset']))
         self.assertEqual(resp.status_code, 404)
+
+
+class AdministratorDetailFormTests(HsAdminRoleFixtureMixin, TestCase):
+    """The detail page's edit form. Work phone is optional: many school
+    administrators are reachable only on a cell number, and a required work
+    phone blocked saving any other edit on those records."""
+
+    def setUp(self):
+        self.build_fixture()
+
+    def tearDown(self):
+        self.tear_down_fixture()
+
+    def test_work_phone_is_optional(self):
+        from cis.forms.highschool import HSAdministratorForm
+
+        form = HSAdministratorForm(data={
+            'first_name': 'Ann',
+            'last_name': 'Alpha',
+            'email': 'admin_a@example.com',
+            'primary_phone': '',
+            'secondary_phone': '555-0101',
+        })
+        self.assertTrue(form.is_valid(), form.errors)
+
+    def test_saving_without_a_work_phone_updates_the_record(self):
+        resp = self.client.post(
+            reverse('cis:hs_admin', args=[self.admin_a.id]),
+            {
+                'first_name': 'Annabel',
+                'last_name': 'Alpha',
+                'email': 'admin_a@example.com',
+                'primary_phone': '',
+                'secondary_phone': '',
+            },
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.user_a.refresh_from_db()
+        self.assertEqual(self.user_a.first_name, 'Annabel')

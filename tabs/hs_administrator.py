@@ -30,8 +30,8 @@ def highschools_tab(request, record):
                 f'&hsadmin={record.id}'
             ),
             bulk_actions={
-                'edit_status': {
-                    'label': 'Edit Status',
+                'edit': {
+                    'label': 'Edit',
                     'icon': 'fas fa-edit',
                     'btn_class': 'btn-primary',
                     'confirm': None,
