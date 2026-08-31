@@ -75,8 +75,9 @@ jQuery(document).ready(function () {
 // When the delete leaves the account with no Student record, args carries
 // the same revoke fields as the plain delete_record view
 // (student_role_revocable, student_name, other_roles, revoke_url); offer the
-// same follow-up prompt as student_detail.js's a.student-delete handler
-// before returning to the index.
+// same follow-up prompt as student_detail.js's window.offerStudentRoleRevocation
+// (prompt-only; it no longer wires any DOM handler) before returning to the
+// index.
 function onRecordDeleted(args) {
     function finish() {
         window.parent.closeModal();

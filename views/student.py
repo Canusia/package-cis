@@ -87,7 +87,8 @@ from ..serializers.student import (
     ParentConsentSerializer,
     StudentCampusIDSerializer,
     StudentSupportingDocumentSerializer,
-    StudentTuitionAssistanceSerializer
+    StudentTuitionAssistanceSerializer,
+    DanglingStudentSerializer,
     # StudentNoteSerializer
 )
 
@@ -530,6 +531,30 @@ class StudentViewSet(viewsets.ReadOnlyModelViewSet):
             return records.filter(id__in=section_student_ids)
         return records.none()
 
+class DanglingStudentViewSet(viewsets.ReadOnlyModelViewSet):
+    """Accounts left in the student group with no Student record.
+
+    They appear on no other tab: the student tabs are driven by Student
+    records, which these users no longer have. This is the only place staff
+    can reach them.
+
+    Deliberately NOT campus-scoped: the campus signal used elsewhere for
+    students (scope_students_by_campus, via
+    studentregistration__class_section__course__campus) is derived from a
+    Student record's registrations. A dangling account has no Student record
+    at all, so there is no campus to derive -- there is nothing to scope,
+    the same way an unverified student (no application yet) is universally
+    visible under that same helper.
+    """
+    serializer_class = DanglingStudentSerializer
+    permission_classes = [CIS_user_only]
+
+    def get_queryset(self):
+        from cis.services.role_access import dangling_users
+        from cis.services.student_role import STUDENT
+
+        return dangling_users(STUDENT)
+
 def add_new(request):
     '''
     Add new page
@@ -856,6 +881,104 @@ def revoke_student_role(request, user_id):
         message += f' Their {", ".join(retained)} access is unchanged.'
 
     return JsonResponse({'status': 'success', 'message': message})
+
+
+def do_dangling_bulk_action(request):
+    """Bulk actions for the Student Dangling Accounts tab.
+
+    `ids[]` are CustomUser ids — an integer AutoField, unlike the UUID
+    primary keys used elsewhere in this file (Student included), so the id
+    guard below validates with int(), not uuid.UUID(). Both actions are
+    POST-only: one drops a role, the other deletes an account. The
+    unknown-action check runs before the POST-only check, so an unknown
+    action arriving over GET cannot reach a mutation.
+    """
+    action = request.POST.get('action') or request.GET.get('action')
+    ids = request.POST.getlist('ids[]') or request.GET.getlist('ids[]')
+
+    if action not in ('revoke_access', 'delete_account'):
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Unknown action.',
+        }, status=400)
+
+    if request.method != 'POST':
+        return JsonResponse({
+            'status': 'error',
+            'message': 'This action requires POST.',
+        }, status=405)
+
+    valid_ids = []
+    for record_id in ids:
+        try:
+            valid_ids.append(int(record_id))
+        except (ValueError, TypeError):
+            continue
+
+    from cis.services.student_role import STUDENT
+    from cis.services.role_access import revoke_access
+
+    users = CustomUser.objects.filter(id__in=valid_ids)
+
+    if action == 'revoke_access':
+        revoked = skipped = 0
+        for user in users:
+            if revoke_access(STUDENT, user):
+                revoked += 1
+            else:
+                skipped += 1
+
+        return JsonResponse({
+            'status': 'success',
+            'message': (
+                f'{revoked} account(s) no longer have student access, '
+                f'{skipped} skipped (they still hold a Student record).'
+            ),
+        })
+
+    from django.db.models import ProtectedError
+
+    deleted = skipped = errored = 0
+    for user in users:
+        # Only ever delete an account that this tab is responsible for: no
+        # Student record, and no other role to keep it alive.
+        if Student.objects.filter(user=user).exists():
+            skipped += 1
+            continue
+        if [r for r in user.get_roles() if r != 'student']:
+            skipped += 1
+            continue
+        try:
+            user.delete()
+            deleted += 1
+        except ProtectedError:
+            # The account is referenced elsewhere (notes they authored,
+            # records they created) via a PROTECT foreign key. This is the
+            # ordinary, explainable reason a dangling account cannot be
+            # deleted, so it is counted with the other skips.
+            skipped += 1
+        except Exception:
+            # An unexpected failure, not one of the well-understood skip
+            # cases above. Count and log it separately so the operator isn't
+            # told the wrong reason for the failure, and it doesn't vanish
+            # the way the original bug swallowed ProtectedError silently.
+            logger.exception(
+                'Unexpected error deleting CustomUser %s', user.pk)
+            errored += 1
+
+    message = (
+        f'{deleted} account(s) deleted, {skipped} skipped '
+        '(skipped accounts hold other roles, have a Student record, '
+        'or are referenced elsewhere).'
+    )
+    if errored:
+        message += f' {errored} account(s) failed unexpectedly.'
+
+    return JsonResponse({
+        'status': 'success',
+        'message': message,
+    })
+
 
 def data_export_import(request):
     """

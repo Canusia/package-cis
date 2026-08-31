@@ -278,7 +278,9 @@ from cis.views.student import (
     StudentSupportingDocumentViewSet,
     StudentTuitionAssistanceViewSet,
     StudentHistoryViewSet,
+    DanglingStudentViewSet,
     do_bulk_action as student_bulk_actions,
+    do_dangling_bulk_action as student_do_dangling_bulk_action,
     student_profile_changes,
 )
 
@@ -432,6 +434,7 @@ router_viewsets = {
     'campus_id': StudentCampusIDViewSet,
     'student-note': StudentNoteViewSet,
     'student-history': StudentHistoryViewSet,
+    'student-dangling': DanglingStudentViewSet,
     
     'faculty': FacultyViewSet,
     'course_administrator': CourseAdministratorViewSet,
@@ -1043,6 +1046,11 @@ urlpatterns = [
         'student/revoke_role/<int:user_id>',
         user_passes_test(user_has_cis_role, login_url='/')(revoke_student_role),
         name='revoke_student_role'
+    ),
+    path(
+        'student/do_dangling_bulk_action',
+        user_passes_test(user_has_cis_role, login_url='/')(student_do_dangling_bulk_action),
+        name='student_do_dangling_bulk_action'
     ),
     path(
         'student/note/delete',
