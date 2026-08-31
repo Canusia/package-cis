@@ -9,6 +9,7 @@ import csv
 import io
 from django.http import JsonResponse, FileResponse, Http404, HttpResponse
 from django.urls import reverse
+from django.views.decorators.http import require_POST
 
 import os
 
@@ -927,23 +928,65 @@ def add_new_highschool(request):
             'menu': draw_menu(cis_menu, 'faculty', 'instructors')
         })
 
+@require_POST
 def delete_record(request, record_id):
     record = get_object_or_404(Teacher, pk=record_id)
+    user = record.user
     try:
         Teacher.delete_record(record)
-
-        data = {
-            'status':'success',
-            'message':'Successfully deleted record',
-            'action': 'reload'
-        }
     except Exception as e:
         data = {
-            'status':'error',
-            'message':'Unable to delete record. ' + str(e),
+            'status': 'error',
+            'message': 'Unable to delete record. ' + str(e),
             'action': ''
         }
-    return JsonResponse(data)
+        return JsonResponse(data, status=400)
+
+    # The instructor role is revoked only if staff say so, from the follow-up
+    # prompt this response drives. The account is never deleted here.
+    from cis.services.instructor_role import INSTRUCTOR
+    from cis.services.role_access import has_remaining_records
+
+    revocable = not has_remaining_records(INSTRUCTOR, user)
+
+    return JsonResponse({
+        'status': 'success',
+        'message': 'Successfully deleted record',
+        'action': 'reload',
+        'instructor_role_revocable': revocable,
+        'instructor_name': f'{user.first_name} {user.last_name}'.strip(),
+        'other_roles': [r for r in user.get_roles() if r != 'instructor'],
+        'revoke_url': str(reverse('cis:revoke_instructor_role', args=[user.id])),
+        'redirect': str(reverse('cis:instructors')),
+    })
+
+
+@require_POST
+def revoke_instructor_role(request, user_id):
+    """Remove the instructor role for a user who holds no Teacher record.
+
+    Called from the prompt that follows an instructor delete, and from the
+    Dangling Accounts tab for anyone that prompt was declined or missed for.
+    """
+    from cis.services.instructor_role import INSTRUCTOR
+    from cis.services.role_access import revoke_access
+
+    user = get_object_or_404(CustomUser, pk=user_id)
+    name = f'{user.first_name} {user.last_name}'.strip()
+
+    if not revoke_access(INSTRUCTOR, user):
+        return JsonResponse({
+            'status': 'error',
+            'message': f'{name} still has an instructor record. '
+                       'Instructor access was left in place.',
+        })
+
+    retained = [r for r in user.get_roles()]
+    message = f'{name} no longer has instructor access.'
+    if retained:
+        message += f' Their {", ".join(retained)} access is unchanged.'
+
+    return JsonResponse({'status': 'success', 'message': message})
 
 def delete_course_certificate(request, record_id):
     record = get_object_or_404(TeacherCourseCertificate, pk=record_id)

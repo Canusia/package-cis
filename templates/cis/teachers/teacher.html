@@ -3,8 +3,11 @@
 
 {% load templatehelpers %}
 {% load crispy_forms_tags %}
+{% load static %}
 
 {% block body %}
+<script src="{% static 'js/common_methods.js' %}"></script>
+<script src="{% static 'js/instructor_detail.js' %}"></script>
 <script>
     jQuery(function ($) {
         $('.dataTable').DataTable();
@@ -13,7 +16,7 @@
     function do_ajax_action(action, record_id) {
         url = "{%url 'cis:teacher_bulk_actions' %}"
         let modal = "modal-bulk_actions"
-        
+
         let data = {
             'action': action,
             'record_id': record_id
@@ -30,31 +33,6 @@
         });
     }
 
-</script>
-<script>
-    jQuery(document).ready(function ($) {
-        $("a.delete").on("click", function () {
-            if (!confirm("Are you sure you want to permanently delete this record and all the related information?"))
-                return;
-
-            $.blockUI();
-            $.ajax({
-                type: 'GET',
-                url: "{% url 'cis:instructor_delete' record.id%}",
-                success: function (response) {
-                    $.unblockUI();
-                    swal(
-                        "",
-                        response.message,
-                        response.status
-                    )
-                    if (response.status == 'success') {
-                        window.parent.closeModal();
-                    }
-                }
-            });
-        });
-    });
 </script>
 <div class="">
     <div class="row">
@@ -85,7 +63,7 @@
                         <h5 class="card-title mb-3">Details <small class="float-right">
                                 <a target="_parent" href='{% url 'impersonate-start' record.user.id %}'><i
                                         class="fa fa-ghost"></i></a>&nbsp;&nbsp;
-                <a class="delete"><i class="fa fa-trash-alt"></i></a>
+                <a data-url="{% url 'cis:instructor_delete' record.id%}" class="instructor-delete"><i class="fa fa-trash-alt"></i></a>
             </small></h5>
                         <div class="card-text">
 

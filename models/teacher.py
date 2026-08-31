@@ -81,6 +81,8 @@ class Teacher(models.Model):
     @staticmethod
     def delete_record(record):
 
+        from django.db import transaction
+
         from cis.models.section import StudentRegistration, ClassSection
 
 
@@ -89,34 +91,36 @@ class Teacher(models.Model):
         ).exists():
             raise ValueError()
 
-        ClassSection.objects.filter(
-            teacher=record
-        ).delete()
+        with transaction.atomic():
+            ClassSection.objects.filter(
+                teacher=record
+            ).delete()
 
-        TeacherCourseCertificate.objects.filter(
-            teacher_highschool__teacher=record
-        ).delete()
+            TeacherCourseCertificate.objects.filter(
+                teacher_highschool__teacher=record
+            ).delete()
 
-        TeacherHighSchool.objects.filter(
-            teacher=record
-        ).delete()
+            TeacherHighSchool.objects.filter(
+                teacher=record
+            ).delete()
 
-        TeacherNote.objects.filter(
-            teacher=record
-        ).delete()
-        
-        TeacherUpload.objects.filter(
-            teacher=record
-        ).delete()
-        
-        user = record.user
-        record.delete()
+            TeacherNote.objects.filter(
+                teacher=record
+            ).delete()
 
-        # try to remove base user account if this was the only role
-        try:
-            user.delete()
-        except:
-            pass
+            TeacherUpload.objects.filter(
+                teacher=record
+            ).delete()
+
+            # The account is never deleted here. CustomUser is protected by
+            # many foreign keys, so user.delete() raises ProtectedError for
+            # most real accounts; swallowing that is what left accounts
+            # carrying the instructor group with no Teacher record. Revoking
+            # the group is a separate explicit step —
+            # cis.services.role_access.revoke_access.
+            record.delete()
+
+        return True
 
         return True
 

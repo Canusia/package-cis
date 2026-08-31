@@ -193,6 +193,7 @@ from cis.views.teacher import (
     tab as instructor_tab,
     TeacherViewSet,
     delete_record as delete_teacher,
+    revoke_instructor_role,
     do_bulk_action as teacher_bulk_actions,
     delete_course_certificate,
     delete_teacher_highschool,
@@ -836,6 +837,11 @@ urlpatterns = [
         'instructor/delete/<uuid:record_id>',
         user_passes_test(user_has_cis_role, login_url='/')(delete_teacher),
         name='instructor_delete'
+    ),
+    path(
+        'instructor/revoke_role/<int:user_id>',
+        user_passes_test(user_has_cis_role, login_url='/')(revoke_instructor_role),
+        name='revoke_instructor_role'
     ),
     path(
         'instructor/<uuid:record_id>',
