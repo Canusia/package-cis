@@ -18,7 +18,7 @@ from django.contrib.auth.signals import user_logged_in
 from django.test import TestCase
 from django.urls import reverse
 
-from cis.models.course import Cohort, Course
+from cis.models.course import Cohort, Course, CourseAdministrator
 from cis.models.faculty import FacultyCoordinator, FacultyCourseCoordinator
 from cis.models.note import FacultyCoordinatorNote
 from cis.services.faculty_role import FACULTY
@@ -370,3 +370,112 @@ class BulkDeleteButtonWiringTests(FacultyRoleFixtureMixin, TestCase):
             'change_course_administrator_status',
             faculty_coords_table['bulk_actions'],
         )
+
+    def test_course_administrator_table_has_its_own_delete_action(self):
+        """CourseAdministrator rows get their own bulk delete
+        ('delete_course_administrator'), distinct from the FacultyCoordinator
+        'delete' above -- same URL (cis:faculty_bulk_actions), different
+        action slug so ids are never routed to the wrong model."""
+        resp = self.client.get(reverse('cis:faculty_coordinators'))
+        self.assertEqual(resp.status_code, 200)
+
+        faculty_coords_table = resp.context['faculty_coords_table']
+        self.assertIn('delete_course_administrator', faculty_coords_table['bulk_actions'])
+        self.assertEqual(
+            faculty_coords_table['bulk_actions']['delete_course_administrator']['method'],
+            'POST',
+        )
+
+
+class CourseAdministratorBulkDeleteTests(FacultyRoleFixtureMixin, TestCase):
+    """cis.views.faculty.do_bulk_action's 'delete_course_administrator'
+    branch (both the By Course index tab and the Course(s) detail tab send
+    ids here). This deletes a course *assignment* row only -- it must never
+    touch the FacultyCoordinator record, the CustomUser account, or the
+    Course. Contrast with BulkDeleteRoleRevocationTests above, whose
+    'delete' action operates on FacultyCoordinator ids instead."""
+
+    def setUp(self):
+        self.build_fixture()
+        self.url = reverse('cis:faculty_bulk_actions')
+        self.course = self._make_course('CA-BULK')
+        self.course_admin = CourseAdministrator.objects.create(
+            course=self.course, user=self.user_b, status='Active')
+
+    def tearDown(self):
+        self.tear_down_fixture()
+
+    def _delete(self, ids):
+        return self.client.post(self.url, {
+            'action': 'delete_course_administrator',
+            'ids[]': [str(i) for i in ids],
+        })
+
+    def test_deletes_the_course_administrator_row(self):
+        resp = self._delete([self.course_admin.id])
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('Deleted 1', resp.json()['message'])
+        self.assertFalse(
+            CourseAdministrator.objects.filter(id=self.course_admin.id).exists())
+
+    def test_does_not_delete_the_faculty_coordinator(self):
+        self._delete([self.course_admin.id])
+        self.assertTrue(
+            FacultyCoordinator.objects.filter(id=self.coord_b.id).exists())
+
+    def test_does_not_delete_the_user_account(self):
+        self._delete([self.course_admin.id])
+        self.assertTrue(User.objects.filter(pk=self.user_b.pk).exists())
+
+    def test_does_not_delete_the_course(self):
+        self._delete([self.course_admin.id])
+        self.assertTrue(Course.objects.filter(pk=self.course.pk).exists())
+
+    def test_get_is_refused(self):
+        resp = self.client.get(self.url, {
+            'action': 'delete_course_administrator',
+            'ids[]': [str(self.course_admin.id)],
+        })
+        self.assertEqual(resp.status_code, 405)
+        self.assertTrue(
+            CourseAdministrator.objects.filter(id=self.course_admin.id).exists())
+
+    def test_unknown_action_is_a_400_before_the_post_only_check(self):
+        resp = self.client.get(self.url, {'action': 'nope', 'ids[]': []})
+        self.assertEqual(resp.status_code, 400)
+
+    def test_malformed_id_is_skipped_not_500(self):
+        resp = self._delete(['not-a-uuid', self.course_admin.id])
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(
+            CourseAdministrator.objects.filter(id=self.course_admin.id).exists())
+
+    def test_protected_error_is_counted_as_left_in_place_not_errored(self):
+        from unittest.mock import patch
+        from django.db.models import ProtectedError
+
+        with patch.object(
+            CourseAdministrator, 'delete', side_effect=ProtectedError('blocked', [])):
+            resp = self._delete([self.course_admin.id])
+
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.json()
+        self.assertIn('left in place', payload['message'])
+        self.assertNotIn('failed unexpectedly', payload['message'])
+        self.assertTrue(
+            CourseAdministrator.objects.filter(id=self.course_admin.id).exists())
+
+    def test_unexpected_error_is_counted_as_failed_not_left_in_place(self):
+        from unittest.mock import patch
+
+        with patch.object(
+            CourseAdministrator, 'delete', side_effect=RuntimeError('boom')):
+            resp = self._delete([self.course_admin.id])
+
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.json()
+        self.assertIn('failed unexpectedly', payload['message'])
+        self.assertNotIn('left in place', payload['message'])
+        self.assertTrue(
+            CourseAdministrator.objects.filter(id=self.course_admin.id).exists())

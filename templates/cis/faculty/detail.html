@@ -26,7 +26,16 @@
         });
     }
 
-    function do_bulk_action(action, dt) {
+    // This helper used to be declared as a plain top-level "do_bulk_action"
+    // function. The Course(s) tab below now loads
+    // myce_tenant_configs/staticfiles/js/bulk_action.js (via its shared table
+    // partial), which assigns the shared window.do_bulk_action(url, action,
+    // dt, method) global. Keeping the old name here would be a hoisted
+    // page-level declaration that silently shadows that global for every
+    // table's bulk-action buttons on this page (see the identical rename
+    // already done on cis/templates/cis/faculty/index.html and
+    // cis/templates/cis/teachers/teachers.html), so it is renamed.
+    function do_legacy_bulk_action(action, dt) {
 
         if(!dt.rows('.selected').any()) {
             alert("Please select a row and try again.")

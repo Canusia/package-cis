@@ -6,7 +6,6 @@ from collections import defaultdict
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.urls import reverse
-from django.utils.safestring import mark_safe
 
 from cis.utils import active_academic_year
 from myce.component_registry.faculty_coordinator import faculty_coordinator_tabs  # noqa: F401
@@ -16,13 +15,52 @@ from myce.component_registry.faculty_coordinator import faculty_coordinator_tabs
                               template='cis/faculty/tabs/_courses.html',
                               active=True)
 def courses_tab(request, record):
-    # mark_safe: this URL carries a '&' and is interpolated into a JS string
-    # literal in the fragment. Without it Django emits '&amp;', which browsers
-    # do NOT decode inside JS strings, so the filter param would be lost and
-    # the table would list every CourseAdministrator row.
-    return {'course_administrator_url': mark_safe(
+    """CourseAdministrator rows for this coordinator only, via the shared
+    faculty_coords_table service's 'faculty_coords_detail' variant -- the
+    same row shape and bulk actions (Change Status, Delete) as the By Course
+    tab on /ce/faculty_coordinators/, scoped with the same
+    faculty_coordinator_user_id param that tab's api already supports
+    (cis/views/faculty.py's CourseAdministratorViewSet.get_queryset).
+
+    No mark_safe needed here: the api_url is embedded via json.dumps into
+    opts_json and output with |safe by the partial, not interpolated
+    directly into a JS string literal -- json.dumps does not HTML-escape
+    '&', so it survives Django autoescaping without help.
+    """
+    from cis.services.table_configs import get_table_config
+
+    build = get_table_config('faculty_coords_table').build_config
+    api_url = (
         '/ce/api/course_administrator?format=datatables'
-        f'&faculty_coordinator_user_id={record.user.id}')}
+        f'&faculty_coordinator_user_id={record.user.id}')
+
+    return {
+        'course_administrator_table': build(
+            variant='faculty_coords_detail',
+            api_url=api_url,
+            parent_id=str(record.id),
+            bulk_actions={
+                'change_course_administrator_status': {
+                    'label': 'Change Status',
+                    'icon': 'fas fa-edit',
+                    'btn_class': 'btn-primary',
+                    'confirm': None,
+                },
+                'delete_course_administrator': {
+                    'label': 'Delete',
+                    'icon': 'fas fa-trash',
+                    'btn_class': 'btn-danger',
+                    'method': 'POST',
+                    'confirm': (
+                        'Delete the selected course assignment(s)? '
+                        'The faculty coordinator record and the user '
+                        'account are NOT deleted.'
+                    ),
+                },
+            },
+            bulk_actions_url=reverse('cis:faculty_bulk_actions'),
+        ),
+    }
 
 
 # --------------------------------------------------------------------------

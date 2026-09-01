@@ -114,11 +114,14 @@ class FacultyCoordinatorLazyTabTests(TestCase):
             self.assertTrue(meta['lazy'], f'{slug} should be lazy')
 
     # --- courses ---
-    def test_courses_fragment_has_table_and_own_init(self):
+    def test_courses_fragment_uses_the_shared_table_partial(self):
+        """No more hand-written .DataTable({...}) -- the fragment now includes
+        the shared myce_tenant_configs faculty table partial, same as the By
+        Course tab on /ce/faculty_coordinators/."""
         html = self._fragment('courses')
         self.assertIn('id="table_course_administrator"', html)
-        self.assertIn('DataTable(', html)
-        self.assertIn('window.refreshTable', html)
+        self.assertNotIn('.DataTable(', html)
+        self.assertIn('initFacultyCoordsTable(', html)
 
     def test_courses_fragment_is_a_bare_partial(self):
         html = self._fragment('courses')
@@ -129,6 +132,24 @@ class FacultyCoordinatorLazyTabTests(TestCase):
         html = self._fragment('courses')
         self.assertIn('&faculty_coordinator_user_id=', html)
         self.assertNotIn('&amp;faculty_coordinator_user_id=', html)
+
+    def test_courses_fragment_has_change_status_and_delete_bulk_actions(self):
+        html = self._fragment('courses')
+        self.assertIn('change_course_administrator_status', html)
+        self.assertIn('delete_course_administrator', html)
+
+    def test_courses_fragment_select_column_is_first(self):
+        """The pre-refactor table bound DataTables Select to 'td:first-child'
+        while its first column was Course -- selection landed on the wrong
+        cell. The shared table always puts a real 'select' column first."""
+        from myce_tenant_configs.services.faculty_coords_table import _PROFILES
+        self.assertEqual(_PROFILES['faculty_coords_detail']['columns'][0], 'select')
+
+    def test_add_new_button_still_present(self):
+        html = self._fragment('courses')
+        self.assertIn('ajax-add_new', html)
+        self.assertIn('data-model="faculty_course_administrator"', html)
+        self.assertIn(f'data-parent="{self.record.id}"', html)
 
     # --- class_sections ---
     def test_class_sections_fragment_renders_sections_table(self):
@@ -202,3 +223,14 @@ class FacultyCoordinatorDetailPageTests(TestCase):
 
     def test_edit_status_action_still_present(self):
         self.assertContains(self._get(), 'do_ajax_action')
+
+    def test_page_level_do_bulk_action_is_not_shadowing_the_shared_global(self):
+        """The Course(s) tab now loads bulk_action.js (via the shared table
+        partial), which assigns window.do_bulk_action. A page-level
+        `function do_bulk_action(...)` declared on this page is a hoisted
+        global and would silently shadow that assignment for every table's
+        bulk-action buttons on the page -- see the identical rename already
+        done on faculty/index.html and teachers/teachers.html."""
+        html = self._get().content.decode()
+        self.assertNotIn('function do_bulk_action(', html)
+        self.assertIn('function do_legacy_bulk_action(', html)

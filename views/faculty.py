@@ -177,7 +177,19 @@ def index(request):
                         'btn_class': 'btn-primary',
                         'confirm': None,
                     },
+                    'delete_course_administrator': {
+                        'label': 'Delete',
+                        'icon': 'fas fa-trash',
+                        'btn_class': 'btn-danger',
+                        'method': 'POST',
+                        'confirm': (
+                            'Delete the selected course assignment(s)? '
+                            'The faculty coordinator record and the user '
+                            'account are NOT deleted.'
+                        ),
+                    },
                 },
+                bulk_actions_url=reverse('cis:faculty_bulk_actions'),
                 filter_form_selector='#faculty_filter',
             ),
             'faculty_dangling_table': build_faculty_dangling_table_config(
@@ -422,8 +434,8 @@ def do_bulk_action(request):
     if action == 'change_course_administrator_status':
         return manage_course_administrator_status(request)
 
-    if action != 'delete':
-        # Checked before the delete branch's own POST-only guard so an
+    if action not in ('delete', 'delete_course_administrator'):
+        # Checked before either delete branch's own POST-only guard so an
         # unknown action over GET is rejected here and never reaches any
         # mutation.
         return JsonResponse({
@@ -437,7 +449,10 @@ def do_bulk_action(request):
             'message': 'Delete requires POST.',
         }, status=405)
 
-    return do_faculty_coordinator_bulk_delete(request)
+    if action == 'delete':
+        return do_faculty_coordinator_bulk_delete(request)
+
+    return do_course_administrator_bulk_delete(request)
 
 
 def do_faculty_coordinator_bulk_delete(request):
@@ -494,6 +509,73 @@ def do_faculty_coordinator_bulk_delete(request):
         revoke_access(FACULTY, user)
 
     message = f'Deleted {deleted} faculty coordinator record(s).'
+    if left_in_place:
+        message += f' {left_in_place} record(s) left in place (still referenced elsewhere).'
+    if errored:
+        message += f' {errored} record(s) failed unexpectedly.'
+
+    return JsonResponse({
+        'status': 'success',
+        'message': message,
+        'action': 'reload_page',
+    })
+
+
+def do_course_administrator_bulk_delete(request):
+    """Delete selected CourseAdministrator records -- a course *assignment*,
+    not the coordinator record or the account.
+
+    ids[] are CourseAdministrator ids, which are UUIDs -- like
+    FacultyCoordinator ids above, unlike the CustomUser integer ids
+    do_dangling_bulk_action (below) uses.
+
+    Reuses the same op as the single-record path,
+    cis.views.course.delete_course_administrator_role: record.delete().
+    CourseAdministrator.user is a PROTECT FK *from* this row *to* CustomUser
+    (not the other way around), and nothing else points at CourseAdministrator
+    with PROTECT, so deleting this row never cascades into the
+    FacultyCoordinator, the CustomUser, or the Course -- only the one
+    course-assignment row is removed. The ProtectedError guard below is kept
+    for parity with every other bulk-delete in this module, in case a future
+    relation adds one.
+    """
+    from django.db.models import ProtectedError
+
+    ids = request.POST.getlist('ids[]')
+
+    valid_ids = []
+    for record_id in ids:
+        try:
+            valid_ids.append(uuid.UUID(str(record_id)))
+        except (ValueError, AttributeError, TypeError):
+            # Malformed id (e.g. a stale/forged value) -- skip rather than
+            # 500ing on a bad UUID.
+            continue
+
+    deleted = left_in_place = errored = 0
+    for record_id in valid_ids:
+        try:
+            record = CourseAdministrator.objects.get(pk=record_id)
+        except CourseAdministrator.DoesNotExist:
+            continue
+
+        try:
+            record.delete()
+        except ProtectedError:
+            # The well-understood, ordinary reason a delete cannot proceed --
+            # counted separately from an unexpected failure below so the
+            # operator isn't told the wrong reason for the failure.
+            left_in_place += 1
+            continue
+        except Exception:
+            logger.exception(
+                'Unexpected error deleting CourseAdministrator %s', record_id)
+            errored += 1
+            continue
+
+        deleted += 1
+
+    message = f'Deleted {deleted} course assignment(s).'
     if left_in_place:
         message += f' {left_in_place} record(s) left in place (still referenced elsewhere).'
     if errored:
