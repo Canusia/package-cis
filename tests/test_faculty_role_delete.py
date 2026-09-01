@@ -328,3 +328,45 @@ class BulkDeleteRoleRevocationTests(FacultyRoleFixtureMixin, TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertFalse(
             FacultyCoordinator.objects.filter(id=self.coord_b.id).exists())
+
+
+class BulkDeleteButtonWiringTests(FacultyRoleFixtureMixin, TestCase):
+    """Which table's bulk_actions the 'delete' action is attached to on the
+    rendered /ce/faculty_coordinators/ page.
+
+    The endpoint-level tests above (BulkDeleteRoleRevocationTests) prove
+    do_faculty_coordinator_bulk_delete is correct once it receives
+    FacultyCoordinator ids. They never checked which table's Delete button
+    actually sends those ids -- the button was previously wired to
+    faculty_coords_table (CourseAdministrator rows, api /ce/api/course_administrator),
+    so clicking it would send CourseAdministrator ids into an endpoint that
+    expects FacultyCoordinator ids: both are UUIDs, so the id guard passes,
+    the lookup matches nothing, and it silently reports zero deleted.
+    """
+
+    def setUp(self):
+        self.build_fixture()
+
+    def tearDown(self):
+        self.tear_down_fixture()
+
+    def test_delete_action_is_on_the_faculty_table(self):
+        resp = self.client.get(reverse('cis:faculty_coordinators'))
+        self.assertEqual(resp.status_code, 200)
+
+        faculty_table = resp.context['faculty_table']
+        self.assertEqual(
+            faculty_table['bulk_actions'] and set(faculty_table['bulk_actions']),
+            {'delete'},
+        )
+
+    def test_delete_action_is_not_on_the_course_administrator_table(self):
+        resp = self.client.get(reverse('cis:faculty_coordinators'))
+        self.assertEqual(resp.status_code, 200)
+
+        faculty_coords_table = resp.context['faculty_coords_table']
+        self.assertNotIn('delete', faculty_coords_table['bulk_actions'] or {})
+        self.assertIn(
+            'change_course_administrator_status',
+            faculty_coords_table['bulk_actions'],
+        )

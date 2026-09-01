@@ -151,6 +151,20 @@ def index(request):
                 variant='faculty_index',
                 api_url='/ce/api/faculty?format=datatables',
                 details_prefix='/ce/faculty_coordinator/',
+                bulk_actions={
+                    'delete': {
+                        'label': 'Delete',
+                        'icon': 'fas fa-trash',
+                        'btn_class': 'btn-danger',
+                        'method': 'POST',
+                        'confirm': (
+                            'Delete the selected faculty coordinator record(s) '
+                            'and their course-coordinator rows and notes? '
+                            'The user account is NOT deleted.'
+                        ),
+                    },
+                },
+                bulk_actions_url=reverse('cis:faculty_bulk_actions'),
             ),
             'faculty_coords_table': build_faculty_coords_table_config(
                 variant='faculty_coords_index',
@@ -162,17 +176,6 @@ def index(request):
                         'icon': 'fas fa-edit',
                         'btn_class': 'btn-primary',
                         'confirm': None,
-                    },
-                    'delete': {
-                        'label': 'Delete',
-                        'icon': 'fas fa-trash',
-                        'btn_class': 'btn-danger',
-                        'method': 'POST',
-                        'confirm': (
-                            'Delete the selected faculty coordinator record(s) '
-                            'and their course-coordinator rows and notes? '
-                            'The user account is NOT deleted.'
-                        ),
                     },
                 },
                 filter_form_selector='#faculty_filter',
