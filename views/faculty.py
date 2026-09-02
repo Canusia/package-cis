@@ -154,6 +154,11 @@ def index(request):
             'menu': menu,
             'api_url': '/ce/api/faculty?format=datatables',
             'course_administrator_url': '/ce/api/course_administrator?format=datatables',
+            # Drive the All Faculty status filter from the model rather than
+            # hardcoding the options in the template: a new status value then
+            # appears in the dropdown automatically instead of being silently
+            # unfilterable until someone notices.
+            'faculty_status_options': FacultyCoordinator.STATUS_OPTIONS,
             'accessible_campuses': get_accessible_campuses(request.user),
             'default_campus': get_default_campus(request.user),
             'faculty_table': build_faculty_table_config(

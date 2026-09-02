@@ -47,8 +47,9 @@
                                             <label class="mr-2 mb-0">Status:</label>
                                             <select class="form-control" name="status">
                                                 <option value="">All</option>
-                                                <option value="Active">Active</option>
-                                                <option value="Inactive">Inactive</option>
+                                                {% for value, label in faculty_status_options %}
+                                                <option value="{{ value }}">{{ label }}</option>
+                                                {% endfor %}
                                             </select>
                                         </form>
                                     </div>
