@@ -94,9 +94,18 @@ class FacultyViewSet(viewsets.ReadOnlyModelViewSet):
         # has no campus, and gating through course assignments would hide
         # faculty who administer no courses. Ordered so server-side pagination
         # is stable across pages.
-        return FacultyCoordinator.objects.select_related(
+        qs = FacultyCoordinator.objects.select_related(
             'user', 'department',
         ).order_by('user__last_name', 'user__first_name')
+
+        # Status filter for the All Faculty tab's filter form. Guarded: an
+        # unrecognized value (typo, tampering) narrows to zero rows via a
+        # plain CharField comparison rather than raising; empty/"all" means
+        # no filter.
+        status = self.request.GET.get('status', '').strip()
+        if status and status.lower() != 'all':
+            qs = qs.filter(status__iexact=status)
+        return qs
 
 
 class DanglingFacultyViewSet(viewsets.ReadOnlyModelViewSet):
@@ -165,6 +174,7 @@ def index(request):
                     },
                 },
                 bulk_actions_url=reverse('cis:faculty_bulk_actions'),
+                filter_form_selector='#all_faculty_filter',
             ),
             'faculty_coords_table': build_faculty_coords_table_config(
                 variant='faculty_coords_index',

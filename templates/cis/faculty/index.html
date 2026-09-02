@@ -41,6 +41,18 @@
                     <div class="bg-white border border-top-0">
                         <div class="card border-top-0">
                             <div class="card-body">
+                                <div class="card mb-3">
+                                    <div class="card-body bg-gray-200">
+                                        <form id="all_faculty_filter" class="form-inline filter mb-3">
+                                            <label class="mr-2 mb-0">Status:</label>
+                                            <select class="form-control" name="status">
+                                                <option value="">All</option>
+                                                <option value="Active">Active</option>
+                                                <option value="Inactive">Inactive</option>
+                                            </select>
+                                        </form>
+                                    </div>
+                                </div>
                                 {% include faculty_table.partial_template with config=faculty_table %}
                             </div>
                         </div>
