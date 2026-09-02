@@ -128,11 +128,6 @@ class SIS_Subscription(models.Model):
         return self.message['id']
 
     @property
-    def ce_url(self):
-        return reverse_lazy('cis:sis_message_details', kwargs={
-            'record_id': self.id})
-
-    @property
     def processed_message_sexy(self):
         return '<br>'.join(self.processed_message)
     
@@ -354,9 +349,7 @@ class SIS_SubscriptionSerializer(serializers.ModelSerializer):
     
     student_name = serializers.CharField()
     student_id = serializers.CharField()
-    
-    ce_url = serializers.CharField()
-    
+
     sexy_message = serializers.ListField()
 
     class Meta:
@@ -366,5 +359,4 @@ class SIS_SubscriptionSerializer(serializers.ModelSerializer):
         datatables_always_serialize = [
             # 'student_id',
             'message',
-            'ce_url',
         ]
