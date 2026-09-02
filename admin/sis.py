@@ -3,7 +3,6 @@ from django.contrib.auth.admin import UserAdmin
 
 from cis.models.sis import (
     SIS_Log,
-    SIS_Subscription
 )
 
 class SIS_LogAdmin(admin.ModelAdmin):

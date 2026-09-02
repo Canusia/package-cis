@@ -93,14 +93,6 @@ class Command(BaseCommand):
 
         try:
             call_command(
-                "purge_sis_messages",
-                100
-            )
-        except Exception as e:
-            logger.error(e)
-
-        try:
-            call_command(
                 "prune_db_task_results",
                 '--min-age-days=30'
             )

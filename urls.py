@@ -30,12 +30,6 @@ from cis.api.student import (
 from cis.views.comparison import comparison_data
 
 
-from cis.views.sis_messages import (
-    SIS_SubscriptionViewSet,
-    index as sis_messages_index,
-    detail as sis_message_details
-)
-
 from cis.views.sis_logs import (
     SIS_LogViewSet,
     detail as sis_log_details,
@@ -444,7 +438,6 @@ router_viewsets = {
 
     'cronlog': CronLogViewSet,
 
-    'sis_messages': SIS_SubscriptionViewSet,
     'sis_logs': SIS_LogViewSet,
 
     'credential-expiry': CredentialExpiryViewSet,
@@ -485,16 +478,6 @@ urlpatterns = [
         'student/bulk_actions',
         user_passes_test(user_has_cis_role, login_url='/')(student_bulk_actions),
         name='student_bulk_actions'
-    ),
-    path(
-        'student/sis_messages',
-        user_passes_test(user_has_cis_role, login_url='/')(sis_messages_index),
-        name='sis_messages'
-    ),
-    path(
-        'student/sis_message/<int:record_id>',
-        user_passes_test(user_has_cis_role, login_url='/')(sis_message_details),
-        name='sis_message_details'
     ),
     path(
         'student/sis_logs',
