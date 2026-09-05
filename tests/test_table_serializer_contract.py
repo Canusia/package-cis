@@ -384,23 +384,28 @@ FROZEN_PATHS = {
 # one renders blank in production right now; freezing them here records the
 # gap and stops it being mistaken for something Phase E broke.
 #
-# Two different causes, and only the first is a bug:
+# Three causes, and the first two are bugs (see ewu#72):
 #
-#   real gaps -- the table asks for a field its serializer never had:
-#     /ce/students/       students_table.js reads current_state_balance and
-#                         current_student_balance; StudentSerializer has
-#                         neither.
-#     /ce/students/notes/ the column header itself says data-data="ce_url",
-#                         but StudentNoteSerializer has no ce_url -- the JS
-#                         reads student.ce_url. A column, not just a callback.
-#     /ce/highschool_admins/  reads `since` and
-#                         meta.manage_student_recommendation;
-#                         HighSchoolAdministratorSerializer exposes neither.
+#   trimmed away -- the field exists and the serializer would emit it, but no
+#   rendered column names it, so DatatablesRenderer._filter_unused_fields()
+#   drops it before the render callback that wanted it ever runs. The cure is
+#   datatables_always_serialize, which is exactly what it is for:
+#     /ce/students/          current_student_balance (Student model field);
+#                            StudentSerializer's always-serialize list omits it.
+#     /ce/highschool_admins/ `since` and `meta` (HSAdministratorPosition model
+#                            fields); HighSchoolAdministratorSerializer has no
+#                            always-serialize list at all.
 #
-#   shared-JS noise -- one *_table.js serves several profiles across several
-#   feeds, so a `row.<path>` grep attributes another profile's fields to this
-#   one. instructors_table.js alone backs the teacher, teacher-course and
-#   highschool-teacher feeds. Not bugs; nothing reads these on this table.
+#   does not exist anywhere -- the reference is simply wrong:
+#     /ce/students/       current_state_balance appears nowhere in cis.
+#     /ce/students/notes/ the column header says data-data="ce_url", but no
+#                         ce_url exists on StudentNote; the JS reads
+#                         student.ce_url. A column, not just a callback.
+#
+#   shared-JS noise (not a bug) -- one *_table.js serves several profiles
+#   across several feeds, so a `row.<path>` grep attributes another profile's
+#   fields to this one. instructors_table.js alone backs the teacher,
+#   teacher-course and highschool-teacher feeds; nothing reads these here.
 KNOWN_UNANSWERED = {
     '/ce/students/': ['current_state_balance', 'current_student_balance'],
     '/ce/students/notes/': ['ce_url'],
