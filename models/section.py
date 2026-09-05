@@ -1868,27 +1868,32 @@ class StudentRegistration(models.Model):
 
     @property
     def has_signed_student_agreement(self):
+        # eager.annotate_registration_flags() supplies this as a subquery on
+        # the feeds; None means the caller did not annotate (#67).
+        annotated = getattr(self, '_has_signed_student_agreement', None)
+        if annotated is not None:
+            return annotated
         from cis.models.student import StudentAgreement
         return StudentAgreement.has_signed(self.student, self.class_section.term.id)
 
     @property
     def has_signed_student_agreement_pretty(self):
-        from cis.models.student import StudentAgreement
-        has_signed = StudentAgreement.has_signed(self.student, self.class_section.term.id)
-        if has_signed:
-            return 'Received'
-        return 'Pending'
+        # Reads the property so it picks up the annotation too; it used to
+        # repeat the has_signed() call and pay for it a second time.
+        return 'Received' if self.has_signed_student_agreement else 'Pending'
 
     @property
     def has_signed_parent_consent(self):
+        # See has_signed_student_agreement.
+        annotated = getattr(self, '_has_signed_parent_consent', None)
+        if annotated is not None:
+            return annotated
         from cis.models.student import ParentConsent
         return ParentConsent.has_signed(self.student, self.class_section.term.id)
     
     @property
     def has_signed_parent_consent_pretty(self):
-        from cis.models.student import ParentConsent
-        signed = ParentConsent.has_signed(self.student, self.class_section.term.id)
-        return 'Received' if signed else 'Pending'
+        return 'Received' if self.has_signed_parent_consent else 'Pending'
 
     @property
     def is_held_for_parent_consent(self):
@@ -2321,6 +2326,12 @@ class StudentRegistration(models.Model):
         override = _tenant_registration_override('has_recommendation')
         if override is not None:
             return override(self)
+
+        # The annotation is consulted only after the override, so a tenant's
+        # policy always wins over the stock subquery (#67).
+        annotated = getattr(self, '_has_recommendation', None)
+        if annotated is not None:
+            return annotated
 
         from django.db.models import Q
         from cis.models.student import StudentRecommendation

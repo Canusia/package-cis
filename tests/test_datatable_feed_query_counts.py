@@ -343,21 +343,23 @@ class DataTableFeedQueryCountTests(TestCase):
     # per-row work no plan can remove. The feeds that carry one are the ones
     # whose serializers dereference things that are not relations at all:
     #
-    #   class_section_notes (2)  is_a_co_req and has_visit_to_other_section on
-    #                      the nested section. The section feed itself annotates
-    #                      both away, but this feed reaches its section through
-    #                      select_related, and a join cannot carry an
-    #                      annotation -- it needs the Prefetch conversion.
-    #   registration (5)   the two above through class_section, plus
-    #                      StudentRegistration.has_signed_parent_consent,
-    #                      has_signed_student_agreement and has_recommendation().
+    #   registration (1)   StudentRegistration.has_recommendation(), and only
+    #   drop_wd_req (1)    on a tenant that overrides it. The property consults
+    #                      its tenant override before the annotation -- which
+    #                      terms cover a registration is deployment policy --
+    #                      and this tenant defines one in
+    #                      myce_tenant_configs/services/registration.py. On a
+    #                      tenant without an override the annotation applies and
+    #                      both feeds are flat, which is why
+    #                      annotate_registration_flags() skips the annotation
+    #                      rather than computing an EXISTS nothing reads.
     #
-    # Every other feed, class_section included, must stay flat at 0.
+    # Every other feed must stay flat at 0.
     FEEDS = (
         ('class_section', ClassSection,
          eager.with_class_section_related, ClassSectionSerializer, 3, 0),
         ('class_section_notes', ClassSectionNote,
-         eager.with_class_section_note_related, ClassSectionNoteSerializer, 5, 2),
+         eager.with_class_section_note_related, ClassSectionNoteSerializer, 3, 0),
         ('course', Course,
          eager.with_course_related, CourseSerializer, 1, 0),
         ('course-notes', CourseNote,
@@ -371,9 +373,9 @@ class DataTableFeedQueryCountTests(TestCase):
         ('highschool-teacher', TeacherHighSchool,
          eager.with_teacher_highschool_related, HighSchoolTeacherSerializer, 1, 0),
         ('registration', StudentRegistration,
-         eager.with_registration_related, StudentRegistrationSerializer, 8, 5),
+         eager.with_registration_related, StudentRegistrationSerializer, 5, 1),
         ('drop_wd_req', StudentDropRequest,
-         eager.with_drop_request_related, StudentDropRequestSerializer, 8, 5),
+         eager.with_drop_request_related, StudentDropRequestSerializer, 5, 1),
         # The nine #67 filed under "the rest as they surface". Every one is a
         # flat serializer over FKs, so all of them must be marginal 0 -- a
         # non-zero result here means a hidden property, not an acceptable cost.
@@ -618,20 +620,34 @@ class PlanCompositionTests(TestCase):
         self.assertTrue(set(eager.course_select_related('course__')) <= paths)
         self.assertTrue(set(eager.teacher_select_related('teacher__')) <= paths)
 
-    def test_registration_plan_embeds_the_class_section_and_student_plans(self):
-        paths = set(eager.registration_select_related())
+    def test_registration_plan_embeds_the_student_plan(self):
         self.assertTrue(
-            set(eager.class_section_select_related('class_section__')) <= paths)
-        self.assertTrue(
-            set(eager.student_select_related('student__')) <= paths)
+            set(eager.student_select_related('student__'))
+            <= set(eager.registration_select_related()))
 
-    def test_drop_request_plan_embeds_the_registration_plan(self):
-        """The drop feed's serializer nests the whole registration, so its
-        plan has to inherit every path the registration plan gains."""
+    def test_registration_reaches_class_section_through_a_prefetch(self):
+        """Not select_related: a join cannot carry the section's annotated
+        is_a_co_req / has_visit_to_other_section flags."""
+        self.assertNotIn(
+            'class_section', set(eager.registration_select_related()))
+        lookups = eager.registration_prefetch_related()
+        section = [p for p in lookups
+                   if getattr(p, 'prefetch_through', None) == 'class_section']
+        self.assertEqual(len(section), 1, 'no class_section Prefetch')
+        self.assertIn(
+            '_is_a_co_req', section[0].queryset.query.annotations,
+            'the prefetched section queryset is not annotated')
+
+    def test_drop_request_reaches_the_registration_through_a_prefetch(self):
+        """The drop feed nests the whole registration, whose has_signed_*
+        flags are annotations -- so it inherits the Prefetch, not a join."""
         qs = eager.with_drop_request_related(StudentDropRequest.objects.all())
-        paths = set(qs.query.select_related or {})
-        self.assertIn('registration', paths)
-        self.assertIn('student', paths)
+        self.assertIn('student', set(qs.query.select_related or {}))
+        registration = [p for p in qs._prefetch_related_lookups
+                        if getattr(p, 'prefetch_through', None) == 'registration']
+        self.assertEqual(len(registration), 1, 'no registration Prefetch')
+        self.assertIn('_has_signed_parent_consent',
+                      registration[0].queryset.query.annotations)
 
 
 class ClassSectionFlagAnnotationTests(TestCase):
@@ -722,3 +738,115 @@ class ClassSectionFlagAnnotationTests(TestCase):
             getattr(section, '_has_visit_to_other_section', None),
             'the visit annotation was not applied; is the app-config lookup '
             'using the dotted name instead of the label?')
+
+
+class RegistrationFlagAnnotationTests(TestCase):
+    """The annotated sign-off checks must agree with the properties.
+
+    Asserted on an unsigned registration and a fully-signed one, because an
+    Exists() that always returned False would satisfy a one-sided fixture.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        # FeedFixture already signs everything for its own student, so the
+        # signed row is the fixture as-built and the unsigned row is a second
+        # graph with those three rows removed.
+        cls.signed = FeedFixture.build()
+        cls.registration = FeedFixture.build()
+        student = cls.registration.student
+        StudentAgreement.objects.filter(student=student).delete()
+        ParentConsent.objects.filter(student=student).delete()
+        StudentRecommendation.objects.filter(student=student).delete()
+
+    def _annotated(self, pk):
+        return eager.with_registration_related(
+            StudentRegistration.objects.filter(pk=pk)).get()
+
+    def test_the_fixture_exercises_both_answers(self):
+        bare = StudentRegistration.objects.get(pk=self.signed.pk)
+        self.assertTrue(bare.has_signed_student_agreement)
+        self.assertTrue(bare.has_signed_parent_consent)
+        self.assertTrue(bare.has_recommendation())
+        unsigned = StudentRegistration.objects.get(pk=self.registration.pk)
+        self.assertFalse(unsigned.has_signed_student_agreement)
+        self.assertFalse(unsigned.has_signed_parent_consent)
+        self.assertFalse(unsigned.has_recommendation())
+
+    def test_annotation_and_property_agree(self):
+        for label, pk in (('unsigned', self.registration.pk),
+                          ('signed', self.signed.pk)):
+            with self.subTest(row=label):
+                annotated = self._annotated(pk)
+                bare = StudentRegistration.objects.get(pk=pk)
+                self.assertEqual(annotated.has_signed_student_agreement,
+                                 bare.has_signed_student_agreement)
+                self.assertEqual(annotated.has_signed_parent_consent,
+                                 bare.has_signed_parent_consent)
+                self.assertEqual(annotated.has_recommendation(),
+                                 bare.has_recommendation())
+
+    def test_the_pretty_variants_follow_the_annotation(self):
+        annotated = self._annotated(self.signed.pk)
+        with CaptureQueriesContext(connection) as captured:
+            self.assertEqual(
+                annotated.has_signed_student_agreement_pretty, 'Received')
+            self.assertEqual(
+                annotated.has_signed_parent_consent_pretty, 'Received')
+        self.assertEqual(len(captured.captured_queries), 0)
+
+    def test_annotated_flags_cost_no_queries(self):
+        registration = self._annotated(self.signed.pk)
+        with CaptureQueriesContext(connection) as captured:
+            registration.has_signed_student_agreement
+            registration.has_signed_parent_consent
+        self.assertEqual(len(captured.captured_queries), 0)
+
+    def test_has_recommendation_is_annotated_only_without_an_override(self):
+        """This tenant defines has_recommendation in
+        myce_tenant_configs/services/registration.py, and the property consults
+        the override first -- so annotating would make the database evaluate a
+        correlated EXISTS per row that nothing ever reads. The annotation is
+        skipped here and present where no override exists."""
+        from unittest import mock
+
+        from cis.models.section import _tenant_registration_override
+
+        self.assertIsNotNone(
+            _tenant_registration_override('has_recommendation'),
+            'this test asserts the overridden case; the tenant no longer '
+            'defines has_recommendation')
+        annotations = eager.with_registration_related(
+            StudentRegistration.objects.all()).query.annotations
+        self.assertNotIn('_has_recommendation', annotations)
+
+        # eager imports _tenant_registration_override inside the function, so
+        # patch the source it resolves through rather than the name.
+        with mock.patch('cis.services.tenant_services.get_tenant_override',
+                        return_value=None):
+            annotations = eager.with_registration_related(
+                StudentRegistration.objects.all()).query.annotations
+            self.assertIn('_has_recommendation', annotations)
+
+    def test_a_tenant_override_still_wins_over_the_annotation(self):
+        """has_recommendation is tenant policy -- which terms cover a
+        registration differs per deployment. The annotation must never
+        silently replace a tenant's own rule."""
+        from unittest import mock
+
+        registration = self._annotated(self.signed.pk)
+        with mock.patch('cis.models.section._tenant_registration_override',
+                        return_value=lambda reg: 'tenant-said-so'):
+            self.assertEqual(
+                registration.has_recommendation(), 'tenant-said-so')
+
+    def test_the_flags_still_serialize_the_way_the_table_reads_them(self):
+        """registrations_table.js compares has_signed_* to the string 'True'
+        and has_recommendation to 'Yes'."""
+        annotated = StudentRegistrationSerializer(self._annotated(self.signed.pk)).data
+        bare = StudentRegistrationSerializer(
+            StudentRegistration.objects.get(pk=self.signed.pk)).data
+        for field in ('has_signed_student_agreement',
+                      'has_signed_parent_consent', 'has_recommendation'):
+            with self.subTest(field=field):
+                self.assertEqual(annotated[field], bare[field])

@@ -237,10 +237,58 @@ def student_select_related(prefix=''):
     return prefixed(prefix, ('user', 'highschool__district'))
 
 
+def annotate_registration_flags(records):
+    """Replace the three per-row sign-off checks with subqueries.
+
+    has_signed_student_agreement, has_signed_parent_consent and
+    has_recommendation() are .exists() calls against StudentAgreement,
+    ParentConsent and StudentRecommendation, keyed on (student, term). The
+    registration properties always pass a term_id, so each takes the simple
+    branch of its classmethod -- a two-column existence check, which is exactly
+    an Exists() subquery.
+
+    Underscore aliases, for the same reason as the class-section flags: the
+    properties are data descriptors and Django cannot setattr over them.
+    """
+    from django.db.models import Q
+
+    from cis.models.section import _tenant_registration_override
+    from cis.models.student import (
+        ParentConsent, StudentAgreement, StudentRecommendation)
+
+    annotations = {
+        '_has_signed_student_agreement': Exists(
+            StudentAgreement.objects.filter(
+                student=OuterRef('student'),
+                term=OuterRef('class_section__term'))),
+        '_has_signed_parent_consent': Exists(
+            ParentConsent.objects.filter(
+                student=OuterRef('student'),
+                term=OuterRef('class_section__term'))),
+    }
+
+    # has_recommendation is tenant policy -- which terms cover a registration
+    # differs per deployment -- and the property consults its override before
+    # the annotation. On a tenant that defines one (ewu does, in
+    # myce_tenant_configs/services/registration.py) the annotation would never
+    # be read, so skip it rather than make the database evaluate a correlated
+    # EXISTS per row for nothing. The stock rule matches on either the
+    # section's term or its registration_term, mirroring the property's Q().
+    if _tenant_registration_override('has_recommendation') is None:
+        annotations['_has_recommendation'] = Exists(
+            StudentRecommendation.objects.filter(
+                Q(student=OuterRef('student'))
+                & (Q(term=OuterRef('class_section__registration_term'))
+                   | Q(term=OuterRef('class_section__term')))))
+
+    return records.annotate(**annotations)
+
+
 def registration_select_related(prefix=''):
+    # class_section is deliberately absent: it moves to an annotated Prefetch
+    # in registration_prefetch_related(). See the note there.
     return (
-        class_section_select_related(prefix + 'class_section__')
-        + student_select_related(prefix + 'student__')
+        student_select_related(prefix + 'student__')
         + prefixed(prefix, ('highschool__district', 'reviewer__user'))
     )
 
@@ -257,31 +305,52 @@ def registration_prefetch_related(prefix=''):
     # `fields = '__all__'` renders these M2Ms as PrimaryKeyRelatedField(many=True),
     # so only the pk is used -- but the rows carry whole SIS request/response
     # payloads, so fetch just the id and keep the response out of memory.
+    from cis.models.section import ClassSection
+
+    # class_section comes through a Prefetch rather than select_related,
+    # because a join cannot carry an annotation and the section's own
+    # is_a_co_req / has_visit_to_other_section flags are annotations. The trade
+    # is one extra constant query for two per row; it pays from the second row
+    # on, and these pages render fifty.
     return (
-        class_section_prefetch_related(prefix + 'class_section__')
-        + (
-            Prefetch(prefix + 'sis_log', queryset=SIS_Log.objects.only('id')),
-            Prefetch(prefix + 'mirror_logs', queryset=EthosLog.objects.only('id')),
-        )
+        Prefetch(
+            prefix + 'class_section',
+            queryset=with_class_section_related(ClassSection.objects.all()),
+        ),
+        Prefetch(prefix + 'sis_log', queryset=SIS_Log.objects.only('id')),
+        Prefetch(prefix + 'mirror_logs', queryset=EthosLog.objects.only('id')),
     )
 
 
 def with_registration_related(records):
-    return records.select_related(
-        *registration_select_related()
-    ).prefetch_related(
-        *registration_prefetch_related()
+    return annotate_registration_flags(
+        records.select_related(
+            *registration_select_related()
+        ).prefetch_related(
+            *registration_prefetch_related()
+        )
     ).order_by('-created_on')
 
 
 def with_drop_request_related(records):
     """StudentDropRequestSerializer(student, registration -> the whole
-    registration nest)."""
+    registration nest).
+
+    `registration` comes through a Prefetch for the same reason class_section
+    does inside it: the registration's has_signed_* flags are annotations, and
+    a select_related join cannot carry one. Without this the drop feed pays
+    those checks per row even though the registration feed does not.
+    """
+    from cis.models.section import StudentRegistration
+
     return records.select_related(
         *student_select_related('student__'),
-        *registration_select_related('registration__'),
     ).prefetch_related(
-        *registration_prefetch_related('registration__')
+        Prefetch(
+            'registration',
+            queryset=with_registration_related(
+                StudentRegistration.objects.all()),
+        )
     )
 
 
@@ -290,11 +359,19 @@ def with_drop_request_related(records):
 # --------------------------------------------------------------------------
 
 def with_class_section_note_related(records):
-    """ClassSectionNoteSerializer(createdby, class_section)."""
-    return records.select_related(
-        'createdby', *class_section_select_related('class_section__')
-    ).prefetch_related(
-        *class_section_prefetch_related('class_section__')
+    """ClassSectionNoteSerializer(createdby, class_section).
+
+    Same Prefetch-instead-of-join reasoning as the registration plan: the
+    section's flags are annotations, and a select_related join cannot carry
+    one.
+    """
+    from cis.models.section import ClassSection
+
+    return records.select_related('createdby').prefetch_related(
+        Prefetch(
+            'class_section',
+            queryset=with_class_section_related(ClassSection.objects.all()),
+        )
     )
 
 
