@@ -308,29 +308,23 @@ class Course(MyCEBaseModel):
     
     @property
     def uploads(self):
-        from cis.models.course import CourseUpload
-
-        return CourseUpload.objects.filter(
-            course=self
-        )
+        # The reverse manager, not a fresh queryset: this is what lets
+        # prefetch_related('courseupload_set') reach all three properties.
+        # CourseSerializer declares all three, so a fresh queryset here cost
+        # three queries per row on every feed that nests a course (#67).
+        return self.courseupload_set.all()
 
     @property
     def syllabi_uploads(self):
-        from cis.models.course import CourseUpload
-
-        return CourseUpload.objects.filter(
-            course=self,
-            media_type='Syllabus Template'
-        )
+        # Narrows the rows `uploads` already cached, in Python. A .filter()
+        # on the manager would issue its own query and miss the prefetch.
+        return [u for u in self.uploads
+                if u.media_type == 'Syllabus Template']
 
     @property
     def shared_resource_uploads(self):
-        from cis.models.course import CourseUpload
-
-        return CourseUpload.objects.filter(
-            course=self,
-            media_type__in=['Course Resource', 'Shared Resource']
-        )
+        return [u for u in self.uploads
+                if u.media_type in ('Course Resource', 'Shared Resource')]
 
     def __str__(self):
         return f"{self.name}"

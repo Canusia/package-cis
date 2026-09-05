@@ -59,6 +59,25 @@ class Teacher(models.Model):
     
     @property
     def active_courses(self):
+        # TeacherSerializer declares this, and it walks Teacher ->
+        # TeacherHighSchool -> TeacherCourseCertificate, which no single
+        # relation path covers. So read the cache that
+        # eager.teacher_prefetch_related() sets up when there is one, and fall
+        # back to the original query when there is not (#67).
+        #
+        # The for/else matters: a partially-prefetched teacher (sections
+        # cached, certificates not) breaks out and re-queries rather than
+        # silently returning a short list.
+        cache = getattr(self, '_prefetched_objects_cache', {})
+        if 'teacherhighschool_set' in cache:
+            certificates = []
+            for ths in cache['teacherhighschool_set']:
+                inner = getattr(ths, '_prefetched_objects_cache', {})
+                if 'teachercoursecertificate_set' not in inner:
+                    break
+                certificates.extend(inner['teachercoursecertificate_set'])
+            else:
+                return sorted(certificates, key=lambda c: c.course.name)
         return TeacherCourseCertificate.objects.filter(
             # status__iexact='active',
             teacher_highschool__teacher=self

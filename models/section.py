@@ -562,9 +562,9 @@ class ClassSection(MyCEBaseModel):
 
     @property
     def syllabi(self):
-        return ClassSectionSyllabi.objects.filter(
-            class_sections__in=[self]
-        )
+        # Reverse manager so prefetch_related('classsectionsyllabi_set') can
+        # reach it; the previous fresh queryset defeated any prefetch (#67).
+        return self.classsectionsyllabi_set.all()
 
     @property
     def syllabi_links(self):
