@@ -343,21 +343,21 @@ class DataTableFeedQueryCountTests(TestCase):
     # per-row work no plan can remove. The feeds that carry one are the ones
     # whose serializers dereference things that are not relations at all:
     #
-    #   class_section (3)  ClassSection.is_a_co_req (a reverse existence check),
-    #                      has_visit_to_other_section (a cross-app VisitSchedule
-    #                      lookup keyed on term+teacher+course), and the
-    #                      enrolment counts.
-    #   registration (6)   the three above, reached through class_section, plus
+    #   class_section_notes (2)  is_a_co_req and has_visit_to_other_section on
+    #                      the nested section. The section feed itself annotates
+    #                      both away, but this feed reaches its section through
+    #                      select_related, and a join cannot carry an
+    #                      annotation -- it needs the Prefetch conversion.
+    #   registration (5)   the two above through class_section, plus
     #                      StudentRegistration.has_signed_parent_consent,
     #                      has_signed_student_agreement and has_recommendation().
     #
-    # Removing those needs annotations, not eager loading, so they are recorded
-    # rather than fixed here. Every other feed must stay flat at 0.
+    # Every other feed, class_section included, must stay flat at 0.
     FEEDS = (
         ('class_section', ClassSection,
-         eager.with_class_section_related, ClassSectionSerializer, 5, 3),
+         eager.with_class_section_related, ClassSectionSerializer, 3, 0),
         ('class_section_notes', ClassSectionNote,
-         eager.with_class_section_note_related, ClassSectionNoteSerializer, 5, 3),
+         eager.with_class_section_note_related, ClassSectionNoteSerializer, 5, 2),
         ('course', Course,
          eager.with_course_related, CourseSerializer, 1, 0),
         ('course-notes', CourseNote,
@@ -371,9 +371,9 @@ class DataTableFeedQueryCountTests(TestCase):
         ('highschool-teacher', TeacherHighSchool,
          eager.with_teacher_highschool_related, HighSchoolTeacherSerializer, 1, 0),
         ('registration', StudentRegistration,
-         eager.with_registration_related, StudentRegistrationSerializer, 9, 6),
+         eager.with_registration_related, StudentRegistrationSerializer, 8, 5),
         ('drop_wd_req', StudentDropRequest,
-         eager.with_drop_request_related, StudentDropRequestSerializer, 9, 6),
+         eager.with_drop_request_related, StudentDropRequestSerializer, 8, 5),
         # The nine #67 filed under "the rest as they surface". Every one is a
         # flat serializer over FKs, so all of them must be marginal 0 -- a
         # non-zero result here means a hidden property, not an acceptable cost.
@@ -632,3 +632,93 @@ class PlanCompositionTests(TestCase):
         paths = set(qs.query.select_related or {})
         self.assertIn('registration', paths)
         self.assertIn('student', paths)
+
+
+class ClassSectionFlagAnnotationTests(TestCase):
+    """The annotated flags must agree with the properties they replace.
+
+    An annotation that returns the wrong answer faster is worse than the N+1
+    it removed, so agreement is asserted before cost -- and on rows where each
+    flag is True as well as False, since an Exists() that always returns False
+    would pass a one-sided test.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.registration = FeedFixture.build()
+        cls.section = cls.registration.class_section
+        # A second section in the same course/term/teacher, carrying the visit,
+        # so `section` has a visit to another section and `sibling` does not.
+        cls.sibling = ClassSection.objects.create(
+            course=cls.section.course, term=cls.section.term,
+            registration_term=cls.section.term, campus=cls.section.campus,
+            highschool=cls.section.highschool, teacher=cls.section.teacher,
+            class_number='sibling', section_number='0001',
+            external_sis_id=uuid.uuid4(), meta={})
+        # And a co-req parent, so `section` is a co-req of something.
+        cls.parent = ClassSection.objects.create(
+            course=cls.section.course, term=cls.section.term,
+            registration_term=cls.section.term, campus=cls.section.campus,
+            highschool=cls.section.highschool, teacher=cls.section.teacher,
+            class_number='parent', section_number='0002',
+            external_sis_id=uuid.uuid4(), meta={})
+        cls.parent.co_reqs.add(cls.section)
+
+        from class_visit.models import VisitSchedule
+        visit = VisitSchedule.objects.create()
+        visit.class_sections.add(cls.sibling)
+
+    def _annotated(self, pk):
+        return eager.with_class_section_related(
+            ClassSection.objects.filter(pk=pk)).get()
+
+    def test_the_fixture_exercises_both_answers(self):
+        """Guard on the guard: if every row answered False, the agreement test
+        below would pass for an annotation that never returns True."""
+        bare = ClassSection.objects.get(pk=self.section.pk)
+        self.assertTrue(bare.is_a_co_req)
+        self.assertTrue(bare.has_visit_to_other_section)
+        other = ClassSection.objects.get(pk=self.parent.pk)
+        self.assertFalse(other.is_a_co_req)
+
+    def test_annotation_and_property_agree_on_every_row(self):
+        for section in ClassSection.objects.order_by('id'):
+            with self.subTest(section=section.class_number):
+                annotated = self._annotated(section.pk)
+                bare = ClassSection.objects.get(pk=section.pk)
+                self.assertEqual(
+                    annotated.is_a_co_req, bare.is_a_co_req,
+                    'is_a_co_req disagrees')
+                self.assertEqual(
+                    annotated.has_visit_to_other_section,
+                    bare.has_visit_to_other_section,
+                    'has_visit_to_other_section disagrees')
+
+    def test_annotated_flags_cost_no_queries(self):
+        section = self._annotated(self.section.pk)
+        with CaptureQueriesContext(connection) as captured:
+            section.is_a_co_req
+            section.has_visit_to_other_section
+        self.assertEqual(len(captured.captured_queries), 0)
+
+    def test_the_flags_still_serialize_as_strings(self):
+        """Six JS files compare these to the string 'True'. An annotated bool
+        must still render through CharField the same way a property did."""
+        annotated = ClassSectionSerializer(self._annotated(self.section.pk)).data
+        bare = ClassSectionSerializer(
+            ClassSection.objects.get(pk=self.section.pk)).data
+        self.assertEqual(annotated['is_a_co_req'], bare['is_a_co_req'])
+        self.assertEqual(annotated['is_a_co_req'], 'True')
+        self.assertEqual(annotated['has_visit_to_other_section'],
+                         bare['has_visit_to_other_section'])
+        self.assertEqual(annotated['has_visit_to_other_section'], 'True')
+
+    def test_the_visit_annotation_is_actually_applied_on_this_deploy(self):
+        """class_visit ships nested here ('class_visit.class_visit'), so an
+        apps.is_installed('class_visit') check reads False and would drop the
+        annotation without failing anything else."""
+        section = self._annotated(self.section.pk)
+        self.assertIsNotNone(
+            getattr(section, '_has_visit_to_other_section', None),
+            'the visit annotation was not applied; is the app-config lookup '
+            'using the dotted name instead of the label?')

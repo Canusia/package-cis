@@ -36,7 +36,7 @@ child one -- ``course_select_related('class_section__course__')`` -- so the
 paths are written once and reused at any depth.
 """
 
-from django.db.models import Prefetch
+from django.db.models import Exists, OuterRef, Prefetch
 
 
 def prefixed(prefix, paths):
@@ -139,13 +139,25 @@ def class_section_select_related(prefix=''):
 
 
 def class_section_prefetch_related(prefix=''):
-    from cis.models.section import ClassSection
+    from cis.models.section import ClassSection, ClassSectionSyllabi
+
+    # ClassSection.syllabi reads this cache. The inner prefetch is not
+    # optional: ClassSectionSyllabiBareBoneSerializer sets fields = '__all__',
+    # which renders the class_sections M2M as PrimaryKeyRelatedField(many=True)
+    # and costs a query per syllabus row. Only the pks are used, so fetch only
+    # the id -- the same reasoning as sis_log / mirror_logs on the
+    # registration plan.
+    syllabi = Prefetch(
+        prefix + 'classsectionsyllabi_set',
+        queryset=ClassSectionSyllabi.objects.prefetch_related(
+            Prefetch('class_sections',
+                     queryset=ClassSection.objects.only('id'))),
+    )
 
     return (
         course_prefetch_related(prefix + 'course__')
         + campus_prefetch_related(prefix + 'campus__')
-        # ClassSection.syllabi reads this cache.
-        + prefixed(prefix, ('classsectionsyllabi_set',))
+        + (syllabi,)
         + teacher_prefetch_related(prefix + 'teacher__')
         + (
             # ClassSectionCoReqSerializer reads obj.course.name and
@@ -158,11 +170,61 @@ def class_section_prefetch_related(prefix=''):
     )
 
 
+def annotate_class_section_flags(records):
+    """Replace the two per-row existence checks with subqueries.
+
+    ``ClassSection.is_a_co_req`` and ``has_visit_to_other_section`` are
+    ``.exists()`` calls, not relations, so no select_related or prefetch
+    reaches them -- they cost a query per row on every feed that serializes a
+    section, and through class_section on the registration feed too.
+
+    The aliases are underscore-prefixed on purpose: a property is a data
+    descriptor on the class, so an annotation named ``is_a_co_req`` would fail
+    with "can't set attribute" when Django instantiates the row.
+
+    Both fields are serialized through ``CharField(read_only=True)``, which
+    str()s the value, so an annotated bool still renders as "True"/"False" --
+    the strings six JS files compare against.
+    """
+    from django.apps import apps
+
+    from cis.models.section import ClassSection
+
+    annotations = {
+        '_is_a_co_req': Exists(
+            ClassSection.objects.filter(co_reqs__id=OuterRef('pk'))),
+    }
+    # class_visit is optional per tenant; cis only ever imports it lazily.
+    # Look it up by *label*, not by apps.is_installed(): that takes the dotted
+    # app name, and under the editable-submodule layout the name is
+    # 'class_visit.class_visit' while the label stays 'class_visit'. Checking
+    # is_installed('class_visit') is silently False on this deploy, which
+    # leaves the annotation off and the N+1 in place.
+    # `visitschedule` is the reverse query name of VisitSchedule's unnamed
+    # class_sections M2M.
+    try:
+        apps.get_app_config('class_visit')
+        has_class_visit = True
+    except LookupError:
+        has_class_visit = False
+    if has_class_visit:
+        siblings = ClassSection.objects.filter(
+            term=OuterRef('term'),
+            teacher=OuterRef('teacher'),
+            course=OuterRef('course'),
+            visitschedule__isnull=False,
+        ).exclude(pk=OuterRef('pk'))
+        annotations['_has_visit_to_other_section'] = Exists(siblings)
+    return records.annotate(**annotations)
+
+
 def with_class_section_related(records):
-    return records.select_related(
-        *class_section_select_related()
-    ).prefetch_related(
-        *class_section_prefetch_related()
+    return annotate_class_section_flags(
+        records.select_related(
+            *class_section_select_related()
+        ).prefetch_related(
+            *class_section_prefetch_related()
+        )
     )
 
 

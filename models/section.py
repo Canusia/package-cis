@@ -299,6 +299,11 @@ class ClassSection(MyCEBaseModel):
     
     @property
     def is_a_co_req(self):
+        # eager.annotate_class_section_flags() supplies this as a subquery on
+        # the feeds; None means the caller did not annotate (#67).
+        annotated = getattr(self, '_is_a_co_req', None)
+        if annotated is not None:
+            return annotated
         return ClassSection.objects.filter(co_reqs__id=self.id).exists()
     
     def add_note(self, createdby=None, note='', meta=None):
@@ -584,6 +589,10 @@ class ClassSection(MyCEBaseModel):
 
     @property
     def has_visit_to_other_section(self):
+        # See is_a_co_req: annotated by the feeds, queried otherwise (#67).
+        annotated = getattr(self, '_has_visit_to_other_section', None)
+        if annotated is not None:
+            return annotated
         VisitSchedule = _get_visit_schedule_model()
         return VisitSchedule.objects.filter(
             class_sections__term=self.term,
