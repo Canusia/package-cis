@@ -21,7 +21,13 @@ from alerts.models import Alert
 
 @receiver(post_save, sender=StudentNote)
 def student_note_added(sender, instance, created, **kwargs):
-    if created and instance.meta.get('type') == 'response':
+    # meta is a JSONField(default=dict), but a caller can still hand it None,
+    # and a dict without a 'type' key returns None from .get() -- which the
+    # membership tests below then iterate. This runs on post_save, so either
+    # one escapes the caller's save() after the row is written (#69).
+    note_type = (instance.meta or {}).get('type') or ''
+
+    if created and note_type == 'response':
         parent_note = StudentNote.objects.get(pk=instance.parent)
 
         alert = Alert()
@@ -32,13 +38,13 @@ def student_note_added(sender, instance, created, **kwargs):
         alert.message = f'<a class="display_in_modal" href="{link}">New note added to {instance.student} by {instance.createdby}'
         alert.save()
 
-    if created and 'to_parent' in instance.meta.get('type'):
+    if created and 'to_parent' in note_type:
         instance.send_to_parent()
 
-    if created and 'to_student' in instance.meta.get('type'):
+    if created and 'to_student' in note_type:
         instance.send_to_student()
 
-    if created and 'sms_to_student' in instance.meta.get('type'):
+    if created and 'sms_to_student' in note_type:
         instance.send_as_sms()
 
 @receiver(post_save, sender=TeacherNote)
@@ -46,7 +52,12 @@ def teacher_note_added(sender, instance, created, **kwargs):
     if not instance.meta:
         instance.meta = {}
 
-    if created and instance.meta.get('type') == 'response':
+    # Same guard as student_note_added: .get('type') is None for a note
+    # whose meta lacks the key, and the membership test below iterates it
+    # (#69).
+    note_type = (instance.meta or {}).get('type') or ''
+
+    if created and note_type == 'response':
         parent_note = TeacherNote.objects.get(pk=instance.parent)
 
         alert = Alert()
@@ -57,7 +68,7 @@ def teacher_note_added(sender, instance, created, **kwargs):
         alert.message = f'<a class="display_in_modal" href="{link}">New note added to {instance.teacher} by {instance.createdby}'
         alert.save()
 
-    if created and 'to_instructor' in instance.meta.get('type'):
+    if created and 'to_instructor' in note_type:
         instance.send_as_email()
 
 @receiver(post_save, sender=TeacherApplicationNote)

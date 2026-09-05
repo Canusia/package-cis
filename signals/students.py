@@ -28,10 +28,18 @@ def create_new_parentconsent(sender, instance, created, **kwargs):
     """
     if created:
         email_settings = registration_email.from_db()
-        email_template = Template(email_settings['parent_consent_recv'])
 
+        # The is_active check comes first, and the template is read with a
+        # default. from_db() returns {} when the setting was never registered
+        # -- a fresh environment, or a tenant stood up before
+        # register_settings runs -- and this is a post_save receiver, so the
+        # KeyError escaped the caller's save() after the consent row had been
+        # written (#70).
         if email_settings.get('is_active', 'No') == 'No':
             return
+
+        email_template = Template(
+            email_settings.get('parent_consent_recv', ''))
 
         context = Context({
             'parent_name': instance.student.parent_first_name,

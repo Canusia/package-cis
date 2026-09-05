@@ -29,7 +29,10 @@ def hs_position_updated(sender, instance, created, **kwargs):
     hsadmin = instance.hsadmin
     active_hs = hsadmin.get_highschools()
 
-    group = Group.objects.get(name='highschool_admin')
+    # get_or_create, not get: init_groups makes this group, but a deployment
+    # that has not run it yet would raise Group.DoesNotExist out of a
+    # post_save receiver, after the position row was written (#71).
+    group, _ = Group.objects.get_or_create(name='highschool_admin')
     if not active_hs:
         hsadmin.user.groups.remove(group)
     else:
