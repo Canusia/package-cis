@@ -193,36 +193,49 @@ TABLE_CONTRACTS = (
      'missing_recommendation_index', 'students_table', 'student', {}),
     ('cohort detail > instructors', 'instructors_table', 'cohort_instructors',
      'instructors_table', 'teacher-course', {}),
+    # The last profiles on a trimmed feed. registration_detail is the one
+    # package-cis#11 was filed for: it renders a `pay_type` column that the
+    # v0.0.26 enumeration dropped, and it was not under contract -- which is
+    # exactly why nothing here caught it.
+    ('registration detail > tab', 'registrations_table', 'registration_detail',
+     'registrations_table', 'registration', {'term': '-3'}),
+    ('hs student detail > registrations', 'registrations_table',
+     'hs_student_detail', 'registrations_table', 'registration', {'term': '-3'}),
+    ('faculty coordinator detail > sections', 'sections_table',
+     'faculty_coordinator_detail', 'sections_table', 'class_section',
+     {'term': '-1'}),
+    ('term detail > sections by course', 'sections_table',
+     'term_detail_by_course', 'sections_table', 'class_section', {'term': '-1'}),
+    ('term detail > sections by highschool', 'sections_table',
+     'term_detail_by_hs', 'sections_table', 'class_section', {'term': '-1'}),
+    ('student detail > files (student profile)', 'support_docs_table',
+     'student_detail', 'support_docs_table', 'student_support_docs', {}),
 )
 
+# Bytes per row each feed may ship: measured against this fixture, plus
+# headroom. `before` is the same measurement against the untrimmed
+# serializers, so the pair shows what the four dropped aggregates were costing
+# -- large where they dominate (the section, registration and instructor
+# feeds), nil where the bulk is nested scalars the trimmed serializers keep on
+# purpose. Three budgets sit *above* their before-figure, which is the honest
+# signal that trimming buys nothing on those feeds: the price of not
+# enumerating fields, and the right price.
+#
+#                                     feed   budget   before
 PAYLOAD_BUDGETS = {
-    # Ceilings on the narrowed implementation, set from measurement against
-    # this fixture with ~15% headroom, and deliberately not the production-data
-    # projections that motivated the work: the fixture's generated names and
-    # UUID-heavy ce_urls make each row proportionally larger than seeded data,
-    # and a budget is only meaningful against the thing that measures it. The
-    # path contract above pins *what* is in the response; this pins how much.
-    #
-    # `before` is the same measurement against the original serializers.
-    #                                  budget   before
-    'registration':                      1800,  # 14424
-    'class_section':                     1000,  # 10798
-    'teacher-course':                     700,  #  5719
-    'highschool-teacher':                 450,  #  5042
-    'course_administrator':               350,  #  4354
-    'student_support_docs':               700,  #  2636
-    'student-note':                       450,  #  2457
-    'hs-administrator-position':          500,  #  1180  (+since, +meta)
-    'student':                            560,  #  1192
-    'hs-administrator-access-request':    270,  #   732
-    'teacher':                            280,  #   571
-    'course':                             300,  #   512
-    # The control: /ce/highschools/ renders only flat columns, so its nested
-    # district is a top-level field that drf-datatables already drops. It gets
-    # no narrowed serializer and has passed since the first run -- which is
-    # what makes every number above credible as a measurement of something
-    # real rather than an artefact of how the test renders.
-    'highschool':                         320,  #   289, unchanged
+    'registration':                         8080,  # 14424
+    'class_section':                        4090,  # 10798
+    'teacher-course':                       2730,  # 5719
+    'highschool-teacher':                    780,  # 5042
+    'course_administrator':                 1800,  # 4354
+    'student_support_docs':                 2940,  # 2636
+    'student-note':                         2730,  # 2457
+    'student':                              1280,  # 1192
+    'hs-administrator-position':            1280,  # 1180
+    'hs-administrator-access-request':       750,  # 732
+    'teacher':                               660,  # 571
+    'course':                                500,  # 512
+    'highschool':                            340,  # 289
 }
 
 
@@ -276,17 +289,20 @@ def render_feed(basename, columns, extra, user, length=20):
 
 # The contract: every path each table's registries name that its feed answers.
 #
-# Frozen as data rather than derived at assert time. Deriving it live would make
-# the contract self-fulfilling after narrowing, and the derivation is not
-# trustworthy on its own -- one *_table.js serves several profiles across
-# several feeds, so a row.<path> grep attributes one profile's fields to
-# another. test_the_registries_still_say_what_the_contract_was_built_from
-# re-derives and compares, so a new column or callback fails there first.
+# Frozen as data rather than derived at assert time -- deriving it live would
+# make it self-fulfilling, and the derivation is untrustworthy on its own,
+# because one *_table.js serves several profiles across several feeds and a
+# row.<path> grep attributes one profile's fields to another.
+# test_the_registries_still_say_what_the_contract_was_built_from re-derives and
+# compares, so a new column or callback fails there first.
 #
-# Every profile of a narrowed feed belongs here, not just the ones the index
-# pages use: one narrowed serializer serves them all. Missing seven of them on
-# the first pass cost two regressions -- `since` on the HS-admin roles tab and
-# profile_dirty_at on the dirty-students table both stopped rendering.
+# All 31 profiles that read a trimmed feed are covered. Under the v0.0.26
+# design, where the serializers enumerated their fields, a profile left out of
+# this list meant a silently blank column -- that cost profile_dirty_at,
+# `since` and pay_type (package-cis#11). The serializers subclass their
+# originals now and give up only four aggregates, so an unlisted profile can
+# only break by naming a path *inside* one of those. The coverage stays
+# because it is what demonstrates that.
 FROZEN_PATHS = {
     '/ce/students/': [
         'account_verified', 'application_status',
@@ -333,8 +349,7 @@ FROZEN_PATHS = {
         'highschool.name', 'hsadmin.id', 'hsadmin.user.email',
         'hsadmin.user.first_name', 'hsadmin.user.last_login',
         'hsadmin.user.last_name', 'hsadmin.user.primary_phone',
-        'id', 'meta.manage_student_recommendation', 'position.name',
-        'since', 'status',
+        'id', 'position.name', 'status',
     ],
     '/ce/highschool_admin/access_requests': [
         'email', 'highschool.name', 'id', 'name', 'status',
@@ -362,12 +377,11 @@ FROZEN_PATHS = {
         'user.last_name',
     ],
     'highschool detail > instructors': [
-        'id', 'status', 'teacher.ce_url', 'teacher.user.email',
+        'status', 'teacher.ce_url', 'teacher.user.email',
         'teacher.user.first_name', 'teacher.user.last_name',
     ],
     'course detail > instructors': [
-        'course.name', 'id', 'status',
-        'teacher_highschool.highschool.name',
+        'id', 'status', 'teacher_highschool.highschool.name',
         'teacher_highschool.teacher.user.last_name',
     ],
     'course detail > offerings': [
@@ -379,8 +393,6 @@ FROZEN_PATHS = {
     ],
     'course detail > administrators': [
         'course.name', 'faculty_id', 'id', 'role', 'status',
-        'user.email', 'user.first_name', 'user.last_login',
-        'user.last_name',
     ],
     'section detail > students': [
         'ce_url', 'changed_on', 'class_section.class_number',
@@ -419,8 +431,7 @@ FROZEN_PATHS = {
     ],
     'student detail > files': [
         'description', 'document_type', 'id', 'media', 'status',
-        'student.ce_url', 'student.user.first_name',
-        'student.user.last_name', 'term.label', 'uploaded_on',
+        'term.label', 'uploaded_on',
     ],
     'academic year detail > sections': [
         'ce_url', 'class_number', 'co_reqs', 'course.credit_hours',
@@ -446,46 +457,113 @@ FROZEN_PATHS = {
     'hs admin detail > roles': [
         'highschool.name', 'hsadmin.id', 'hsadmin.user.email',
         'hsadmin.user.first_name', 'hsadmin.user.last_name',
-        'hsadmin.user.primary_phone', 'id',
-        'meta.manage_student_recommendation', 'position.name',
+        'hsadmin.user.primary_phone', 'id', 'position.name',
         'since', 'status',
     ],
     '/ce/students/ dirty': [
-        'account_verified', 'application_status',
-        'application_status_display', 'ce_url', 'highschool.name',
-        'id', 'parent_email', 'profile_dirty_at', 'sis_sent_on',
-        'user.email', 'user.first_name', 'user.last_name',
+        'application_status', 'application_status_display',
+        'ce_url', 'highschool.name', 'id', 'parent_email',
+        'profile_dirty_at', 'sis_sent_on', 'user.email',
+        'user.first_name', 'user.last_name',
     ],
     '/ce/students/ missing recommendation': [
-        'account_verified', 'application_status',
-        'application_status_display', 'ce_url', 'highschool.name',
-        'id', 'parent_email', 'sis_sent_on', 'user.email',
-        'user.first_name', 'user.last_name',
+        'application_status', 'application_status_display',
+        'ce_url', 'highschool.name', 'id', 'parent_email',
+        'sis_sent_on', 'user.email', 'user.first_name',
+        'user.last_name',
     ],
     'cohort detail > instructors': [
         'course.name', 'id', 'status',
         'teacher_highschool.highschool.name',
         'teacher_highschool.teacher.user.last_name',
     ],
+    'registration detail > tab': [
+        'ce_url', 'changed_on', 'class_section.class_number',
+        'class_section.course.catalog_number',
+        'class_section.course.cohort.designator',
+        'class_section.course.credit_hours',
+        'class_section.course.name', 'class_section.course.title',
+        'class_section.highschool.name',
+        'class_section.highschool_course_name',
+        'class_section.prereq', 'class_section.section_number',
+        'class_section.term.code', 'class_section.term.label',
+        'created_on', 'grade', 'has_recommendation',
+        'has_signed_parent_consent', 'has_signed_student_agreement',
+        'id', 'needs_mirroring', 'needs_recommendation', 'pay_type',
+        'pay_type_pretty', 'reviewed_on', 'status', 'status_pretty',
+        'student.highschool.name', 'student.user.first_name',
+        'student.user.last_name', 'student.user.psid',
+        'submitted_grade',
+    ],
+    'hs student detail > registrations': [
+        'changed_on', 'class_section.class_number',
+        'class_section.course.catalog_number',
+        'class_section.course.cohort.designator',
+        'class_section.course.credit_hours',
+        'class_section.course.name', 'class_section.course.title',
+        'class_section.highschool.name',
+        'class_section.highschool_course_name',
+        'class_section.prereq', 'class_section.section_number',
+        'class_section.term.code', 'class_section.term.label',
+        'created_on', 'grade', 'has_recommendation',
+        'has_signed_parent_consent', 'has_signed_student_agreement',
+        'id', 'needs_mirroring', 'needs_recommendation',
+        'pay_type_pretty', 'reviewed_on', 'status', 'status_pretty',
+        'student.highschool.name', 'student.user.first_name',
+        'student.user.last_name', 'student.user.psid',
+        'submitted_grade',
+    ],
+    'faculty coordinator detail > sections': [
+        'ce_url', 'class_number', 'co_reqs', 'course.credit_hours',
+        'course.name', 'course.title', 'highschool.name', 'id',
+        'registration_term.label', 'section_number',
+        'teacher.user.first_name', 'teacher.user.last_name',
+        'term.code', 'term.label',
+    ],
+    'term detail > sections by course': [
+        'ce_url', 'class_number', 'co_reqs', 'course.credit_hours',
+        'course.name', 'course.title', 'highschool.name', 'id',
+        'registration_term.label', 'section_number', 'status',
+        'teacher.user.first_name', 'teacher.user.last_name',
+    ],
+    'term detail > sections by highschool': [
+        'ce_url', 'class_number', 'co_reqs', 'course.credit_hours',
+        'course.name', 'course.title', 'highschool.name', 'id',
+        'registration_term.label', 'section_number', 'status',
+        'teacher.user.first_name', 'teacher.user.last_name',
+    ],
+    'student detail > files (student profile)': [
+        'description', 'id', 'media', 'term.label', 'uploaded_on',
+    ],
 }
 
 
-# Paths a table's registries name that the feed does not answer. Each renders
-# blank; freezing them records the gap so it is not mistaken for breakage, and
-# test_the_known_gaps_have_not_quietly_been_filled fails if one starts working,
-# prompting a move into FROZEN_PATHS.
+# Paths a table's registries name that the feed does not answer. Every one is
+# correct behaviour, not a gap; the test below fails if one starts resolving,
+# so the change gets looked at rather than absorbed.
 #
-# What is left is all one cause, and it is not a bug: instructors_table.js backs
-# the teacher, teacher-course and highschool-teacher feeds across four profiles,
-# so a row.<path> grep attributes each profile's fields to the others. Nothing
-# reads these on the table they are listed under.
+# Three causes:
 #
-# The real gaps that were here are fixed (ewu#72): profile_dirty_at and `since`
-# were Phase E regressions; the notes table's action column declared
-# data-data="ce_url" against a model with no such field; and students_table.js
-# carried two balance column defs no profile could reach, one of them reading a
-# current_state_balance that exists nowhere.
+#   shared JS -- instructors_table.js backs the teacher, teacher-course and
+#   highschool-teacher feeds across four profiles, and support_docs_table.js
+#   two, so a row.<path> grep attributes one profile's fields to the others.
+#   Nothing reads these on the table they are listed under.
+#
+#   correctly trimmed -- the serializer ships the field, but the profile does
+#   not name it as a column and it is not in datatables_always_serialize, so
+#   DatatablesRenderer drops it. Exactly what the original serializers did:
+#   account_verified on the dirty and missing-recommendation student profiles,
+#   `since` on the hs-admins index, term.label on the two term-detail section
+#   profiles, and ce_url on hs_student_detail -- that one deliberately, since
+#   the profile omits the Edit action because it links into /ce/, which HS
+#   admins may not reach.
+#
+#   absent from the fixture -- meta.manage_student_recommendation is served
+#   (the whole `meta` JSONField is), but the fixture row's dict is empty.
 KNOWN_UNANSWERED = {
+    '/ce/highschool_admins/': [
+        'meta.manage_student_recommendation', 'since',
+    ],
     '/ce/instructors/': [
         'course.name', 'teacher.ce_url', 'teacher.user.email',
         'teacher.user.first_name', 'teacher.user.last_name',
@@ -493,16 +571,46 @@ KNOWN_UNANSWERED = {
         'teacher_highschool.teacher',
     ],
     'highschool detail > instructors': [
-        'course.name', 'teacher_highschool.highschool',
+        'course.name', 'id', 'teacher_highschool.highschool',
         'teacher_highschool.teacher',
     ],
     'course detail > instructors': [
-        'teacher.ce_url', 'teacher.user.email',
+        'course.name', 'teacher.ce_url', 'teacher.user.email',
         'teacher.user.first_name', 'teacher.user.last_name',
+    ],
+    'course detail > administrators': [
+        'user.email', 'user.first_name', 'user.last_login',
+        'user.last_name',
+    ],
+    'student detail > files': [
+        'student.ce_url', 'student.user.first_name',
+        'student.user.last_name',
+    ],
+    'hs admin detail > roles': [
+        'meta.manage_student_recommendation',
+    ],
+    '/ce/students/ dirty': [
+        'account_verified',
+    ],
+    '/ce/students/ missing recommendation': [
+        'account_verified',
     ],
     'cohort detail > instructors': [
         'teacher.ce_url', 'teacher.user.email',
         'teacher.user.first_name', 'teacher.user.last_name',
+    ],
+    'hs student detail > registrations': [
+        'ce_url',
+    ],
+    'term detail > sections by course': [
+        'term.label',
+    ],
+    'term detail > sections by highschool': [
+        'term.label',
+    ],
+    'student detail > files (student profile)': [
+        'student.ce_url', 'student.user.first_name',
+        'student.user.last_name',
     ],
 }
 
@@ -588,7 +696,7 @@ SLIMMED_FEEDS = {
     'registration', 'class_section', 'highschool-teacher', 'teacher-course',
     'student', 'student-note', 'student_support_docs',
     'hs-administrator-position', 'course_administrator', 'course', 'teacher',
-    'hs-administrator-access-request',
+    'hs-administrator-access-request', 'drop_wd_req',
 }
 # 'highschool' is absent on purpose: it keeps its original serializer, so
 # there is nothing to compare it against.
@@ -633,13 +741,23 @@ class SlimSerializerMatchesTheOriginalTests(TestCase):
     def test_the_patch_actually_swaps_the_serializer(self):
         """Guard on the guard: if the patch missed, both sides would be the
         narrowed output and every comparison below would trivially pass."""
+        def keys(obj):
+            if isinstance(obj, dict):
+                return sum(1 + keys(v) for v in obj.values())
+            if isinstance(obj, list):
+                return sum(keys(v) for v in obj)
+            return 0
+
         label, module, variant, js, basename, extra = next(
             row for row in TABLE_CONTRACTS if row[4] == 'registration')
         columns, _ = paths_for(module, variant, js)
         slim_rows, full_rows = self._both(basename, columns, extra)
+        # Counted recursively: the trimmed serializers subclass the originals
+        # and keep every top-level field, so the two rows are the same width
+        # at depth 0 and differ only inside the nests.
         self.assertLess(
-            len(slim_rows[0]), len(full_rows[0]),
-            'the full serializer did not produce a wider row; the patch in '
+            keys(slim_rows[0]), keys(full_rows[0]),
+            'the full serializer did not produce a deeper row; the patch in '
             '_both is not reaching the viewset')
 
     def test_every_contracted_value_matches_the_original(self):

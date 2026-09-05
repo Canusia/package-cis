@@ -48,11 +48,19 @@ from cis.views.eager import (
     with_drop_request_related,
 )
 
+from cis.serializers import tables
+
 
 @eager_queryset(with_drop_request_related)
 class StudentDropViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = StudentDropRequestSerializer
     permission_classes = [CIS_user_only|FACULTY_user_only|HSADMIN_user_only]    
+
+    def get_serializer_class(self):
+        # Narrow serializer for the datatables feed only; format=json callers
+        # and the retrieve action keep the full one (#67).
+        return tables.datatables_serializer(
+            self, tables.SlimStudentDropRequestSerializer)
 
     def get_queryset(self):
         term = self.request.GET.get('term', str(active_term().id)).strip()
