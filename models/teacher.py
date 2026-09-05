@@ -85,6 +85,19 @@ class Teacher(models.Model):
 
     @property
     def active_highschools(self):
+        # TeacherSerializer serializes this as a ListField, so it cost a query
+        # per row on every feed that nests a teacher (#67). Same shape as
+        # active_courses above: read the cache eager.teacher_prefetch_related()
+        # sets up, otherwise fall through to the original query.
+        #
+        # The fallback deliberately keeps returning the values_list queryset:
+        # reports/teacher_course_certificate_count.py force_str()s this field
+        # into a CSV column and never prefetches, so its output is unchanged.
+        cache = getattr(self, '_prefetched_objects_cache', {})
+        if 'teacherhighschool_set' in cache:
+            return [ths.highschool.name
+                    for ths in cache['teacherhighschool_set']
+                    if (ths.status or '').lower() == 'in the program']
         return TeacherHighSchool.objects.filter(
             teacher=self,
             status__iexact='in the program'
