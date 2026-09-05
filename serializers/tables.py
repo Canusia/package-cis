@@ -280,6 +280,8 @@ class SlimStudentRowSerializer(SlimTableSerializer):
     graduation_date = serializers.ReadOnlyField()
     parent_email = serializers.ReadOnlyField()
     sis_sent_on = serializers.ReadOnlyField()
+    # Rendered by the dirty-students profile's "Profile Changed" column.
+    profile_dirty_at = serializers.ReadOnlyField()
     user = _UserStudentRow()
     highschool = _Named()
 
@@ -321,12 +323,27 @@ class SlimHSAdministratorSerializer(SlimTableSerializer):
 
 
 class SlimHighSchoolAdministratorSerializer(SlimTableSerializer):
-    """/ce/highschool_admins/ (the hs-administrator-position feed)."""
+    """/ce/highschool_admins/ and the HS-administrator detail Roles tab.
+
+    Both read the hs-administrator-position feed, and the Roles tab renders two
+    columns the index does not -- `since` and the manage-student-recommendation
+    flag out of `meta`.
+    """
     id = serializers.ReadOnlyField()
     status = serializers.ReadOnlyField()
+    since = serializers.ReadOnlyField()
     hsadmin = SlimHSAdministratorSerializer()
     position = _Named()
     highschool = _Named()
+    # Only manage_student_recommendation is read; the rest of the blob stays
+    # out of the response.
+    meta = serializers.SerializerMethodField()
+
+    def get_meta(self, obj):
+        return {
+            'manage_student_recommendation':
+                (obj.meta or {}).get('manage_student_recommendation'),
+        }
 
 
 class SlimCourseAdministratorSerializer(SlimTableSerializer):

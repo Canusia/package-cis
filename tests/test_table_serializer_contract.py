@@ -173,6 +173,26 @@ TABLE_CONTRACTS = (
      'registrations_table', 'registration', {'term': '-3'}),
     ('student detail > files', 'support_docs_table', 'student_detail_ce',
      'support_docs_table', 'student_support_docs', {}),
+    # One narrowed serializer serves every profile of a feed, so every profile
+    # has to be here -- not just the ones the index pages use. These seven were
+    # missed on the first pass and cost a regression: hs_admin_roles renders
+    # `since`, which the narrowed serializer had dropped. Filters are left off
+    # deliberately; the question a contract asks is whether the serializer
+    # answers the profile's paths, not whether the viewset's filter matches.
+    ('academic year detail > sections', 'sections_table',
+     'academic_year_detail', 'sections_table', 'class_section', {'term': '-1'}),
+    ('highschool detail > sections (profile)', 'sections_table',
+     'highschool_detail', 'sections_table', 'class_section', {'term': '-1'}),
+    ('instructor detail > sections (profile)', 'sections_table',
+     'instructor_detail', 'sections_table', 'class_section', {'term': '-1'}),
+    ('hs admin detail > roles', 'hs_admins_table', 'hs_admin_roles',
+     'hs_admins_table', 'hs-administrator-position', {}),
+    ('/ce/students/ dirty', 'students_table', 'dirty_index',
+     'students_table', 'student', {}),
+    ('/ce/students/ missing recommendation', 'students_table',
+     'missing_recommendation_index', 'students_table', 'student', {}),
+    ('cohort detail > instructors', 'instructors_table', 'cohort_instructors',
+     'instructors_table', 'teacher-course', {}),
 )
 
 PAYLOAD_BUDGETS = {
@@ -192,7 +212,7 @@ PAYLOAD_BUDGETS = {
     'course_administrator':               350,  #  4354
     'student_support_docs':               700,  #  2636
     'student-note':                       450,  #  2457
-    'hs-administrator-position':          420,  #  1180
+    'hs-administrator-position':          500,  #  1180  (+since, +meta)
     'student':                            560,  #  1192
     'hs-administrator-access-request':    270,  #   732
     'teacher':                            280,  #   571
@@ -254,6 +274,19 @@ def render_feed(basename, columns, extra, user, length=20):
     return json.loads(response.content).get('data', []), response
 
 
+# The contract: every path each table's registries name that its feed answers.
+#
+# Frozen as data rather than derived at assert time. Deriving it live would make
+# the contract self-fulfilling after narrowing, and the derivation is not
+# trustworthy on its own -- one *_table.js serves several profiles across
+# several feeds, so a row.<path> grep attributes one profile's fields to
+# another. test_the_registries_still_say_what_the_contract_was_built_from
+# re-derives and compares, so a new column or callback fails there first.
+#
+# Every profile of a narrowed feed belongs here, not just the ones the index
+# pages use: one narrowed serializer serves them all. Missing seven of them on
+# the first pass cost two regressions -- `since` on the HS-admin roles tab and
+# profile_dirty_at on the dirty-students table both stopped rendering.
 FROZEN_PATHS = {
     '/ce/students/': [
         'account_verified', 'application_status',
@@ -287,7 +320,7 @@ FROZEN_PATHS = {
     ],
     '/ce/students/notes/': [
         'createdby.first_name', 'createdby.last_name', 'createdon',
-        'media', 'meta.type', 'note', 'student.ce_url',
+        'id', 'media', 'meta.type', 'note', 'student.ce_url',
         'student.highschool.name', 'student.user.first_name',
         'student.user.last_name',
     ],
@@ -300,7 +333,8 @@ FROZEN_PATHS = {
         'highschool.name', 'hsadmin.id', 'hsadmin.user.email',
         'hsadmin.user.first_name', 'hsadmin.user.last_login',
         'hsadmin.user.last_name', 'hsadmin.user.primary_phone',
-        'id', 'position.name', 'status',
+        'id', 'meta.manage_student_recommendation', 'position.name',
+        'since', 'status',
     ],
     '/ce/highschool_admin/access_requests': [
         'email', 'highschool.name', 'id', 'name', 'status',
@@ -345,7 +379,8 @@ FROZEN_PATHS = {
     ],
     'course detail > administrators': [
         'course.name', 'faculty_id', 'id', 'role', 'status',
-        'user.email', 'user.first_name', 'user.last_login', 'user.last_name',
+        'user.email', 'user.first_name', 'user.last_login',
+        'user.last_name',
     ],
     'section detail > students': [
         'ce_url', 'changed_on', 'class_section.class_number',
@@ -387,62 +422,88 @@ FROZEN_PATHS = {
         'student.ce_url', 'student.user.first_name',
         'student.user.last_name', 'term.label', 'uploaded_on',
     ],
+    'academic year detail > sections': [
+        'ce_url', 'class_number', 'co_reqs', 'course.credit_hours',
+        'course.name', 'course.title', 'highschool.name', 'id',
+        'registration_term.label', 'section_number', 'status',
+        'teacher.user.first_name', 'teacher.user.last_name',
+        'term.code', 'term.label',
+    ],
+    'highschool detail > sections (profile)': [
+        'ce_url', 'class_number', 'co_reqs', 'course.credit_hours',
+        'course.name', 'course.title', 'highschool.name', 'id',
+        'registration_term.label', 'section_number',
+        'teacher.user.first_name', 'teacher.user.last_name',
+        'term.code', 'term.label',
+    ],
+    'instructor detail > sections (profile)': [
+        'ce_url', 'class_number', 'co_reqs', 'course.credit_hours',
+        'course.name', 'course.title', 'highschool.name', 'id',
+        'registration_term.label', 'section_number',
+        'teacher.user.first_name', 'teacher.user.last_name',
+        'term.code', 'term.label',
+    ],
+    'hs admin detail > roles': [
+        'highschool.name', 'hsadmin.id', 'hsadmin.user.email',
+        'hsadmin.user.first_name', 'hsadmin.user.last_name',
+        'hsadmin.user.primary_phone', 'id',
+        'meta.manage_student_recommendation', 'position.name',
+        'since', 'status',
+    ],
+    '/ce/students/ dirty': [
+        'account_verified', 'application_status',
+        'application_status_display', 'ce_url', 'highschool.name',
+        'id', 'parent_email', 'profile_dirty_at', 'sis_sent_on',
+        'user.email', 'user.first_name', 'user.last_name',
+    ],
+    '/ce/students/ missing recommendation': [
+        'account_verified', 'application_status',
+        'application_status_display', 'ce_url', 'highschool.name',
+        'id', 'parent_email', 'sis_sent_on', 'user.email',
+        'user.first_name', 'user.last_name',
+    ],
+    'cohort detail > instructors': [
+        'course.name', 'id', 'status',
+        'teacher_highschool.highschool.name',
+        'teacher_highschool.teacher.user.last_name',
+    ],
 }
 
-# Paths a table's registries name that the feed does not answer *today*. Each
-# one renders blank in production right now; freezing them here records the
-# gap and stops it being mistaken for something Phase E broke.
+
+# Paths a table's registries name that the feed does not answer. Each renders
+# blank; freezing them records the gap so it is not mistaken for breakage, and
+# test_the_known_gaps_have_not_quietly_been_filled fails if one starts working,
+# prompting a move into FROZEN_PATHS.
 #
-# Three causes, and the first two are bugs (see ewu#72):
+# What is left is all one cause, and it is not a bug: instructors_table.js backs
+# the teacher, teacher-course and highschool-teacher feeds across four profiles,
+# so a row.<path> grep attributes each profile's fields to the others. Nothing
+# reads these on the table they are listed under.
 #
-#   trimmed away -- the field exists and the serializer would emit it, but no
-#   rendered column names it, so DatatablesRenderer._filter_unused_fields()
-#   drops it before the render callback that wanted it ever runs. The cure is
-#   datatables_always_serialize, which is exactly what it is for:
-#     /ce/students/          current_student_balance (Student model field);
-#                            StudentSerializer's always-serialize list omits it.
-#     /ce/highschool_admins/ `since` and `meta` (HSAdministratorPosition model
-#                            fields); HighSchoolAdministratorSerializer has no
-#                            always-serialize list at all.
-#
-#   does not exist anywhere -- the reference is simply wrong:
-#     /ce/students/       current_state_balance appears nowhere in cis.
-#     /ce/students/notes/ the column header says data-data="ce_url", but no
-#                         ce_url exists on StudentNote; the JS reads
-#                         student.ce_url. A column, not just a callback.
-#
-#   shared-JS noise (not a bug) -- one *_table.js serves several profiles
-#   across several feeds, so a `row.<path>` grep attributes another profile's
-#   fields to this one. instructors_table.js alone backs the teacher,
-#   teacher-course and highschool-teacher feeds; nothing reads these here.
+# The real gaps that were here are fixed (ewu#72): profile_dirty_at and `since`
+# were Phase E regressions; the notes table's action column declared
+# data-data="ce_url" against a model with no such field; and students_table.js
+# carried two balance column defs no profile could reach, one of them reading a
+# current_state_balance that exists nowhere.
 KNOWN_UNANSWERED = {
-    '/ce/students/': ['current_state_balance', 'current_student_balance'],
-    '/ce/students/notes/': ['ce_url'],
-    '/ce/highschool_admins/': [
-        'meta.manage_student_recommendation', 'since',
-    ],
     '/ce/instructors/': [
         'course.name', 'teacher.ce_url', 'teacher.user.email',
         'teacher.user.first_name', 'teacher.user.last_name',
-        'teacher_highschool.highschool', 'teacher_highschool.teacher',
+        'teacher_highschool.highschool',
+        'teacher_highschool.teacher',
     ],
     'highschool detail > instructors': [
-        # `id` moved to FROZEN_PATHS: SlimTeacherHighSchoolSerializer answers
-        # it, where HighSchoolTeacherSerializer's fields = '__all__' did not
-        # survive the renderer's trim.
         'course.name', 'teacher_highschool.highschool',
         'teacher_highschool.teacher',
     ],
     'course detail > instructors': [
-        # `course.name` moved to FROZEN_PATHS for the same reason.
         'teacher.ce_url', 'teacher.user.email',
         'teacher.user.first_name', 'teacher.user.last_name',
     ],
-    # 'course detail > administrators' and 'student detail > files' had their
-    # remaining entries promoted into FROZEN_PATHS: one narrowed serializer
-    # serves every profile of a feed, so the detail variants now answer the
-    # paths their index variants named, where the originals' output did not
-    # survive the renderer's trim.
+    'cohort detail > instructors': [
+        'teacher.ce_url', 'teacher.user.email',
+        'teacher.user.first_name', 'teacher.user.last_name',
+    ],
 }
 
 
