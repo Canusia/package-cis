@@ -272,6 +272,20 @@ class ClassesRegisteredByCampusViewSet(viewsets.ReadOnlyModelViewSet):
         if not term_id:
             term_id = active_term().id
 
+        # PT-fuzz: both ids feed UUIDField lookups (Campus.id, Term.id).
+        # Reject an absent-or-malformed value before it reaches the DB, which
+        # would otherwise raise django.core.exceptions.ValidationError
+        # ('"" is not a valid UUID') -> HTTP 500 for any ce user who calls the
+        # endpoint without params. The only caller (the campus detail page)
+        # always sends a real campus_id, and an unrecognized id genuinely
+        # matches no rows, so return an empty set. Same idiom as the `student`
+        # and `class_section` guards in RegistrationViewSet.
+        try:
+            uuid.UUID(str(campus_id))
+            uuid.UUID(str(term_id))
+        except (ValueError, AttributeError, TypeError):
+            return ClassSection.objects.none()
+
         class_section_ids = StudentRegistration.objects.filter(
             class_section__course__campus__id=campus_id,
             class_section__term__id=term_id

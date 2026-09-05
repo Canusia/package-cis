@@ -372,11 +372,9 @@ class ViewsetAppliesItsPlanTests(TestCase):
 
     # (basename, expects select_related, expects prefetch_related)
     #
-    # `class-registered` needs a campus_id: ClassesRegisteredByCampusViewSet
-    # feeds the raw GET value into a UUIDField lookup, so a bare request
-    # raises ValidationError -> 500. That is a pre-existing missing non-UUID
-    # guard, not something these plans introduce or fix, so the test supplies
-    # a real campus rather than asserting on the crash.
+    # `class-registered` is given a real campus_id so that it returns rows to
+    # assert on; without one it now short-circuits to .none() through the
+    # UUID guard (see ClassesRegisteredUuidGuardTests), which carries no plan.
     #
     # with_highschool_administrator_related is select_related only, and
     # with_class_section_syllabi_related is prefetch only, so the two are
@@ -443,3 +441,49 @@ class ViewsetAppliesItsPlanTests(TestCase):
                         qs._prefetch_related_lookups,
                         f'{basename}: get_queryset() returned a queryset with '
                         f'no prefetch_related; is @eager_queryset missing?')
+
+
+class ClassesRegisteredUuidGuardTests(TestCase):
+    """`/ce/api/class-registered` 500'd on a request without a campus_id.
+
+    ClassesRegisteredByCampusViewSet defaults campus_id to '' and fed it
+    straight into a UUIDField lookup, so any ce user hitting the endpoint bare
+    got a ValidationError. Found while pinning the eager plans (#67); the guard
+    is the same one RegistrationViewSet uses for `student` and `class_section`.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.registration = FeedFixture.build()
+        cls.section = cls.registration.class_section
+        cls.user = CustomUser.objects.create_superuser(
+            username='uuid-guard', email='uuid-guard@example.com', password='x')
+
+    def _queryset(self, **params):
+        from rest_framework.test import APIRequestFactory
+
+        from cis.views.section import ClassesRegisteredByCampusViewSet
+
+        request = APIRequestFactory().get('/x', params)
+        request.user = self.user
+        view = ClassesRegisteredByCampusViewSet()
+        view.request = request
+        return view.get_queryset()
+
+    def test_missing_campus_id_returns_empty_instead_of_raising(self):
+        self.assertEqual(list(self._queryset()), [])
+
+    def test_malformed_campus_id_returns_empty_instead_of_raising(self):
+        self.assertEqual(list(self._queryset(campus_id='not-a-uuid')), [])
+
+    def test_malformed_term_id_returns_empty_instead_of_raising(self):
+        self.assertEqual(
+            list(self._queryset(campus_id=str(self.section.course.campus_id),
+                                term_id='not-a-uuid')),
+            [])
+
+    def test_a_real_campus_still_returns_its_sections(self):
+        rows = self._queryset(
+            campus_id=str(self.section.course.campus_id),
+            term_id=str(self.section.term_id))
+        self.assertEqual([s.pk for s in rows], [self.section.pk])
