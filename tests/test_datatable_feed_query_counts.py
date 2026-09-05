@@ -41,6 +41,15 @@ from cis.models.student import Student
 from cis.models.teacher import (
     Teacher, TeacherCourseCertificate, TeacherHighSchool)
 from cis.models.term import AcademicYear, Term
+from cis.serializers.class_section import ClassSectionSerializer
+from cis.serializers.course import CourseSerializer
+from cis.serializers.highschool import (
+    HighSchoolTeacherSerializer, TeacherCourseSerializer)
+from cis.serializers.note import (
+    ClassSectionNoteSerializer, CourseNoteSerializer, TeacherNoteSerializer)
+from cis.serializers.registration import (
+    StudentDropRequestSerializer, StudentRegistrationSerializer)
+from cis.serializers.teacher import TeacherSerializer
 from cis.views import eager
 
 
@@ -211,13 +220,26 @@ class PrefetchAwarePropertyTests(TestCase):
             sorted(s.pk for s in fresh.syllabi),
             sorted(s.pk for s in cached.syllabi))
 
-    def test_teacher_active_courses_reads_the_prefetch_cache(self):
+    def test_teacher_properties_read_the_prefetch_cache(self):
         teacher = eager.with_teacher_related(
             Teacher.objects.filter(pk=self.teacher.pk)).get()
         with CaptureQueriesContext(connection) as captured:
             courses = list(teacher.active_courses)
+            highschools = list(teacher.active_highschools)
         self.assertEqual(len(captured.captured_queries), 0)
         self.assertEqual(len(courses), 1)
+        self.assertEqual(len(highschools), 1)
+
+    def test_active_highschools_agrees_with_the_unprefetched_path(self):
+        """The un-prefetched branch must keep returning the values_list
+        queryset: the teacher-certificate CSV report force_str()s this field
+        and never prefetches."""
+        fresh = Teacher.objects.get(pk=self.teacher.pk)
+        cached = eager.with_teacher_related(
+            Teacher.objects.filter(pk=self.teacher.pk)).get()
+        self.assertEqual(list(fresh.active_highschools),
+                         list(cached.active_highschools))
+        self.assertNotIsInstance(fresh.active_highschools, list)
 
     def test_teacher_active_courses_still_works_unprefetched(self):
         fresh = Teacher.objects.get(pk=self.teacher.pk)
@@ -236,3 +258,188 @@ class PrefetchAwarePropertyTests(TestCase):
             [c.pk for c in teacher.active_courses],
             [c.pk for c in Teacher.objects.get(
                 pk=self.teacher.pk).active_courses])
+
+
+class DataTableFeedQueryCountTests(TestCase):
+    """Each feed must beat its bare queryset and stay inside a per-row budget.
+
+    `budget` is generous: it exists to catch a serializer or property change
+    that reintroduces an N+1, not to pin today's exact number.
+    """
+
+    ROWS = 5
+
+    # (label, model, plan, serializer, per-row budget, marginal allowance)
+    #
+    # `marginal` is the number of queries each *additional* row is still
+    # allowed to cost, and it is the sharper of the two numbers: everything a
+    # plan eager-loads is a constant, so a non-zero marginal is exactly the
+    # per-row work no plan can remove. The feeds that carry one are the ones
+    # whose serializers dereference things that are not relations at all:
+    #
+    #   class_section (3)  ClassSection.is_a_co_req (a reverse existence check),
+    #                      has_visit_to_other_section (a cross-app VisitSchedule
+    #                      lookup keyed on term+teacher+course), and the
+    #                      enrolment counts.
+    #   registration (6)   the three above, reached through class_section, plus
+    #                      StudentRegistration.has_signed_parent_consent,
+    #                      has_signed_student_agreement and has_recommendation().
+    #
+    # Removing those needs annotations, not eager loading, so they are recorded
+    # rather than fixed here. Every other feed must stay flat at 0.
+    FEEDS = (
+        ('class_section', ClassSection,
+         eager.with_class_section_related, ClassSectionSerializer, 5, 3),
+        ('class_section_notes', ClassSectionNote,
+         eager.with_class_section_note_related, ClassSectionNoteSerializer, 5, 3),
+        ('course', Course,
+         eager.with_course_related, CourseSerializer, 1, 0),
+        ('course-notes', CourseNote,
+         eager.with_course_note_related, CourseNoteSerializer, 1, 0),
+        ('teacher', Teacher,
+         eager.with_teacher_related, TeacherSerializer, 1, 0),
+        ('teacher-notes', TeacherNote,
+         eager.with_teacher_note_related, TeacherNoteSerializer, 1, 0),
+        ('teacher-course', TeacherCourseCertificate,
+         eager.with_teacher_course_related, TeacherCourseSerializer, 2, 0),
+        ('highschool-teacher', TeacherHighSchool,
+         eager.with_teacher_highschool_related, HighSchoolTeacherSerializer, 1, 0),
+        ('registration', StudentRegistration,
+         eager.with_registration_related, StudentRegistrationSerializer, 9, 6),
+        ('drop_wd_req', StudentDropRequest,
+         eager.with_drop_request_related, StudentDropRequestSerializer, 9, 6),
+    )
+
+    @classmethod
+    def setUpTestData(cls):
+        for _ in range(cls.ROWS):
+            FeedFixture.build()
+
+    def test_every_feed_beats_its_bare_queryset(self):
+        for label, model, plan, serializer_class, _, _ in self.FEEDS:
+            with self.subTest(feed=label):
+                rows, bare = _cost(
+                    model.objects.all(), serializer_class, self.ROWS)
+                self.assertEqual(rows, self.ROWS, 'fixture did not build rows')
+                _, planned = _cost(
+                    plan(model.objects.all()), serializer_class, self.ROWS)
+                self.assertLess(
+                    planned, bare / 2,
+                    f'{label}: eager feed used {planned} queries vs {bare} '
+                    f'bare; expected at least 2x better')
+
+    def test_every_feed_stays_within_its_per_row_budget(self):
+        for label, model, plan, serializer_class, budget, _ in self.FEEDS:
+            with self.subTest(feed=label):
+                rows, planned = _cost(
+                    plan(model.objects.all()), serializer_class, self.ROWS)
+                per_row = planned / rows
+                self.assertLessEqual(
+                    per_row, budget,
+                    f'{label}: {per_row:.1f} queries per row exceeds the '
+                    f'budget of {budget}')
+
+    def test_each_extra_row_costs_no_more_than_its_marginal_allowance(self):
+        """The real N+1 check: what does one *more* row cost?
+
+        A plan can look fine at a fixed row count and still be linear -- a
+        per-row query plus a small constant reads the same as a constant plan
+        when you only measure once. Differencing two row counts cancels the
+        constant and leaves the per-row term, which is the thing that turns
+        into seconds on a 100-row page.
+        """
+        for label, model, plan, serializer_class, _, marginal in self.FEEDS:
+            with self.subTest(feed=label):
+                _, few = _cost(plan(model.objects.all()), serializer_class, 2)
+                rows, many = _cost(
+                    plan(model.objects.all()), serializer_class, self.ROWS)
+                per_extra_row = (many - few) / (rows - 2)
+                self.assertLessEqual(
+                    per_extra_row, marginal,
+                    f'{label}: each row beyond the first two cost '
+                    f'{per_extra_row:.1f} queries ({few} for 2 rows, {many} '
+                    f'for {rows}); the allowance is {marginal}')
+
+
+class ViewsetAppliesItsPlanTests(TestCase):
+    """A plan that exists but is never bound is the failure this catches.
+
+    The plans are attached with the ``@eager_queryset`` decorator rather than
+    at each ``return``, so what has to be pinned is that every viewset carries
+    the decorator and that its ``get_queryset()`` really does come back
+    planned -- including down whichever branch a bare request takes.
+    """
+
+    # (basename, expects select_related, expects prefetch_related)
+    #
+    # `class-registered` needs a campus_id: ClassesRegisteredByCampusViewSet
+    # feeds the raw GET value into a UUIDField lookup, so a bare request
+    # raises ValidationError -> 500. That is a pre-existing missing non-UUID
+    # guard, not something these plans introduce or fix, so the test supplies
+    # a real campus rather than asserting on the crash.
+    #
+    # with_highschool_administrator_related is select_related only, and
+    # with_class_section_syllabi_related is prefetch only, so the two are
+    # asserted separately rather than with a single "is it eager" check that
+    # both could pass for the wrong reason.
+    VIEWSETS = (
+        ('class_section', True, True),
+        ('class-registered', True, True),
+        ('class_section_notes', True, True),
+        ('class_section_syllabi', False, True),
+        ('course', True, True),
+        ('course-notes', True, True),
+        ('course-uploads', True, True),
+        ('course-app-requirement', True, True),
+        ('teacher', True, True),
+        ('teacher-notes', True, True),
+        ('teacher-course', True, True),
+        ('highschool-teacher', True, True),
+        ('highschool-administrator', True, False),
+        ('teacher_application_reviewers', True, False),
+        ('registration', True, True),
+        ('drop_wd_req', True, True),
+    )
+
+    PARAMS = {}
+
+    @classmethod
+    def setUpTestData(cls):
+        registration = FeedFixture.build()
+        cls.user = CustomUser.objects.create_superuser(
+            username='plan-check', email='plan-check@example.com',
+            password='x')
+        section = registration.class_section
+        cls.PARAMS = {
+            'class-registered': {
+                'campus_id': str(section.course.campus_id),
+                'term_id': str(section.term_id),
+            },
+        }
+
+    def _queryset_for(self, basename, params=None):
+        from rest_framework.test import APIRequestFactory
+
+        from cis.urls import router_viewsets
+
+        request = APIRequestFactory().get('/x', params or {})
+        request.user = self.user
+        view = router_viewsets[basename]()
+        view.request = request
+        view.format_kwarg = None
+        return view.get_queryset()
+
+    def test_every_feed_viewset_returns_a_planned_queryset(self):
+        for basename, wants_select, wants_prefetch in self.VIEWSETS:
+            with self.subTest(feed=basename):
+                qs = self._queryset_for(basename, self.PARAMS.get(basename))
+                if wants_select:
+                    self.assertTrue(
+                        qs.query.select_related,
+                        f'{basename}: get_queryset() returned a queryset with '
+                        f'no select_related; is @eager_queryset missing?')
+                if wants_prefetch:
+                    self.assertTrue(
+                        qs._prefetch_related_lookups,
+                        f'{basename}: get_queryset() returned a queryset with '
+                        f'no prefetch_related; is @eager_queryset missing?')

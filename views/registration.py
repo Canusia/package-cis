@@ -60,6 +60,11 @@ from ..serializers.registration import StudentRegistrationSerializer
 
 from myce.component_registry.registration import registration_tabs, registration_actions
 
+from cis.views.eager import (
+    eager_queryset,
+    with_registration_related,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -78,6 +83,7 @@ def _valid_registration_id(value):
     return value
 
 
+@eager_queryset(with_registration_related)
 class RegistrationViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = StudentRegistrationSerializer
     permission_classes = [CIS_user_only | FACULTY_user_only | INSTRUCTOR_user_only]

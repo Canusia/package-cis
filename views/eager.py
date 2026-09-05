@@ -303,3 +303,54 @@ def with_class_section_syllabi_related(records):
             queryset=with_class_section_related(ClassSection.objects.all()),
         )
     )
+
+
+def with_applicant_course_reviewer_related(records):
+    """ApplicantCourseReviewerSerializer(reviewer, application_course ->
+    teacherapplication -> user/assigned_to/highschool, course, highschool,
+    starting_academic_year)."""
+    prefix = 'application_course__'
+    return records.select_related(
+        'reviewer',
+        prefix + 'teacherapplication__user',
+        prefix + 'teacherapplication__assigned_to',
+        prefix + 'teacherapplication__highschool__district',
+        prefix + 'highschool__district',
+        prefix + 'starting_academic_year',
+        *course_select_related(prefix + 'course__'),
+    ).prefetch_related(
+        *course_prefetch_related(prefix + 'course__')
+    )
+
+
+# --------------------------------------------------------------------------
+# Binding a plan to a viewset
+# --------------------------------------------------------------------------
+
+def eager_queryset(plan):
+    """Class decorator: run ``get_queryset()``'s result through ``plan``.
+
+    Wrapping the method rather than each ``return`` keeps the plans out of
+    branchy bodies and guarantees no path is missed -- ``ClassSectionViewSet``
+    alone returns from seven places and ``RegistrationViewSet`` from six, so
+    editing each site is how a branch silently keeps its N+1.
+
+    An ``.objects.none()`` return passes through harmlessly: applying
+    ``select_related`` to an empty queryset is a no-op.
+
+    Note that ``DatatablesFilterBackend`` calls ``get_queryset()`` twice per
+    request (once for ``recordsTotal``), so the wrapped method must stay cheap
+    -- it only attaches relation plans, it does not evaluate anything.
+    """
+    def decorate(cls):
+        original = cls.get_queryset
+
+        def get_queryset(self):
+            return plan(original(self))
+
+        get_queryset.__doc__ = original.__doc__
+        get_queryset.__name__ = 'get_queryset'
+        cls.get_queryset = get_queryset
+        return cls
+
+    return decorate

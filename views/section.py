@@ -74,6 +74,13 @@ from ..serializers.registration import RegistrationSummarySerializer
 
 from cis.utils import CIS_user_only, active_term, user_has_cis_role, registration_terms
 
+from cis.views.eager import (
+    eager_queryset,
+    with_class_section_note_related,
+    with_class_section_related,
+    with_class_section_syllabi_related,
+)
+
 
 class RegistrationSummaryViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = RegistrationSummarySerializer
@@ -190,6 +197,7 @@ class RegistrationSummaryViewSet(viewsets.ReadOnlyModelViewSet):
                 'class_section__term__academic_year__name'
             )
 
+@eager_queryset(with_class_section_syllabi_related)
 class ClassSectionSyllabiViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ClassSectionSyllabiSerializer
     permission_classes = [CIS_user_only]
@@ -218,6 +226,7 @@ class ClassSectionSyllabiViewSet(viewsets.ReadOnlyModelViewSet):
         return ClassSectionSyllabi.objects.none()
 
 
+@eager_queryset(with_class_section_note_related)
 class ClassSectionNoteViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ClassSectionNoteSerializer
     permission_classes = [CIS_user_only]
@@ -251,6 +260,7 @@ class ClassSectionNoteViewSet(viewsets.ReadOnlyModelViewSet):
             return records
         return ClassSectionNote.objects.none()
 
+@eager_queryset(with_class_section_related)
 class ClassesRegisteredByCampusViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ClassSectionSerializer
     permission_classes = [CIS_user_only]
@@ -276,6 +286,7 @@ class ClassesRegisteredByCampusViewSet(viewsets.ReadOnlyModelViewSet):
         )
         return records
 
+@eager_queryset(with_class_section_related)
 class ClassSectionViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ClassSectionSerializer
 

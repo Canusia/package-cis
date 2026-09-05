@@ -43,7 +43,13 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
+from cis.views.eager import (
+    eager_queryset,
+    with_drop_request_related,
+)
 
+
+@eager_queryset(with_drop_request_related)
 class StudentDropViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = StudentDropRequestSerializer
     permission_classes = [CIS_user_only|FACULTY_user_only|HSADMIN_user_only]    
@@ -57,7 +63,6 @@ class StudentDropViewSet(viewsets.ReadOnlyModelViewSet):
         class_section = self.request.GET.get('class_section', '').strip()
 
         records = StudentDropRequest.objects.filter().all()
-        print(records.count())
 
         if student:
             records = records.filter(student__id=student)

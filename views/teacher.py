@@ -67,8 +67,16 @@ from cis.utils import (
 from cis.menu import cis_menu, draw_menu
 from cis.services.faculty_scope import visible_teachers
 
+from cis.views.eager import (
+    eager_queryset,
+    with_teacher_course_related,
+    with_teacher_note_related,
+    with_teacher_related,
+)
+
 logger = logging.getLogger(__name__)
 
+@eager_queryset(with_teacher_course_related)
 class TeacherCourseViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = TeacherCourseSerializer
     permission_classes = [CIS_user_only]
@@ -216,6 +224,7 @@ class AllTeacherUploadViewSet(TeacherUploadViewSet):
         return records.order_by(
             'teacher__user__last_name', 'teacher__user__first_name', '-uploaded_on')
 
+@eager_queryset(with_teacher_related)
 class TeacherViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = TeacherSerializer
     permission_classes = [
@@ -346,6 +355,7 @@ class DanglingInstructorViewSet(viewsets.ReadOnlyModelViewSet):
 
         return dangling_users(INSTRUCTOR)
 
+@eager_queryset(with_teacher_note_related)
 class TeacherNotesViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = TeacherNoteSerializer
     permission_classes = [CIS_user_only]

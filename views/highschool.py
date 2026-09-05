@@ -71,6 +71,12 @@ from ..serializers.note import HighSchoolNoteSerializer
 
 from cis.utils import CIS_user_only, active_term
 
+from cis.views.eager import (
+    eager_queryset,
+    with_highschool_administrator_related,
+    with_teacher_highschool_related,
+)
+
 class HighSchoolViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = HighSchoolSerializer
     permission_classes = [CIS_user_only]
@@ -128,6 +134,7 @@ class HighSchoolTranscriptViewSet(viewsets.ReadOnlyModelViewSet):
         except:
             return HighSchoolTranscript.objects.none()
         
+@eager_queryset(with_teacher_highschool_related)
 class HighSchoolTeacherViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = HighSchoolTeacherSerializer
     permission_classes = [CIS_user_only]
@@ -148,6 +155,7 @@ class HighSchoolTeacherViewSet(viewsets.ReadOnlyModelViewSet):
             records, self.request.user, cert_path='teachercoursecertificate',
             selected_campus=campus or None)
 
+@eager_queryset(with_highschool_administrator_related)
 class HighSchoolAdministratorViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = HighSchoolAdministratorSerializer
     permission_classes = [CIS_user_only]

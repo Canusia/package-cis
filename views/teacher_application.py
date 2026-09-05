@@ -52,6 +52,12 @@ from ..serializers.teacher_application import (
 
 from cis.utils import CIS_user_only
 
+from cis.views.eager import (
+    eager_queryset,
+    with_applicant_course_reviewer_related,
+)
+
+@eager_queryset(with_applicant_course_reviewer_related)
 class TeacherApplicationReviewerViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ApplicantCourseReviewerSerializer
     permission_classes = [CIS_user_only|FACULTY_user_only|HSADMIN_user_only]

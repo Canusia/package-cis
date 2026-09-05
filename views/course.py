@@ -58,7 +58,15 @@ from ..serializers.history import HistorySerializer
 from cis.utils import CIS_user_only, INSTRUCTOR_user_only, FACULTY_user_only, user_has_cis_role, get_default_campus
 from cis.campus_gate import scope_queryset_by_campus, campus_gate, get_accessible_campuses, processable_ids, can_process_campus
 
+from cis.views.eager import (
+    eager_queryset,
+    with_course_note_related,
+    with_course_related,
+    with_course_upload_related,
+)
 
+
+@eager_queryset(with_course_upload_related)
 class CourseAppRequirementViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = CourseAppRequirementSerializer
     permission_classes = [CIS_user_only]
@@ -87,6 +95,7 @@ class CourseHistoryViewSet(viewsets.ViewSet):
         return Response({'data': serializer.data})
 
 
+@eager_queryset(with_course_note_related)
 class CourseNoteViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = CourseNoteSerializer
     permission_classes = [CIS_user_only]
@@ -109,6 +118,7 @@ class CourseNoteViewSet(viewsets.ReadOnlyModelViewSet):
         except:
             return CourseNote.objects.all()
 
+@eager_queryset(with_course_upload_related)
 class CourseUploadViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = CourseUploadSerializer
     permission_classes = [CIS_user_only|INSTRUCTOR_user_only|FACULTY_user_only]
@@ -122,6 +132,7 @@ class CourseUploadViewSet(viewsets.ReadOnlyModelViewSet):
             )
         return CourseUpload.objects.all()
 
+@eager_queryset(with_course_related)
 class CourseViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [CIS_user_only]
     serializer_class = CourseSerializer
