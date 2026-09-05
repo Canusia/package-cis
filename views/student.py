@@ -99,6 +99,14 @@ from ..serializers.note import StudentNoteSerializer
 from ..serializers.history import HistorySerializer
 from cis.models.customuser import CustomUser
 
+from cis.views.eager import (
+    eager_queryset,
+    with_student_campus_id_related,
+    with_student_note_related,
+    with_student_recommendation_related,
+    with_student_term_related,
+)
+
 
 # Slugs hidden from the dirty-profile-review tab on /ce/students/#dirty.
 # These verification-related actions aren't relevant when a CE admin is
@@ -176,6 +184,7 @@ class StudentHistoryViewSet(viewsets.ViewSet):
         serializer = HistorySerializer(combined, many=True)
         return Response({'data': serializer.data})
 
+@eager_queryset(with_student_term_related)
 class StudentTuitionAssistanceViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = StudentTuitionAssistanceSerializer
     permission_classes = [CIS_user_only]
@@ -206,6 +215,7 @@ class StudentTuitionAssistanceViewSet(viewsets.ReadOnlyModelViewSet):
         return scope_records_by_student_campus(
             records, self.request.user, selected_campus=campus or None)
 
+@eager_queryset(with_student_note_related)
 class StudentNoteViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = StudentNoteSerializer
     permission_classes = [CIS_user_only]
@@ -242,6 +252,7 @@ class StudentNoteViewSet(viewsets.ReadOnlyModelViewSet):
 
 from cis.models.section import StudentRegistration
 
+@eager_queryset(with_student_campus_id_related)
 class StudentCampusIDViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = StudentCampusIDSerializer
     permission_classes = [CIS_user_only]
@@ -258,6 +269,7 @@ class StudentCampusIDViewSet(viewsets.ReadOnlyModelViewSet):
 
         return records
 
+@eager_queryset(with_student_term_related)
 class ParentConsentViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ParentConsentSerializer
     permission_classes = [CIS_user_only|FACULTY_user_only|INSTRUCTOR_user_only]
@@ -275,6 +287,7 @@ class ParentConsentViewSet(viewsets.ReadOnlyModelViewSet):
 
         return records
 
+@eager_queryset(with_student_term_related)
 class StudentAgreementViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = StudentAgreementSerializer
     permission_classes = [CIS_user_only]
@@ -292,6 +305,7 @@ class StudentAgreementViewSet(viewsets.ReadOnlyModelViewSet):
 
         return records
 
+@eager_queryset(with_student_recommendation_related)
 class StudentRecommendationViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = StudentRecommendationSerializer
     permission_classes = [CIS_user_only]
@@ -316,6 +330,7 @@ class StudentRecommendationViewSet(viewsets.ReadOnlyModelViewSet):
         return scope_records_by_student_campus(
             records, self.request.user, selected_campus=campus or None)
 
+@eager_queryset(with_student_term_related)
 class StudentSupportingDocumentViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = StudentSupportingDocumentSerializer
     permission_classes = [CIS_user_only|STUDENT_user_only]

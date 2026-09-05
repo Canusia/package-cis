@@ -24,6 +24,7 @@ serialization would hide them and flatter the eager path.
 
 import uuid
 
+from django.conf import settings
 from django.contrib.auth.models import Group
 from django.db import connection
 from django.test import TestCase
@@ -34,10 +35,18 @@ from cis.models.course import (
     Campus, Category, Cohort, Course, CourseUpload, Location)
 from cis.models.district import District
 from cis.models.highschool import HighSchool
-from cis.models.note import ClassSectionNote, CourseNote, TeacherNote
+from cis.models.course import CourseAdministrator
+from cis.models.highschool_administrator import (
+    HSAdministrator, HSAdministratorPosition, HSPosition)
+from cis.models.settings import Setting
+from cis.models.note import (
+    ClassSectionNote, CourseNote, StudentNote, TeacherNote)
 from cis.models.section import (
     ClassSection, ClassSectionSyllabi, StudentDropRequest, StudentRegistration)
-from cis.models.student import Student
+from cis.models.student import (
+    ParentConsent, Student, StudentAgreement, StudentCampusID,
+    StudentRecommendation, StudentSupportingDocument,
+    StudentTuitionAssistance)
 from cis.models.teacher import (
     Teacher, TeacherCourseCertificate, TeacherHighSchool)
 from cis.models.term import AcademicYear, Term
@@ -45,8 +54,16 @@ from cis.serializers.class_section import ClassSectionSerializer
 from cis.serializers.course import CourseSerializer
 from cis.serializers.highschool import (
     HighSchoolTeacherSerializer, TeacherCourseSerializer)
+from cis.serializers.faculty import CourseAdministratorSerializer
+from cis.serializers.highschool import HighSchoolAdministratorSerializer
 from cis.serializers.note import (
-    ClassSectionNoteSerializer, CourseNoteSerializer, TeacherNoteSerializer)
+    ClassSectionNoteSerializer, CourseNoteSerializer, StudentNoteSerializer,
+    TeacherNoteSerializer)
+from cis.serializers.student import (
+    ParentConsentSerializer, StudentAgreementSerializer,
+    StudentCampusIDSerializer, StudentRecommendationSerializer,
+    StudentSupportingDocumentSerializer,
+    StudentTuitionAssistanceSerializer)
 from cis.serializers.registration import (
     StudentDropRequestSerializer, StudentRegistrationSerializer)
 from cis.serializers.teacher import TeacherSerializer
@@ -69,8 +86,24 @@ class FeedFixture:
     def build():
         short = _short()
 
+        # Each of these is required by a post_save receiver on one of the
+        # rows below, which does Group.objects.get(...) without a default.
         Group.objects.get_or_create(name='student')
         Group.objects.get_or_create(name='instructor')
+        Group.objects.get_or_create(name='highschool_admin')
+
+        # Saving a ParentConsent sends the "consent received" notification,
+        # which reads these keys unconditionally -- from_db() returns {} when
+        # the setting is unregistered, so the write raises KeyError. is_active
+        # 'No' makes the receiver return before it sends anything.
+        prefix = getattr(settings, 'CAMPUS_CODE_PREFIX')
+        Setting.objects.update_or_create(
+            key=f'{prefix}_regis_email',
+            defaults={'value': {
+                'is_active': 'No',
+                'parent_consent_recv_subject': 'Consent received',
+                'parent_consent_recv': 'Consent received.',
+            }})
         staff, _ = CustomUser.objects.get_or_create(
             username='feed-staff',
             defaults={'email': 'feed-staff@example.com'})
@@ -146,6 +179,39 @@ class FeedFixture:
             meta={'type': ''})
         StudentDropRequest.objects.create(
             student=student, registration=registration, status='requested')
+
+        # The nine lower-nesting feeds (#67's "the rest as they surface").
+        # Each hangs off this graph's own student/term/course/campus so the
+        # rows stay independent, which is what makes an N+1 measurable.
+        StudentTuitionAssistance.objects.create(student=student, term=term)
+        StudentSupportingDocument.objects.create(
+            student=student, term=term, media=f'{short}-doc.pdf',
+            document_type='Transcript')
+        StudentAgreement.objects.create(
+            student=student, term=term, student_signature='signed')
+        ParentConsent.objects.create(
+            student=student, term=term, parent_signature='signed')
+        StudentRecommendation.objects.create(
+            student=student, term=term, submitted_by=staff,
+            recommendation={})
+        StudentCampusID.objects.create(
+            student=student, campus=campus, user_id=short)
+        # meta needs a 'type' key: the post_save receiver does
+        # `'to_parent' in instance.meta.get('type')`, which raises TypeError
+        # on the None a missing key returns.
+        StudentNote.objects.create(
+            student=student, createdby=staff, note='student note',
+            meta={'type': ''})
+        CourseAdministrator.objects.create(user=staff, course=course)
+
+        hs_admin_user = CustomUser.objects.create_user(
+            username=f'hsa-{short}', email=f'hsa-{short}@example.com',
+            password='x', first_name='Hal', last_name='Admin')
+        hs_admin = HSAdministrator.objects.create(user=hs_admin_user)
+        position, _ = HSPosition.objects.get_or_create(name='Counselor')
+        HSAdministratorPosition.objects.create(
+            hsadmin=hs_admin, highschool=highschool, position=position,
+            status='Active')
 
         return registration
 
@@ -308,6 +374,32 @@ class DataTableFeedQueryCountTests(TestCase):
          eager.with_registration_related, StudentRegistrationSerializer, 9, 6),
         ('drop_wd_req', StudentDropRequest,
          eager.with_drop_request_related, StudentDropRequestSerializer, 9, 6),
+        # The nine #67 filed under "the rest as they surface". Every one is a
+        # flat serializer over FKs, so all of them must be marginal 0 -- a
+        # non-zero result here means a hidden property, not an acceptable cost.
+        ('student_recommendation', StudentRecommendation,
+         eager.with_student_recommendation_related,
+         StudentRecommendationSerializer, 1, 0),
+        ('student_tuitionassistance', StudentTuitionAssistance,
+         eager.with_student_term_related,
+         StudentTuitionAssistanceSerializer, 1, 0),
+        ('student_support_docs', StudentSupportingDocument,
+         eager.with_student_term_related,
+         StudentSupportingDocumentSerializer, 1, 0),
+        ('student_agreement', StudentAgreement,
+         eager.with_student_term_related, StudentAgreementSerializer, 1, 0),
+        ('parent_consent', ParentConsent,
+         eager.with_student_term_related, ParentConsentSerializer, 1, 0),
+        ('campus_id', StudentCampusID,
+         eager.with_student_campus_id_related, StudentCampusIDSerializer, 1, 0),
+        ('student-note', StudentNote,
+         eager.with_student_note_related, StudentNoteSerializer, 1, 0),
+        ('course_administrator', CourseAdministrator,
+         eager.with_course_administrator_related,
+         CourseAdministratorSerializer, 1, 0),
+        ('hs-administrator-position', HSAdministratorPosition,
+         eager.with_highschool_administrator_related,
+         HighSchoolAdministratorSerializer, 1, 0),
     )
 
     @classmethod
@@ -397,6 +489,15 @@ class ViewsetAppliesItsPlanTests(TestCase):
         ('teacher_application_reviewers', True, False),
         ('registration', True, True),
         ('drop_wd_req', True, True),
+        ('student_recommendation', True, False),
+        ('student_tuitionassistance', True, False),
+        ('student_support_docs', True, False),
+        ('student_agreement', True, False),
+        ('parent_consent', True, False),
+        ('campus_id', True, True),
+        ('student-note', True, False),
+        ('course_administrator', True, True),
+        ('hs-administrator-position', True, False),
     )
 
     PARAMS = {}
@@ -487,3 +588,47 @@ class ClassesRegisteredUuidGuardTests(TestCase):
             campus_id=str(self.section.course.campus_id),
             term_id=str(self.section.term_id))
         self.assertEqual([s.pk for s in rows], [self.section.pk])
+
+
+class PlanCompositionTests(TestCase):
+    """The plans must be built from each other, not restate each other.
+
+    The point of the `prefix` argument is that a path is written once and
+    reused at any depth. A parent plan that spells out its child's paths
+    inline still works -- right up until the child gains a path and the parent
+    silently keeps the old set.
+    """
+
+    def test_prefix_reroots_every_path(self):
+        for name in ('term_select_related', 'course_select_related',
+                     'student_select_related', 'teacher_select_related'):
+            with self.subTest(plan=name):
+                plan = getattr(eager, name)
+                self.assertEqual(
+                    plan('x__'), tuple('x__' + p for p in plan()))
+
+    def test_class_section_plan_is_built_from_the_term_plan(self):
+        paths = set(eager.class_section_select_related())
+        self.assertTrue(set(eager.term_select_related('term__')) <= paths)
+        self.assertTrue(
+            set(eager.term_select_related('registration_term__')) <= paths)
+
+    def test_class_section_plan_is_built_from_the_course_and_teacher_plans(self):
+        paths = set(eager.class_section_select_related())
+        self.assertTrue(set(eager.course_select_related('course__')) <= paths)
+        self.assertTrue(set(eager.teacher_select_related('teacher__')) <= paths)
+
+    def test_registration_plan_embeds_the_class_section_and_student_plans(self):
+        paths = set(eager.registration_select_related())
+        self.assertTrue(
+            set(eager.class_section_select_related('class_section__')) <= paths)
+        self.assertTrue(
+            set(eager.student_select_related('student__')) <= paths)
+
+    def test_drop_request_plan_embeds_the_registration_plan(self):
+        """The drop feed's serializer nests the whole registration, so its
+        plan has to inherit every path the registration plan gains."""
+        qs = eager.with_drop_request_related(StudentDropRequest.objects.all())
+        paths = set(qs.query.select_related or {})
+        self.assertIn('registration', paths)
+        self.assertIn('student', paths)

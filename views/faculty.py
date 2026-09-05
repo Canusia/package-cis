@@ -55,9 +55,15 @@ from cis.menu import cis_menu, draw_menu
 
 from myce.component_registry.faculty_coordinator import faculty_coordinator_tabs
 
+from cis.views.eager import (
+    eager_queryset,
+    with_course_administrator_related,
+)
+
 logger = logging.getLogger(__name__)
 
 
+@eager_queryset(with_course_administrator_related)
 class CourseAdministratorViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = CourseAdministratorSerializer
     permission_classes = [CIS_user_only|FACULTY_user_only]

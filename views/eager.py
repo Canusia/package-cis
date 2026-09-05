@@ -324,6 +324,62 @@ def with_applicant_course_reviewer_related(records):
 
 
 # --------------------------------------------------------------------------
+# The student-backed side tables. StudentTuitionAssistanceSerializer,
+# StudentSupportingDocumentSerializer, StudentAgreementSerializer and
+# ParentConsentSerializer are all (student, term) and nothing else.
+# --------------------------------------------------------------------------
+
+def with_student_term_related(records):
+    return records.select_related(
+        *student_select_related('student__'),
+        *term_select_related('term__'),
+    )
+
+
+def with_student_recommendation_related(records):
+    """StudentRecommendationSerializer(student, term, submitted_by)."""
+    return with_student_term_related(records).select_related('submitted_by')
+
+
+def with_student_campus_id_related(records):
+    """StudentCampusIDSerializer(student, campus)."""
+    return records.select_related(
+        *student_select_related('student__'), 'campus',
+    ).prefetch_related(
+        *campus_prefetch_related('campus__')
+    )
+
+
+def with_student_note_related(records):
+    """StudentNoteSerializer(createdby, student).
+
+    `student` is nullable here -- StudentNoteViewSet deliberately keeps
+    null-student notes visible to every ce user -- which select_related
+    handles as a LEFT JOIN, so no rows are dropped.
+    """
+    return records.select_related(
+        'createdby', *student_select_related('student__'))
+
+
+def with_course_administrator_related(records):
+    """CourseAdministratorSerializer(course, user, faculty_id).
+
+    `faculty_id` is a declared CharField backed by a property that reads
+    `self.user.facultycoordinator.id` -- a reverse OneToOne, so a query per row
+    without the join. It is included here rather than left as a marginal
+    allowance because select_related reaches it: a LEFT JOIN, and the
+    property's bare except still returns '' for a user with no coordinator
+    record, now without a second query.
+    """
+    return records.select_related(
+        'user', 'user__facultycoordinator',
+        *course_select_related('course__'),
+    ).prefetch_related(
+        *course_prefetch_related('course__')
+    )
+
+
+# --------------------------------------------------------------------------
 # Binding a plan to a viewset
 # --------------------------------------------------------------------------
 

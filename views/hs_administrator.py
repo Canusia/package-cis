@@ -56,8 +56,14 @@ from ..serializers.highschool_admin import (
 )
 from cis.utils import CIS_user_only
 
+from cis.views.eager import (
+    eager_queryset,
+    with_highschool_administrator_related,
+)
+
 logger = logging.getLogger(__name__)
 
+@eager_queryset(with_highschool_administrator_related)
 class HSAdministratorPositionViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = HighSchoolAdministratorSerializer
     permission_classes = [CIS_user_only]
