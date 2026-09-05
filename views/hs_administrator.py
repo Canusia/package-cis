@@ -61,12 +61,20 @@ from cis.views.eager import (
     with_highschool_administrator_related,
 )
 
+from cis.serializers import tables
+
 logger = logging.getLogger(__name__)
 
 @eager_queryset(with_highschool_administrator_related)
 class HSAdministratorPositionViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = HighSchoolAdministratorSerializer
     permission_classes = [CIS_user_only]
+
+    def get_serializer_class(self):
+        # Narrow serializer for the datatables feed only; format=json callers
+        # and the retrieve action keep the full one (#67).
+        return tables.datatables_serializer(
+            self, tables.SlimHighSchoolAdministratorSerializer)
 
     def get_queryset(self):
         records = HSAdministratorPosition.objects.all()
@@ -118,6 +126,12 @@ class DanglingHSAdminViewSet(viewsets.ReadOnlyModelViewSet):
 class HSAdministratorAccessRequestViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = HSAdministratorAccessRequestSerializer
     permission_classes = [CIS_user_only]
+
+    def get_serializer_class(self):
+        # Narrow serializer for the datatables feed only; format=json callers
+        # and the retrieve action keep the full one (#67).
+        return tables.datatables_serializer(
+            self, tables.SlimAccessRequestSerializer)
 
     def get_queryset(self):
         

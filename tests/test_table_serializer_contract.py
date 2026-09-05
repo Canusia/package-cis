@@ -175,37 +175,36 @@ TABLE_CONTRACTS = (
      'support_docs_table', 'student_support_docs', {}),
 )
 
-# Bytes per row each feed may ship. These are ceilings on the *narrowed*
-# implementation, set from measurement and rounded up, and they exist to catch
-# a field creeping back in rather than to pin an exact size.
-#
-# `highschool` is the control: /ce/highschools/ renders only flat columns, so
-# its nested district is a top-level field and drf-datatables already drops it.
-# It measures 273 B/row against 12 rendered fields, gets no narrowed serializer,
-# and passes from the first run -- which is what makes the other budgets
-# credible as measurements of something real.
-# The four narrowed in Task 12 are set from measurement against this fixture,
-# with headroom for row-content variance. They are deliberately not the
-# production-data projections that motivated the work (registration ~1017
-# B/row on seeded data): the fixture's generated names and UUID-heavy ce_urls
-# make each row proportionally larger, and a budget is only meaningful against
-# the thing that measures it. What the response contains is pinned by the path
-# contract above; this pins how much of it there is.
 PAYLOAD_BUDGETS = {
-    'registration': 1800,          # was 14424 before narrowing
-    'highschool-teacher': 450,     # was 5042
-    'teacher-course': 700,         # was 5719
-    'class_section': 1000,         # was 10798
-    'course_administrator': 400,
-    'student-note': 500,
-    'hs-administrator-position': 500,
-    'student': 700,
-    'hs-administrator-access-request': 300,
-    'teacher': 400,
-    'course': 300,
-    'student_support_docs': 500,
-    'highschool': 300,
+    # Ceilings on the narrowed implementation, set from measurement against
+    # this fixture with ~15% headroom, and deliberately not the production-data
+    # projections that motivated the work: the fixture's generated names and
+    # UUID-heavy ce_urls make each row proportionally larger than seeded data,
+    # and a budget is only meaningful against the thing that measures it. The
+    # path contract above pins *what* is in the response; this pins how much.
+    #
+    # `before` is the same measurement against the original serializers.
+    #                                  budget   before
+    'registration':                      1800,  # 14424
+    'class_section':                     1000,  # 10798
+    'teacher-course':                     700,  #  5719
+    'highschool-teacher':                 450,  #  5042
+    'course_administrator':               350,  #  4354
+    'student_support_docs':               700,  #  2636
+    'student-note':                       450,  #  2457
+    'hs-administrator-position':          420,  #  1180
+    'student':                            560,  #  1192
+    'hs-administrator-access-request':    270,  #   732
+    'teacher':                            280,  #   571
+    'course':                             300,  #   512
+    # The control: /ce/highschools/ renders only flat columns, so its nested
+    # district is a top-level field that drf-datatables already drops. It gets
+    # no narrowed serializer and has passed since the first run -- which is
+    # what makes every number above credible as a measurement of something
+    # real rather than an artefact of how the test renders.
+    'highschool':                         320,  #   289, unchanged
 }
+
 
 
 class TableContractFixture:
@@ -346,6 +345,7 @@ FROZEN_PATHS = {
     ],
     'course detail > administrators': [
         'course.name', 'faculty_id', 'id', 'role', 'status',
+        'user.email', 'user.first_name', 'user.last_login', 'user.last_name',
     ],
     'section detail > students': [
         'ce_url', 'changed_on', 'class_section.class_number',
@@ -384,7 +384,8 @@ FROZEN_PATHS = {
     ],
     'student detail > files': [
         'description', 'document_type', 'id', 'media', 'status',
-        'term.label', 'uploaded_on',
+        'student.ce_url', 'student.user.first_name',
+        'student.user.last_name', 'term.label', 'uploaded_on',
     ],
 }
 
@@ -437,12 +438,11 @@ KNOWN_UNANSWERED = {
         'teacher.ce_url', 'teacher.user.email',
         'teacher.user.first_name', 'teacher.user.last_name',
     ],
-    'course detail > administrators': [
-        'user.email', 'user.first_name', 'user.last_login', 'user.last_name',
-    ],
-    'student detail > files': [
-        'student.ce_url', 'student.user.first_name', 'student.user.last_name',
-    ],
+    # 'course detail > administrators' and 'student detail > files' had their
+    # remaining entries promoted into FROZEN_PATHS: one narrowed serializer
+    # serves every profile of a feed, so the detail variants now answer the
+    # paths their index variants named, where the originals' output did not
+    # survive the renderer's trim.
 }
 
 
@@ -525,7 +525,12 @@ class TableSerializerContractTests(TestCase):
 # compared against the original for these.
 SLIMMED_FEEDS = {
     'registration', 'class_section', 'highschool-teacher', 'teacher-course',
+    'student', 'student-note', 'student_support_docs',
+    'hs-administrator-position', 'course_administrator', 'course', 'teacher',
+    'hs-administrator-access-request',
 }
+# 'highschool' is absent on purpose: it keeps its original serializer, so
+# there is nothing to compare it against.
 
 
 class SlimSerializerMatchesTheOriginalTests(TestCase):

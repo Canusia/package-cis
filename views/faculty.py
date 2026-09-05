@@ -60,6 +60,8 @@ from cis.views.eager import (
     with_course_administrator_related,
 )
 
+from cis.serializers import tables
+
 logger = logging.getLogger(__name__)
 
 
@@ -67,6 +69,12 @@ logger = logging.getLogger(__name__)
 class CourseAdministratorViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = CourseAdministratorSerializer
     permission_classes = [CIS_user_only|FACULTY_user_only]
+
+    def get_serializer_class(self):
+        # Narrow serializer for the datatables feed only; format=json callers
+        # and the retrieve action keep the full one (#67).
+        return tables.datatables_serializer(
+            self, tables.SlimCourseAdministratorSerializer)
 
     def get_queryset(self):
         course_id = self.request.GET.get('course_id')

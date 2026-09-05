@@ -239,6 +239,12 @@ class TeacherViewSet(viewsets.ReadOnlyModelViewSet):
         CIS_user_only | FACULTY_user_only | INSTRUCTOR_user_only | HSADMIN_user_only
     ]
 
+    def get_serializer_class(self):
+        # Narrow serializer for the datatables feed only; format=json callers
+        # and the retrieve action keep the full one (#67).
+        return tables.datatables_serializer(
+            self, tables.SlimTeacherRowSerializer)
+
     def get_queryset(self):
 
         status = self.request.GET.get('status')

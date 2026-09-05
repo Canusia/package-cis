@@ -107,6 +107,8 @@ from cis.views.eager import (
     with_student_term_related,
 )
 
+from cis.serializers import tables
+
 
 # Slugs hidden from the dirty-profile-review tab on /ce/students/#dirty.
 # These verification-related actions aren't relevant when a CE admin is
@@ -219,6 +221,12 @@ class StudentTuitionAssistanceViewSet(viewsets.ReadOnlyModelViewSet):
 class StudentNoteViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = StudentNoteSerializer
     permission_classes = [CIS_user_only]
+
+    def get_serializer_class(self):
+        # Narrow serializer for the datatables feed only; format=json callers
+        # and the retrieve action keep the full one (#67).
+        return tables.datatables_serializer(
+            self, tables.SlimStudentNoteSerializer)
 
     def get_queryset(self):
         student_id = self.request.GET.get('student_id')
@@ -335,6 +343,12 @@ class StudentSupportingDocumentViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = StudentSupportingDocumentSerializer
     permission_classes = [CIS_user_only|STUDENT_user_only]
 
+    def get_serializer_class(self):
+        # Narrow serializer for the datatables feed only; format=json callers
+        # and the retrieve action keep the full one (#67).
+        return tables.datatables_serializer(
+            self, tables.SlimStudentSupportingDocumentSerializer)
+
     def get_queryset(self):
         term = self.request.GET.get('term', '').strip()
         student = self.request.GET.get('student', '').strip()
@@ -365,6 +379,12 @@ class StudentViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [
         CIS_user_only | FACULTY_user_only | INSTRUCTOR_user_only | HSADMIN_user_only
     ]
+
+    def get_serializer_class(self):
+        # Narrow serializer for the datatables feed only; format=json callers
+        # and the retrieve action keep the full one (#67).
+        return tables.datatables_serializer(
+            self, tables.SlimStudentRowSerializer)
 
     def get_queryset(self):
         term = None #self.request.GET.get('term', str(active_term().id)).strip()

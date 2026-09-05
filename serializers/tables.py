@@ -228,3 +228,144 @@ class SlimTeacherCourseSerializer(SlimTableSerializer):
     status = serializers.CharField()
     course = SlimCourseSerializer()
     teacher_highschool = SlimTeacherHighSchoolSerializer()
+
+
+# --------------------------------------------------------------------------
+# The remaining feeds. Every field is either copied from the original's
+# explicit declaration or left as ReadOnlyField, which passes the model's own
+# value through the way ModelSerializer's inference does -- guessing a type is
+# how '1' ends up where 1 was (see SlimSerializerMatchesTheOriginalTests).
+# --------------------------------------------------------------------------
+
+class _UserStudentRow(SlimTableSerializer):
+    """user.* on the students table."""
+    first_name = serializers.CharField()
+    last_name = serializers.CharField()
+    email = serializers.CharField()
+    psid = serializers.CharField()
+    created_at = serializers.DateTimeField(format='%Y-%m-%d %I:%M:%S %p')
+
+
+class _UserStaff(SlimTableSerializer):
+    """user.* on the instructors and high-school-administrators tables."""
+    first_name = serializers.CharField()
+    last_name = serializers.CharField()
+    email = serializers.CharField()
+    primary_phone = serializers.CharField()
+    last_login = serializers.DateTimeField(
+        format='%m/%d/%Y %I:%M %p', read_only=True)
+
+
+class _UserNameOnly(SlimTableSerializer):
+    """createdby.* on the notes table."""
+    first_name = serializers.CharField()
+    last_name = serializers.CharField()
+
+
+class _StudentRef(SlimTableSerializer):
+    """student.* on the notes and supporting-documents tables."""
+    ce_url = serializers.CharField()
+    user = _UserNameOnly()
+    highschool = _Named()
+
+
+class SlimStudentRowSerializer(SlimTableSerializer):
+    """/ce/students/"""
+    id = serializers.ReadOnlyField()
+    ce_url = serializers.CharField(read_only=True)
+    account_verified = serializers.ReadOnlyField()
+    application_status = serializers.ReadOnlyField()
+    application_status_display = serializers.CharField(
+        source='get_application_status_display', read_only=True)
+    graduation_date = serializers.ReadOnlyField()
+    parent_email = serializers.ReadOnlyField()
+    sis_sent_on = serializers.ReadOnlyField()
+    user = _UserStudentRow()
+    highschool = _Named()
+
+
+class SlimStudentNoteSerializer(SlimTableSerializer):
+    """/ce/students/notes/"""
+    id = serializers.ReadOnlyField()
+    note = serializers.ReadOnlyField()
+    # FileField, not ReadOnlyField: a ReadOnlyField hands the FieldFile itself
+    # to the JSON encoder, which tries list(obj) on anything with __getitem__
+    # and so reads the file off S3 -- FileNotFoundError for a row whose object
+    # is not there, ValueError for one with no file at all.
+    media = serializers.FileField(read_only=True)
+    createdon = serializers.DateTimeField(format='%m/%d/%Y %I:%M %p')
+    createdby = _UserNameOnly()
+    student = _StudentRef()
+    # Only meta.type is read; the rest of the blob is not shipped.
+    meta = serializers.SerializerMethodField()
+
+    def get_meta(self, obj):
+        return {'type': (obj.meta or {}).get('type')}
+
+
+class SlimStudentSupportingDocumentSerializer(SlimTableSerializer):
+    """/ce/students/support_docs/ and student detail > files."""
+    id = serializers.ReadOnlyField()
+    description = serializers.ReadOnlyField()
+    document_type = serializers.ReadOnlyField()
+    status = serializers.ReadOnlyField()
+    media = serializers.FileField(read_only=True)   # see SlimStudentNoteSerializer
+    uploaded_on = serializers.DateTimeField(format='%m/%d/%Y')
+    term = SlimTermSerializer()
+    student = _StudentRef()
+
+
+class SlimHSAdministratorSerializer(SlimTableSerializer):
+    id = serializers.ReadOnlyField()
+    user = _UserStaff()
+
+
+class SlimHighSchoolAdministratorSerializer(SlimTableSerializer):
+    """/ce/highschool_admins/ (the hs-administrator-position feed)."""
+    id = serializers.ReadOnlyField()
+    status = serializers.ReadOnlyField()
+    hsadmin = SlimHSAdministratorSerializer()
+    position = _Named()
+    highschool = _Named()
+
+
+class SlimCourseAdministratorSerializer(SlimTableSerializer):
+    """/ce/faculty_coordinators/ and course detail > administrators."""
+    id = serializers.ReadOnlyField()
+    role = serializers.ReadOnlyField()
+    status = serializers.ReadOnlyField()
+    faculty_id = serializers.CharField(read_only=True)
+    course = _Named()
+    user = _UserStaff()
+
+
+class SlimCourseRowSerializer(SlimTableSerializer):
+    """/ce/courses/"""
+    id = serializers.ReadOnlyField()
+    name = serializers.ReadOnlyField()
+    title = serializers.ReadOnlyField()
+    status = serializers.ReadOnlyField()
+    credit_hours = serializers.ReadOnlyField()
+    campus = _Named()
+    is_available_for_si = serializers.SerializerMethodField()
+
+    def get_is_available_for_si(self, obj):
+        from cis.serializers.course import CourseSerializer
+        return CourseSerializer().get_is_available_for_si(obj)
+
+
+class SlimTeacherRowSerializer(SlimTableSerializer):
+    """/ce/instructors/ (the teacher feed)."""
+    id = serializers.ReadOnlyField()
+    status = serializers.ReadOnlyField()
+    user = _UserStaff()
+
+
+class SlimAccessRequestSerializer(SlimTableSerializer):
+    """/ce/highschool_admin/access_requests"""
+    id = serializers.ReadOnlyField()
+    name = serializers.ReadOnlyField()
+    email = serializers.ReadOnlyField()
+    status = serializers.ReadOnlyField()
+    submittedon = serializers.DateTimeField(format='%Y-%m-%d')
+    highschool = _Named()

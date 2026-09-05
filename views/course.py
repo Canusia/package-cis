@@ -65,6 +65,8 @@ from cis.views.eager import (
     with_course_upload_related,
 )
 
+from cis.serializers import tables
+
 
 @eager_queryset(with_course_upload_related)
 class CourseAppRequirementViewSet(viewsets.ReadOnlyModelViewSet):
@@ -136,6 +138,12 @@ class CourseUploadViewSet(viewsets.ReadOnlyModelViewSet):
 class CourseViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [CIS_user_only]
     serializer_class = CourseSerializer
+
+    def get_serializer_class(self):
+        # Narrow serializer for the datatables feed only; format=json callers
+        # and the retrieve action keep the full one (#67).
+        return tables.datatables_serializer(
+            self, tables.SlimCourseRowSerializer)
 
     def get_queryset(self):
         
