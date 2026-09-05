@@ -81,6 +81,8 @@ from cis.views.eager import (
     with_class_section_syllabi_related,
 )
 
+from cis.serializers import tables
+
 
 class RegistrationSummaryViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = RegistrationSummarySerializer
@@ -265,6 +267,12 @@ class ClassesRegisteredByCampusViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ClassSectionSerializer
     permission_classes = [CIS_user_only]
 
+    def get_serializer_class(self):
+        # Narrow serializer for the datatables feed only; format=json callers
+        # and the retrieve action keep the full one (#67).
+        return tables.datatables_serializer(
+            self, tables.SlimClassSectionSerializer)
+
     def get_queryset(self):
         campus_id = self.request.GET.get('campus_id', '').strip()
         term_id = self.request.GET.get('term_id', '').strip()
@@ -303,6 +311,12 @@ class ClassesRegisteredByCampusViewSet(viewsets.ReadOnlyModelViewSet):
 @eager_queryset(with_class_section_related)
 class ClassSectionViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ClassSectionSerializer
+
+    def get_serializer_class(self):
+        # Narrow serializer for the datatables feed only; format=json callers
+        # and the retrieve action keep the full one (#67).
+        return tables.datatables_serializer(
+            self, tables.SlimClassSectionSerializer)
 
     def get_queryset(self):
         try:

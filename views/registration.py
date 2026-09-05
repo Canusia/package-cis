@@ -65,6 +65,8 @@ from cis.views.eager import (
     with_registration_related,
 )
 
+from cis.serializers import tables
+
 logger = logging.getLogger(__name__)
 
 
@@ -87,6 +89,12 @@ def _valid_registration_id(value):
 class RegistrationViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = StudentRegistrationSerializer
     permission_classes = [CIS_user_only | FACULTY_user_only | INSTRUCTOR_user_only]
+
+    def get_serializer_class(self):
+        # Narrow serializer for the datatables feed only; format=json callers
+        # and the retrieve action keep the full one (#67).
+        return tables.datatables_serializer(
+            self, tables.SlimStudentRegistrationSerializer)
 
     def get_queryset(self):
         term = self.request.GET.get('term', str(active_term().id)).strip()

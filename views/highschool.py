@@ -77,6 +77,8 @@ from cis.views.eager import (
     with_teacher_highschool_related,
 )
 
+from cis.serializers import tables
+
 class HighSchoolViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = HighSchoolSerializer
     permission_classes = [CIS_user_only]
@@ -138,6 +140,12 @@ class HighSchoolTranscriptViewSet(viewsets.ReadOnlyModelViewSet):
 class HighSchoolTeacherViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = HighSchoolTeacherSerializer
     permission_classes = [CIS_user_only]
+
+    def get_serializer_class(self):
+        # Narrow serializer for the datatables feed only; format=json callers
+        # and the retrieve action keep the full one (#67).
+        return tables.datatables_serializer(
+            self, tables.SlimTeacherHighSchoolSerializer)
 
     def get_queryset(self):
         highschool_id = self.request.GET.get('highschool_id')

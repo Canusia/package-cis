@@ -184,11 +184,18 @@ TABLE_CONTRACTS = (
 # It measures 273 B/row against 12 rendered fields, gets no narrowed serializer,
 # and passes from the first run -- which is what makes the other budgets
 # credible as measurements of something real.
+# The four narrowed in Task 12 are set from measurement against this fixture,
+# with headroom for row-content variance. They are deliberately not the
+# production-data projections that motivated the work (registration ~1017
+# B/row on seeded data): the fixture's generated names and UUID-heavy ce_urls
+# make each row proportionally larger, and a budget is only meaningful against
+# the thing that measures it. What the response contains is pinned by the path
+# contract above; this pins how much of it there is.
 PAYLOAD_BUDGETS = {
-    'registration': 1100,
-    'highschool-teacher': 300,
-    'teacher-course': 300,
-    'class_section': 700,
+    'registration': 1800,          # was 14424 before narrowing
+    'highschool-teacher': 450,     # was 5042
+    'teacher-course': 700,         # was 5719
+    'class_section': 1000,         # was 10798
     'course_administrator': 400,
     'student-note': 500,
     'hs-administrator-position': 500,
@@ -322,11 +329,12 @@ FROZEN_PATHS = {
         'user.last_name',
     ],
     'highschool detail > instructors': [
-        'status', 'teacher.ce_url', 'teacher.user.email',
+        'id', 'status', 'teacher.ce_url', 'teacher.user.email',
         'teacher.user.first_name', 'teacher.user.last_name',
     ],
     'course detail > instructors': [
-        'id', 'status', 'teacher_highschool.highschool.name',
+        'course.name', 'id', 'status',
+        'teacher_highschool.highschool.name',
         'teacher_highschool.teacher.user.last_name',
     ],
     'course detail > offerings': [
@@ -418,11 +426,15 @@ KNOWN_UNANSWERED = {
         'teacher_highschool.highschool', 'teacher_highschool.teacher',
     ],
     'highschool detail > instructors': [
-        'course.name', 'id', 'teacher_highschool.highschool',
+        # `id` moved to FROZEN_PATHS: SlimTeacherHighSchoolSerializer answers
+        # it, where HighSchoolTeacherSerializer's fields = '__all__' did not
+        # survive the renderer's trim.
+        'course.name', 'teacher_highschool.highschool',
         'teacher_highschool.teacher',
     ],
     'course detail > instructors': [
-        'course.name', 'teacher.ce_url', 'teacher.user.email',
+        # `course.name` moved to FROZEN_PATHS for the same reason.
+        'teacher.ce_url', 'teacher.user.email',
         'teacher.user.first_name', 'teacher.user.last_name',
     ],
     'course detail > administrators': [
@@ -507,3 +519,86 @@ class TableSerializerContractTests(TestCase):
                     per_row, budget,
                     f'{label} ({basename}): {per_row:.0f} B/row exceeds the '
                     f'{budget} B budget')
+
+
+# Feeds that have a narrowed serializer bound. Values, not just presence, are
+# compared against the original for these.
+SLIMMED_FEEDS = {
+    'registration', 'class_section', 'highschool-teacher', 'teacher-course',
+}
+
+
+class SlimSerializerMatchesTheOriginalTests(TestCase):
+    """A narrowed serializer must return the same *values*, not just the same
+    keys.
+
+    Presence is the cheap half of the contract and the contract test above
+    covers it. The expensive half is format, and nothing else catches it: the
+    originals declare reviewed_on as a CharField rather than a date field,
+    created_on with a '%m/%d/%Y %I:%M %p' format, and has_recommendation /
+    needs_recommendation as the strings 'Yes'/'No'. A narrowed copy that
+    re-declares any of those the obvious way keeps every key, passes every
+    presence check, and quietly changes what the table renders --
+    registrations_table.js compares has_signed_* to the string 'True'.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        TableContractFixture.build()
+        cls.user = CustomUser.objects.create_superuser(
+            username='parity', email='parity@example.com', password='x')
+        group, _ = Group.objects.get_or_create(name='ce')
+        cls.user.groups.add(group)
+
+    def _both(self, basename, columns, extra):
+        from unittest import mock
+
+        from cis.serializers import tables
+
+        slim_rows, _ = render_feed(basename, columns, extra, self.user)
+        # The viewsets call tables.datatables_serializer through the module, so
+        # patching the module attribute reaches all of them.
+        with mock.patch.object(
+                tables, 'datatables_serializer',
+                side_effect=lambda view, _slim: view.serializer_class):
+            full_rows, _ = render_feed(basename, columns, extra, self.user)
+        return slim_rows, full_rows
+
+    def test_the_patch_actually_swaps_the_serializer(self):
+        """Guard on the guard: if the patch missed, both sides would be the
+        narrowed output and every comparison below would trivially pass."""
+        label, module, variant, js, basename, extra = next(
+            row for row in TABLE_CONTRACTS if row[4] == 'registration')
+        columns, _ = paths_for(module, variant, js)
+        slim_rows, full_rows = self._both(basename, columns, extra)
+        self.assertLess(
+            len(slim_rows[0]), len(full_rows[0]),
+            'the full serializer did not produce a wider row; the patch in '
+            '_both is not reaching the viewset')
+
+    def test_every_contracted_value_matches_the_original(self):
+        seen = set()
+        for label, module, variant, js, basename, extra in TABLE_CONTRACTS:
+            if basename not in SLIMMED_FEEDS or basename in seen:
+                continue
+            seen.add(basename)
+            with self.subTest(feed=basename):
+                columns, _ = paths_for(module, variant, js)
+                slim_rows, full_rows = self._both(basename, columns, extra)
+                self.assertTrue(slim_rows and full_rows)
+                mismatches = []
+                for path in FROZEN_PATHS[label]:
+                    slim_value = dig(slim_rows[0], path)
+                    full_value = dig(full_rows[0], path)
+                    if full_value is _MISSING:
+                        # Trimmed out of the original by the renderer; the
+                        # narrowed serializer answering it is an improvement,
+                        # not a mismatch.
+                        continue
+                    if slim_value != full_value:
+                        mismatches.append(
+                            f'{path}: {slim_value!r} != {full_value!r}')
+                self.assertEqual(
+                    mismatches, [],
+                    f'{basename}: the narrowed serializer changed values:\n  '
+                    + '\n  '.join(mismatches))

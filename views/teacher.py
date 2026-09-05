@@ -74,12 +74,20 @@ from cis.views.eager import (
     with_teacher_related,
 )
 
+from cis.serializers import tables
+
 logger = logging.getLogger(__name__)
 
 @eager_queryset(with_teacher_course_related)
 class TeacherCourseViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = TeacherCourseSerializer
     permission_classes = [CIS_user_only]
+
+    def get_serializer_class(self):
+        # Narrow serializer for the datatables feed only; format=json callers
+        # and the retrieve action keep the full one (#67).
+        return tables.datatables_serializer(
+            self, tables.SlimTeacherCourseSerializer)
 
     def get_queryset(self):
         teacher_id = self.request.GET.get('teacher_id')
