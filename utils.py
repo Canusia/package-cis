@@ -902,61 +902,78 @@ def extract_class_times(meeting_time):
 def format_emplid(id):
     return id.rjust(8, '0')
 
-def student_tuition_assistance_upload_path(instance, filename):
+# Media FileFields use Django's default max_length.
+MAX_UPLOAD_PATH_LENGTH = 100
+
+# Room for the "_xxxxxxx" suffix Django appends when a name is taken.
+UPLOAD_NAME_SUFFIX_LENGTH = 8
+
+
+def upload_path(prefix, instance, filename):
+    """
+    Build `<prefix>/<year>/<month>/<instance id>/<filename>` for an upload_to.
+
+    The filename is collapsed to a single extension and trimmed so the whole
+    path fits in MAX_UPLOAD_PATH_LENGTH. Django derives the extension from
+    every suffix in the name, so `a.b.pdf` leaves it a one character root to
+    truncate against the ~65 character prefix, and the upload dies with
+    SuspiciousFileOperation instead of being stored.
+    """
     now = datetime.datetime.now().strftime("%Y/%m")
-    return f'student/tuition_assistance_docs/{now}/{instance.id}/{filename}'
+    directory = f'{prefix}/{now}/{instance.id}'
+
+    root, ext = os.path.splitext(os.path.basename(filename))
+    root = re.sub(r'[^A-Za-z0-9_-]+', '_', root).strip('_') or 'file'
+    ext = re.sub(r'[^A-Za-z0-9.]+', '', ext)[:10]
+
+    budget = (
+        MAX_UPLOAD_PATH_LENGTH - len(directory) - len('/')
+        - UPLOAD_NAME_SUFFIX_LENGTH - len(ext)
+    )
+
+    return f'{directory}/{root[:budget] if budget > 0 else root[:1]}{ext}'
+
+def student_tuition_assistance_upload_path(instance, filename):
+    return upload_path('student/tuition_assistance_docs', instance, filename)
 
 def student_supporting_doc_upload_path(instance, filename):
-    now = datetime.datetime.now().strftime("%Y/%m")
-    return f'student/support_docs/{now}/{instance.id}/{filename}'
+    return upload_path('student/support_docs', instance, filename)
 
 def event_file_upload_path(instance, filename):
-    now = datetime.datetime.now().strftime("%Y/%m")
-    return f'event_file/{now}/{instance.id}/{filename}'
+    return upload_path('event_file', instance, filename)
 
 def recommendation_upload_path(instance, filename):
-    now = datetime.datetime.now().strftime("%Y/%m")
-    return f'rec/{now}/{instance.id}/{filename}'
+    return upload_path('rec', instance, filename)
 
 def teacher_app_upload_path(instance, filename):
-    now = datetime.datetime.now().strftime("%Y/%m")
-    return f'tapp/{now}/{instance.id}/{filename}'
+    return upload_path('tapp', instance, filename)
 
 def student_recommendation_upload_path(instance, filename):
-    now = datetime.datetime.now().strftime("%Y/%m")
-    return f'student/recommendation/{now}/{instance.id}/{filename}'
+    return upload_path('student/recommendation', instance, filename)
 
 def student_notes_media_upload_path(instance, filename):
-    now = datetime.datetime.now().strftime("%Y/%m")
-    return f'notes/students/{now}/{instance.id}/{filename}'
+    return upload_path('notes/students', instance, filename)
 
 def teacher_notes_media_upload_path(instance, filename):
-    now = datetime.datetime.now().strftime("%Y/%m")
-    return f'notes/teachers/{now}/{instance.id}/{filename}'
+    return upload_path('notes/teachers', instance, filename)
 
 def syllabus_upload_path(instance, filename):
-    now = datetime.datetime.now().strftime("%Y/%m")
-    return f'syllabus/{now}/{instance.id}/{filename}'
+    return upload_path('syllabus', instance, filename)
 
 def course_files_upload_path(instance, filename):
-    now = datetime.datetime.now().strftime("%Y/%m")
-    return f'course/files/{now}/{instance.id}/{filename}'
+    return upload_path('course/files', instance, filename)
 
 def bulk_message_log_upload_path(instance, filename):
-    now = datetime.datetime.now().strftime("%Y/%m")
-    return f'bulk_message/logs/{now}/{instance.id}/{filename}'
+    return upload_path('bulk_message/logs', instance, filename)
 
 def bulk_message_media_upload_path(instance, filename):
-    now = datetime.datetime.now().strftime("%Y/%m")
-    return f'bulk_message/media/{now}/{instance.id}/{filename}'
+    return upload_path('bulk_message/media', instance, filename)
 
 def teacher_files_upload_path(instance, filename):
-    now = datetime.datetime.now().strftime("%Y/%m")
-    return f'teacher/files/{now}/{instance.id}/{filename}'
+    return upload_path('teacher/files', instance, filename)
 
 def hs_transcript_upload_path(instance, filename):
-    now = datetime.datetime.now().strftime("%Y/%m")
-    return f'hs_transcript/{now}/{instance.id}/{filename}'
+    return upload_path('hs_transcript', instance, filename)
 
 def get_s3_url(file_name):
     try:
