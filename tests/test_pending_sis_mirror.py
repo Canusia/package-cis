@@ -17,6 +17,7 @@ from cis.models.student import Student
 from cis.models.course import Course, Cohort
 from cis.models.term import Term, AcademicYear
 from cis.serializers.registration import PendingSisMirrorRegistrationSerializer
+from cis.tests.tenant_support import requires_tenant_service
 
 
 def _disconnect_login_signal():
@@ -153,6 +154,7 @@ class PageRenderTests(TestCase):
         self.trigger_patcher.stop()
         _reconnect_login_signal(self._saved)
 
+    @requires_tenant_service('pending_sis_mirror_table')
     def test_page_renders_200(self):
         url = reverse('cis:registrations_pending_mirror')
         resp = self.client.get(url)
@@ -199,6 +201,7 @@ class PageRenderTests(TestCase):
         resp = self.client.get(url, self._dt_params(order_col_index=1))
         self.assertEqual(resp.status_code, 200, resp.content[:400])
 
+    @requires_tenant_service('pending_sis_mirror_table')
     def test_api_order_by_each_orderable_column_200(self):
         from myce_tenant_configs.services import pending_sis_mirror_table as tbl
         cols = tbl._PROFILES['pending_mirror']['columns']

@@ -2,16 +2,19 @@
 derived classes put cis's behavior mixin ahead of the tenant field set."""
 from django import forms
 from django.test import TestCase
+from cis.tests.tenant_support import requires_tenant_service
 
 
 class StudentProfileResolutionTest(TestCase):
 
+    @requires_tenant_service('student_profile_form')
     def test_base_form_is_the_tenant_class(self):
         from cis.forms.student_profile import StudentProfileForm
         from myce_tenant_configs.services.student_profile_form import (
             StudentProfileForm as TenantForm)
         self.assertIs(StudentProfileForm, TenantForm)
 
+    @requires_tenant_service('student_profile_form')
     def test_derived_forms_subclass_the_tenant_base(self):
         from cis.forms.student_profile import (
             StudentCISForm, StudentEditableForm)
@@ -20,6 +23,7 @@ class StudentProfileResolutionTest(TestCase):
         self.assertTrue(issubclass(StudentEditableForm, TenantForm))
         self.assertTrue(issubclass(StudentCISForm, TenantForm))
 
+    @requires_tenant_service('student_profile_form')
     def test_behavior_mixin_precedes_the_tenant_base_in_mro(self):
         from cis.forms.student_profile import (
             CISProfileMixin, EditableProfileMixin, StudentCISForm,

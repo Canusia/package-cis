@@ -3,11 +3,22 @@ tenant-service helpers, action handler, dispatch, and detail-page wiring."""
 import uuid
 from unittest import mock
 
+from django.conf import settings
 from django.test import TestCase
 
-from myce_tenant_configs.services import ethos_identity
+from cis.tests.tenant_support import (
+    requires_tenant_service, tenant_service_module)
+
+# ethos_identity is an opt-in tenant module, not a required seam -- nnu ships
+# none of it. Importing it at module level made this file a collection-time
+# ImportError on such a tenant (ewu#42), so it is resolved lazily and the
+# class skips where it is absent. Patch targets are strings for the same
+# reason: they resolve when the test runs, which is never on a thin tenant.
+ETHOS = f'{settings.TENANT_SERVICES_APP}.services.ethos_identity'
+ethos_identity = tenant_service_module('ethos_identity')
 
 
+@requires_tenant_service('ethos_identity')
 class LookupSectionRegistrationIdServiceTests(TestCase):
     def _registration(self, student_sis_id, section_sis_id, current_sis_id=None):
         reg = mock.MagicMock()
@@ -16,7 +27,7 @@ class LookupSectionRegistrationIdServiceTests(TestCase):
         reg.sis_id = current_sis_id
         return reg
 
-    @mock.patch.object(ethos_identity, 'get_ethos_client')
+    @mock.patch(f'{ETHOS}.get_ethos_client')
     def test_lookup_returns_guid_from_client(self, mock_client):
         mock_client.return_value.get_section_registration_id.return_value = 'FOUND-GUID'
         reg = self._registration('STU-GUID', 'SEC-GUID')
@@ -27,13 +38,13 @@ class LookupSectionRegistrationIdServiceTests(TestCase):
         mock_client.return_value.get_section_registration_id.assert_called_once_with(
             registrant_id='STU-GUID', section_id='SEC-GUID')
 
-    @mock.patch.object(ethos_identity, 'get_ethos_client')
+    @mock.patch(f'{ETHOS}.get_ethos_client')
     def test_lookup_returns_none_when_missing_student_sis_id(self, mock_client):
         reg = self._registration(None, 'SEC-GUID')
         self.assertIsNone(ethos_identity.lookup_section_registration_id(reg))
         mock_client.assert_not_called()
 
-    @mock.patch.object(ethos_identity, 'get_ethos_client')
+    @mock.patch(f'{ETHOS}.get_ethos_client')
     def test_lookup_returns_none_when_missing_section_sis_id(self, mock_client):
         reg = self._registration('STU-GUID', None)
         self.assertIsNone(ethos_identity.lookup_section_registration_id(reg))

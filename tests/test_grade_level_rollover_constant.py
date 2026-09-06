@@ -22,6 +22,7 @@ from cis.academic_calendar import (
     graduation_years,
 )
 from cis.models.student import Student
+from cis.tests.tenant_support import requires_tenant_service
 
 
 class _FakeDatetime:
@@ -67,6 +68,7 @@ class WidgetRangeAgreementTests(SimpleTestCase):
     turn over in the same month, or the widget offers years that derive to no
     grade at all."""
 
+    @requires_tenant_service('student_profile_form')
     def test_tenant_widget_uses_the_shared_constant(self):
         import inspect
 

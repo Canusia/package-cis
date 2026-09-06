@@ -30,6 +30,7 @@ from cis.models.student import Student
 from cis.models.course import Course, Cohort
 from cis.models.term import Term, AcademicYear
 from cis.services.tenant_services import get_tenant_service
+from cis.tests.tenant_support import requires_tenant_service
 
 ETHOS_PATH = f'{_ETHOS}.library.ethos.Ethos'
 
@@ -113,11 +114,13 @@ class MirrorableStatusesTests(TestCase):
             key=registration_status_email.key,
             defaults={'value': {'sis_mirror_trigger': statuses}})
 
+    @requires_tenant_service('registration')
     def test_reads_configured_sis_mirror_trigger(self):
         from myce_tenant_configs.services import registration as reg_service
         self._set_trigger(['registered', 'dropped'])
         self.assertEqual(reg_service.mirrorable_statuses(), ['registered', 'dropped'])
 
+    @requires_tenant_service('registration')
     def test_empty_when_unconfigured(self):
         from myce_tenant_configs.services import registration as reg_service
         from cis.settings.registration_status_email import registration_status_email
