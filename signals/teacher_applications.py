@@ -1,3 +1,22 @@
+"""DEPRECATED -- do not use, do not extend.
+
+These receivers are bound to `cis.models.teacher_applicant`, which the
+instructor-application portal no longer uses. The live models are the
+`instructor_app` package's own concrete models
+(`instructor_app.models.teacher_application` /
+`.teacher_applicant`), backed by separate tables, and the receivers that
+actually fire are `instructor_app.signals.teacher_applications`.
+
+Confirmed on ewu: `cis_teacherapplication` holds 0 rows against
+`instructor_app_teacherapplication`'s 50, and every applicant, instructor,
+faculty, highschool_admin and CE route in the URLconf includes
+`instructor_app.urls.*`.
+
+The guards below (Canusia/ewu#74) were applied here for parity so the two
+copies do not diverge further, but any behaviour change belongs in
+`instructor_app`. Prefer deleting this module once no tenant is still routing
+through the `cis` models.
+"""
 import logging
 from django.conf import settings
 
@@ -46,7 +65,22 @@ def create_new_recommendation(sender, instance, created, **kwargs):
     """
     if created:
         email_settings = inst_app_page_settings.from_db()
-        email_template = Template(email_settings['rec_received_email_message'])
+
+        # from_db() returns {} when the setting was never registered -- a
+        # fresh environment, or a tenant stood up before register_settings
+        # runs. This is a post_save receiver, so the KeyError escaped the
+        # caller's save() after the row had been written (#74). Neither
+        # setting carries an is_active flag to guard on, so an unconfigured
+        # template means no notification -- logged, not a blank email.
+        message = email_settings.get('rec_received_email_message')
+        if not message:
+            logger.warning(
+                'inst_app_language.rec_received_email_message is not '
+                'configured; skipping the recommendation-received email '
+                'for application %s', instance.teacher_application_id)
+            return
+
+        email_template = Template(message)
 
         context = Context({
             'teacher_first_name': instance.teacher_application.user.first_name,
@@ -129,7 +163,22 @@ def create_new_application(sender, instance, created, **kwargs):
     """
     if created:
         email_settings = tapp_settings.from_db()
-        email_template = Template(email_settings['new_applicant_email'])
+
+        # from_db() returns {} when the setting was never registered -- a
+        # fresh environment, or a tenant stood up before register_settings
+        # runs. This is a post_save receiver, so the KeyError escaped the
+        # caller's save() after the row had been written (#74). Neither
+        # setting carries an is_active flag to guard on, so an unconfigured
+        # template means no notification -- logged, not a blank email.
+        message = email_settings.get('new_applicant_email')
+        if not message:
+            logger.warning(
+                'teacher_application_email.new_applicant_email is not '
+                'configured; skipping the new-application email for %s',
+                instance.id)
+            return
+
+        email_template = Template(message)
 
         context = Context({
             'first_name': instance.user.first_name,
@@ -164,7 +213,22 @@ def selected_new_course(sender, instance, created, **kwargs):
     """
     if created:
         email_settings = tapp_settings.from_db()
-        email_template = Template(email_settings['course_selected_email'])
+
+        # from_db() returns {} when the setting was never registered -- a
+        # fresh environment, or a tenant stood up before register_settings
+        # runs. This is a post_save receiver, so the KeyError escaped the
+        # caller's save() after the row had been written (#74). Neither
+        # setting carries an is_active flag to guard on, so an unconfigured
+        # template means no notification -- logged, not a blank email.
+        message = email_settings.get('course_selected_email')
+        if not message:
+            logger.warning(
+                'teacher_application_email.course_selected_email is not '
+                'configured; skipping the course-selected email for %s',
+                instance.id)
+            return
+
+        email_template = Template(message)
 
         context = Context({
             'teacher_first_name': instance.teacherapplication.user.first_name,

@@ -1,4 +1,4 @@
-"""post_save receivers must not raise on an ordinary row (#69, #70, #71).
+"""post_save receivers must not raise on an ordinary row (#69, #70, #71, #74).
 
 All three receivers here run on ``post_save``, so an exception escapes the
 caller's ``save()`` *after* the row has been written -- the record exists and
@@ -11,6 +11,7 @@ Found while building the query-count fixture for #67, which had to work around
 all three to create one row of each model.
 """
 
+import datetime
 import uuid
 
 from django.conf import settings
@@ -223,4 +224,116 @@ class TeacherNoteMetaTypeTests(TestCase):
             TeacherNote.objects.create(
                 teacher=self.teacher, createdby=self.staff, note='hello',
                 meta={'type': 'to_instructor'})
+        send.assert_called_once()
+
+
+class TeacherApplicationEmailSettingTests(TestCase):
+    """#74 -- three receivers in signals/teacher_applications.py subscript a
+    settings key straight after from_db(), which returns {} when the setting
+    was never registered.
+
+    Unlike #70 these have no is_active flag to reorder a guard around, so an
+    unconfigured template skips the notification rather than mailing a blank
+    body.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from cis.settings.inst_app_language import inst_app_language
+        from cis.settings.teacher_application_email import (
+            teacher_application_email)
+
+        short = _short()
+        cls.user = CustomUser.objects.create_user(
+            username=f'app-{short}', email=f'app-{short}@example.com',
+            password='x', first_name='Ada', last_name='Applicant')
+        cls.lang_key = inst_app_language.key
+        cls.tapp_key = teacher_application_email.key
+
+    def _application(self):
+        from cis.models.teacher_applicant import TeacherApplication
+
+        return TeacherApplication.objects.create(
+            user=self.user, createdon=datetime.date.today(),
+            status_changed_on={})
+
+    def test_application_saves_when_the_setting_is_unregistered(self):
+        from cis.models.teacher_applicant import TeacherApplication
+
+        Setting.objects.filter(key=self.tapp_key).delete()
+        application = self._application()
+        self.assertTrue(
+            TeacherApplication.objects.filter(pk=application.pk).exists())
+
+    def test_no_mail_is_sent_when_the_template_is_unconfigured(self):
+        from unittest import mock
+
+        Setting.objects.filter(key=self.tapp_key).delete()
+        with mock.patch(
+                'cis.signals.teacher_applications.send_html_mail') as send:
+            self._application()
+        send.assert_not_called()
+
+    def test_mail_is_still_sent_when_the_template_is_configured(self):
+        """The guard must not cost the notification it guards."""
+        from unittest import mock
+
+        Setting.objects.update_or_create(
+            key=self.tapp_key,
+            defaults={'value': {
+                'new_applicant_email': 'Welcome {{ first_name }}.',
+                'new_applicant_email_subject': 'Application received',
+            }})
+        with mock.patch(
+                'cis.signals.teacher_applications.send_html_mail') as send:
+            self._application()
+        send.assert_called_once()
+
+    def test_recommendation_saves_when_the_setting_is_unregistered(self):
+        from cis.models.teacher_applicant import ApplicantRecommendation
+
+        # The application's own receiver reads a different setting, so
+        # configure that one: this must fail on rec_received_email_message
+        # alone, not on new_applicant_email.
+        Setting.objects.update_or_create(
+            key=self.tapp_key,
+            defaults={'value': {
+                'new_applicant_email': 'Welcome {{ first_name }}.',
+                'new_applicant_email_subject': 'Application received',
+            }})
+        application = self._application()
+
+        Setting.objects.filter(key=self.lang_key).delete()
+        recommendation = ApplicantRecommendation.objects.create(
+            teacher_application=application,
+            submitter={'name': 'Ray Referee',
+                       'email': 'ray@example.com'})
+        self.assertTrue(
+            ApplicantRecommendation.objects.filter(
+                pk=recommendation.pk).exists())
+
+    def test_recommendation_mail_is_still_sent_when_configured(self):
+        from unittest import mock
+
+        from cis.models.teacher_applicant import ApplicantRecommendation
+
+        Setting.objects.update_or_create(
+            key=self.tapp_key,
+            defaults={'value': {
+                'new_applicant_email': 'Welcome {{ first_name }}.',
+                'new_applicant_email_subject': 'Application received',
+            }})
+        Setting.objects.update_or_create(
+            key=self.lang_key,
+            defaults={'value': {
+                'rec_received_email_message': 'Thanks {{ recommender_name }}.',
+                'rec_received_email_subject': 'Recommendation received',
+            }})
+        application = self._application()
+        with mock.patch(
+                'cis.signals.teacher_applications.send_html_mail') as send:
+            ApplicantRecommendation.objects.create(
+                teacher_application=application,
+                submitter={'name': 'Ray Referee',
+                           'email': 'ray@example.com'})
         send.assert_called_once()
