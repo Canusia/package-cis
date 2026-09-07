@@ -1,0 +1,63 @@
+{% load crispy_forms_tags %}
+<div class="card border-top-0">
+    <div class="card-body">
+        <div class="col-12">
+            <p class="alert alert-info">List the document(s) a student should provide for this course. These requirements are <strong>informational only</strong> &mdash; they let the student and their counsellor know which documents to provide. They do <strong>not</strong> block or hide course registration in any way.</p>
+            <div class="pb-2 card border-0">
+                <div class="">
+                    <div class="table-responsive">
+                        <table class="table dataTable table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Document</th>
+                                    <th>Grade Level(s)</th>
+                                    <th>Description</th>
+                                    <th>Required</th>
+                                    <th>Status</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for r in doc_reqs %}
+                                <tr>
+                                    <td>
+                                        <a title="Edit" href="{% url 'cis:course' record.id %}?course_doc_id={{r.id}}#document_requirements">
+                                            {{ r.document_label }}
+                                        </a>
+                                    </td>
+                                    <td>{{ r.grade_level_labels|join:", " }}</td>
+                                    <td>{{ r.description|safe }}</td>
+                                    <td>
+                                        {% if r.required == '1' %}
+                                        Yes
+                                        {% else %}
+                                        No
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ r.status }}</td>
+                                    <td>
+                                        <a title="Edit" href="{% url 'cis:course' record.id %}?course_doc_id={{r.id}}#document_requirements">
+                                            Edit
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div> <!-- end table-responsive -->
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12">
+            <div class="clearfix">&nbsp;</div>
+            <h3>Add/Edit</h3>
+            <form action="" method="post">
+                {% csrf_token %}
+                {{ course_doc_req_form | crispy }}
+                <input type="hidden" name="action" value='save_course_doc_req'>
+                <input type="submit" class="btn btn-primary btn-sm" value="Save">
+            </form>
+        </div>
+    </div>
+</div>

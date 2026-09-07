@@ -105,6 +105,25 @@ def app_documents_tab(request, record):
             'course_app_req_form': form}
 
 
+@course_tabs.tab(slug='document_requirements', title='Document Requirement(s)', order=65,
+                 template='cis/course/tabs/_document_requirements.html', lazy=False)
+def document_requirements_tab(request, record):
+    from cis.models.course import CourseDocumentRequirement
+    from cis.forms.course import CourseDocumentRequirementForm
+    course_doc_id = request.GET.get('course_doc_id')
+    course_doc_req = (get_object_or_404(CourseDocumentRequirement, pk=course_doc_id)
+                      if course_doc_id else None)
+    if request.method == 'POST' and request.POST.get('action') == 'save_course_doc_req':
+        # Bind to POST purely to populate form.errors for re-display;
+        # detail() owns the actual save.
+        form = CourseDocumentRequirementForm(request.POST, instance=course_doc_req)
+        form.is_valid()
+    else:
+        form = CourseDocumentRequirementForm(instance=course_doc_req)
+    return {'doc_reqs': CourseDocumentRequirement.objects.filter(course=record),
+            'course_doc_req_form': form}
+
+
 @course_tabs.tab(slug='administrators', title='Administrator(s)', order=70,
                  template='cis/course/tabs/_administrators.html', lazy=False)
 def administrators_tab(request, record):

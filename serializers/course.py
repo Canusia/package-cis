@@ -6,6 +6,7 @@ from ..models.course import (
     TechCenter,
     CourseUpload,
     CourseAppRequirement,
+    CourseDocumentRequirement,
 )
 from ..models.tech_center_staff import TechCenterStaff
 
@@ -112,6 +113,23 @@ class CourseAppRequirementSerializer(serializers.ModelSerializer):
         model = CourseAppRequirement
         fields = '__all__'
         ref_name = 'CisCourseAppRequirement'
+
+
+class CourseDocumentRequirementSerializer(serializers.ModelSerializer):
+    course = CourseSerializer()
+    document_label = serializers.SerializerMethodField()
+    grade_levels_display = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CourseDocumentRequirement
+        fields = '__all__'
+        ref_name = 'CisCourseDocumentRequirement'
+
+    def get_document_label(self, obj):
+        return obj.document_label
+
+    def get_grade_levels_display(self, obj):
+        return ', '.join(obj.grade_level_labels)
 
 
 class CourseUploadSerializer(serializers.ModelSerializer):

@@ -624,6 +624,134 @@ class CourseAppRequirement(models.Model):
             ('course', 'name')
         ]
 
+DEFAULT_DOCUMENT_TYPES = (
+    ('transcript',  'High School Transcript'),
+    ('tsi',         'TSI Assessment'),
+    ('shot_record', 'Immunization Record'),
+)
+
+
+def course_document_choices():
+    """Course Document vocabulary, tenant-overridable.
+
+    Passed to the `document` field as a *callable* on purpose, the same way
+    hs_type_choices() is: Django keeps the callable through deconstruct() and the
+    migration writer serializes it as this function's import path, so migration
+    files carry no tenant labels and relabeling the vocabulary generates no
+    migration.
+
+    Uses the *opt-in* seam (get_tenant_override) rather than the required-module
+    form hs_type_choices uses. cis has a sensible default vocabulary here, and a
+    required module would break the course pages of every tenant that adopts this
+    version before shipping its own course_document_types.py. A tenant overrides
+    by defining choices() in that module; one that does not is unaffected.
+
+    Resolution is lazy — CharField only consumes choices when they are needed —
+    so this never runs at import time and cannot trip AppRegistryNotReady.
+    """
+    from cis.services.tenant_services import get_tenant_override
+    override = get_tenant_override('course_document_types', 'choices')
+    if override is not None:
+        return override()
+    return list(DEFAULT_DOCUMENT_TYPES)
+
+
+def student_grade_choices():
+    """The four student grade levels, without Student.GRADE_LEVEL's blank sentinel.
+
+    Reuses Student.GRADE_LEVEL rather than introducing a third grade vocabulary
+    (cis.utils.STUDENT_GRADE_OPTIONS is the second, same codes with bare labels).
+    The ('', 'Select') entry is a form placeholder and is meaningless for a
+    MultiSelectField, so it is dropped. Course.GRADE_LEVEL is deliberately not
+    reused: its starred 'with recommendation' codes express registration
+    eligibility, not a grade.
+    """
+    from cis.models.student import Student
+    return [(code, label) for code, label in Student.GRADE_LEVEL if code]
+
+
+class CourseDocumentRequirement(models.Model):
+    """A document a course requires of a student, optionally scoped to grades.
+
+    Informational only: requirements inform the student and counsellor and never
+    pre-block enrolment, so nothing may use this table to filter a course list.
+
+    Distinct from CourseAppRequirement, which is the *instructor application*
+    checklist (read through cis/models/teacher_applicant.py) and is free text.
+    This one is a controlled vocabulary that downstream code branches on.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    course = models.ForeignKey(
+        'cis.Course',
+        on_delete=models.CASCADE
+    )
+
+    document = models.CharField(max_length=100, choices=course_document_choices)
+
+    # Blank means "all grades", so a requirement never silently applies to nobody
+    # and the no-grade-dimension default matches existing behaviour.
+    grade_levels = MultiSelectField(
+        max_length=100,
+        choices=student_grade_choices,
+        blank=True
+    )
+
+    description = models.TextField(blank=True)
+
+    STATUS_OPTIONS = (
+        ('Active', 'Active'),
+        ('Inactive', 'Inactive'),
+    )
+    status = models.CharField(max_length=10, choices=STATUS_OPTIONS, default='Active')
+
+    required = models.CharField(
+        max_length=10,
+        choices=YES_NO_SELECT_OPTIONS,
+        default=1
+    )
+
+    class Meta:
+        unique_together = [
+            ('course', 'document')
+        ]
+
+    def __str__(self):
+        return f"{self.course} / {self.document}"
+
+    @property
+    def document_label(self):
+        """Display label for the stored document code.
+
+        Anything rendering `document` to a user must go through this — the column
+        holds a code ('transcript'), not wording.
+        """
+        from cis.services.tenant_services import get_tenant_override
+        override = get_tenant_override('course_document_types', 'label_for')
+        if override is not None:
+            return override(self.document)
+        # Falls back to the code rather than raising: a code retired from the
+        # vocabulary must not break pages showing requirements still carrying it.
+        return dict(DEFAULT_DOCUMENT_TYPES).get(self.document, self.document)
+
+    @property
+    def grade_level_labels(self):
+        """Display labels for the scoped grades, or ['All grades'] when unscoped."""
+        if not self.grade_levels:
+            return ['All grades']
+        labels = dict(student_grade_choices())
+        return [labels.get(code, code) for code in self.grade_levels]
+
+    def applies_to_grade(self, grade):
+        """True when `grade` is in scope.
+
+        Empty grade_levels means every grade, which is why this is the single
+        place that semantics lives rather than being re-derived per caller.
+        """
+        if not self.grade_levels:
+            return True
+        return grade in self.grade_levels
+
+
 from django.db.models import Case, When, IntegerField
 class CourseAdministratorManager(models.Manager):
     def get_ordered_by_role(self, **kwargs):

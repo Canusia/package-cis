@@ -385,7 +385,7 @@ def with_course_note_related(records):
 
 
 def with_course_upload_related(records):
-    """CourseUploadSerializer(course) / CourseAppRequirementSerializer(course)."""
+    """CourseUploadSerializer(course) / CourseAppRequirementSerializer(course) / CourseDocumentRequirementSerializer(course)."""
     return records.select_related(
         *course_select_related('course__')
     ).prefetch_related(

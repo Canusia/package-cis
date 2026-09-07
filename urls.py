@@ -173,6 +173,7 @@ from cis.views.course import (
     CourseViewSet,
     CourseHistoryViewSet,
     CourseAppRequirementViewSet,
+    CourseDocumentRequirementViewSet,
     CourseUploadViewSet,
     CourseNoteViewSet,
     delete_course_administrator_role,
@@ -393,6 +394,7 @@ router_viewsets = {
     'course': CourseViewSet,
     'course-history': CourseHistoryViewSet,
     'course-app-requirement': CourseAppRequirementViewSet,
+    'course-document-requirement': CourseDocumentRequirementViewSet,
     'course-uploads': CourseUploadViewSet,
     'course-notes': CourseNoteViewSet,
     

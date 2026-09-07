@@ -16,6 +16,7 @@ from rest_framework.response import Response
 
 from cis.models.course import (
     Course, CourseAppRequirement,
+    CourseDocumentRequirement,
     CourseAdministrator,
     CourseUpload
 )
@@ -27,9 +28,12 @@ from cis.services.table_configs import get_table_config
 build_courses_table_config = get_table_config('courses_table').build_config
 build_course_app_requirements_table_config = (
     get_table_config('course_app_requirements_table').build_config)
+build_course_document_requirements_table_config = (
+    get_table_config('course_document_requirements_table').build_config)
 
 from cis.forms.course import (
     CourseForm, CourseAppRequirementForm,
+    CourseDocumentRequirementForm,
     CourseAdministratorForm,
     CourseUploadForm,
     CourseStatusUpdateForm,
@@ -37,6 +41,8 @@ from cis.forms.course import (
     CourseCSVUploadForm,
     BulkAppRequirementUpdateForm,
     AddAppRequirementForm,
+    BulkCourseDocumentRequirementUpdateForm,
+    AddCourseDocumentRequirementForm,
     BulkCourseAvailabilityForm,
     BulkCourseCampusForm,
     BulkCourseRegistrationEligibilityForm,
@@ -51,6 +57,7 @@ from ..serializers.course import (
     CourseSerializer,
     CourseUploadSerializer,
     CourseAppRequirementSerializer,
+    CourseDocumentRequirementSerializer,
 )
 
 from ..serializers.note import CourseNoteSerializer
@@ -78,6 +85,20 @@ class CourseAppRequirementViewSet(viewsets.ReadOnlyModelViewSet):
         records = CourseAppRequirement.objects.all()
         if course_id:
             records = CourseAppRequirement.objects.filter(course__id=course_id)
+        return scope_queryset_by_campus(
+            records, self.request.user, campus_path='course__campus')
+
+
+@eager_queryset(with_course_upload_related)
+class CourseDocumentRequirementViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = CourseDocumentRequirementSerializer
+    permission_classes = [CIS_user_only]
+
+    def get_queryset(self):
+        course_id = self.request.GET.get('course_id')
+        records = CourseDocumentRequirement.objects.all()
+        if course_id:
+            records = CourseDocumentRequirement.objects.filter(course__id=course_id)
         return scope_queryset_by_campus(
             records, self.request.user, campus_path='course__campus')
 
@@ -312,6 +333,62 @@ def add_app_requirement(request):
         'form': form,
         'form_action': reverse('cis:course_bulk_actions'),
         'action_slug': 'add_app_requirement',
+        'ids': [],
+    }, request=request)
+    return JsonResponse({'outcome': 'modal', 'html': html})
+
+
+@course_actions.action('doc_req', label='Update Status/Required', icon='fas fa-edit', scope=['bulk_doc_req'])
+def update_course_doc_requirements(request):
+    template = 'cis/course/bulk_action.html'
+    ids_raw = request.POST.getlist('ids[]')
+    ids = processable_ids(CourseDocumentRequirement, ids_raw, request.user, campus_path='course__campus')
+
+    if request.POST.get('action_confirmed'):
+        data = request.POST.copy()
+        if ids_raw:
+            data.setlist('record_ids', ids)
+        else:
+            data.setlist('record_ids', processable_ids(
+                CourseDocumentRequirement, request.POST.getlist('record_ids'),
+                request.user, campus_path='course__campus'))
+        form = BulkCourseDocumentRequirementUpdateForm(data=data)
+        if form.is_valid():
+            form.save(request)
+            return JsonResponse({'outcome': 'call', 'fn': 'onBulkActionComplete', 'args': {'message': 'Successfully updated records', 'status': 'success'}})
+        return JsonResponse({'message': 'Please correct the errors and try again.', 'errors': form.errors.as_json()}, status=400)
+
+    form = BulkCourseDocumentRequirementUpdateForm(ids)
+    html = render_to_string(template, {
+        'title': 'Update Document Requirements',
+        'form': form,
+        'form_action': reverse('cis:course_bulk_actions'),
+        'action_slug': 'update_course_doc_requirements',
+        'ids': ids,
+    }, request=request)
+    return JsonResponse({'outcome': 'modal', 'html': html})
+
+
+@course_actions.action('doc_req', label='Add New', icon='fas fa-plus', btn_class='btn-success', scope=['add_doc_req'])
+def add_course_doc_requirement(request):
+    template = 'cis/course/bulk_action.html'
+
+    if request.POST.get('action_confirmed'):
+        data = request.POST.copy()
+        gated_courses = processable_ids(Course, request.POST.getlist('courses'), request.user)
+        data.setlist('courses', gated_courses)
+        form = AddCourseDocumentRequirementForm(data=data)
+        if form.is_valid():
+            created = form.save(request)
+            return JsonResponse({'outcome': 'call', 'fn': 'onBulkActionComplete', 'args': {'message': f'Successfully created {len(created)} record(s)', 'status': 'success'}})
+        return JsonResponse({'message': 'Please correct the errors and try again.', 'errors': form.errors.as_json()}, status=400)
+
+    form = AddCourseDocumentRequirementForm()
+    html = render_to_string(template, {
+        'title': 'Add Document Requirement',
+        'form': form,
+        'form_action': reverse('cis:course_bulk_actions'),
+        'action_slug': 'add_course_doc_requirement',
         'ids': [],
     }, request=request)
     return JsonResponse({'outcome': 'modal', 'html': html})
@@ -586,6 +663,9 @@ def detail(request, record_id):
     course_app_id = request.GET.get('course_app_id')
     course_app_req = None
 
+    course_doc_id = request.GET.get('course_doc_id')
+    course_doc_req = None
+
     course_admin_id = request.GET.get('course_admin_id')
     course_admin = None
 
@@ -598,6 +678,14 @@ def detail(request, record_id):
         )        
     course_app_req_form = CourseAppRequirementForm(
         instance=course_app_req
+    )
+
+    if course_doc_id:
+        course_doc_req = get_object_or_404(
+            CourseDocumentRequirement, pk=course_doc_id
+        )
+    course_doc_req_form = CourseDocumentRequirementForm(
+        instance=course_doc_req
     )
 
     migration_form = MigrateForm(record=record)
@@ -682,6 +770,23 @@ def detail(request, record_id):
                 course_app_req = course_app_req_form.save(commit=False)
                 course_app_req.course = record
                 course_app_req.save()
+
+                messages.add_message(
+                    request,
+                    messages.SUCCESS,
+                    'Successfully saved record',
+                    'list-group-item-success')
+                return redirect('cis:course', record_id=record_id)
+
+        if request.POST.get('action') == 'save_course_doc_req':
+            course_doc_req_form = CourseDocumentRequirementForm(
+                request.POST,
+                instance=course_doc_req
+            )
+            if course_doc_req_form.is_valid():
+                course_doc_req = course_doc_req_form.save(commit=False)
+                course_doc_req.course = record
+                course_doc_req.save()
 
                 messages.add_message(
                     request,
@@ -895,6 +1000,14 @@ def index(request):
                 bulk_actions=course_actions.for_scope('bulk_app_req', request.user),
                 bulk_actions_url=reverse('cis:course_bulk_actions'),
                 add_actions=course_actions.for_scope('add_new', request.user),
+            ),
+            'course_document_requirements_table': build_course_document_requirements_table_config(
+                variant='course_document_requirements_index',
+                api_url='/ce/api/course-document-requirement?format=datatables',
+                details_prefix='/ce/course/',
+                bulk_actions=course_actions.for_scope('bulk_doc_req', request.user),
+                bulk_actions_url=reverse('cis:course_bulk_actions'),
+                add_actions=course_actions.for_scope('add_doc_req', request.user),
             ),
         }
     )

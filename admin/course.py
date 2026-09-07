@@ -6,7 +6,8 @@ from cis.models.course import (
     Cohort,
     Campus,
     CourseAdministrator,
-    CourseAppRequirement
+    CourseAppRequirement,
+    CourseDocumentRequirement
 )
 
 class CourseAdmin(admin.ModelAdmin):
@@ -29,6 +30,11 @@ class CourseAppRequirementAdmin(admin.ModelAdmin):
     list_display = ['course', 'name', 'status']
     search_fields = ['name', 'course__name']
 
+class CourseDocumentRequirementAdmin(admin.ModelAdmin):
+    model = CourseDocumentRequirement
+    list_display = ['course', 'document', 'status']
+    search_fields = ['document', 'course__name']
+
 class CourseAdministratorAdmin(admin.ModelAdmin):
     model = CourseAdministrator
     list_display = ['course', 'user', 'role']
@@ -36,6 +42,7 @@ class CourseAdministratorAdmin(admin.ModelAdmin):
 
 admin.site.register(Course, CourseAdmin)
 admin.site.register(CourseAppRequirement, CourseAppRequirementAdmin)
+admin.site.register(CourseDocumentRequirement, CourseDocumentRequirementAdmin)
 admin.site.register(Cohort, CohortAdmin)
 admin.site.register(Campus, CampusAdmin)
 admin.site.register(CourseAdministrator, CourseAdministratorAdmin)

@@ -9,8 +9,11 @@ from cis.models.course import (
     Cohort, Category, College, Department,
     Course, Campus, Location, TechCenter,
     CourseAppRequirement,
+    CourseDocumentRequirement,
     CourseAdministrator,
-    CourseUpload
+    CourseUpload,
+    course_document_choices,
+    student_grade_choices
 )
 from ..utils import YES_NO_SELECT_OPTIONS, user_has_instructor_role
 from ..models.customuser import CustomUser
@@ -550,6 +553,24 @@ class CourseAppRequirementForm(ModelForm):
             'description': CKEditorWidget()
         }
 
+
+class CourseDocumentRequirementForm(ModelForm):
+
+    class Meta:
+        model = CourseDocumentRequirement
+        fields = '__all__'
+        exclude = ['course']
+        widgets = {
+            'description': CKEditorWidget()
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['grade_levels'].help_text = (
+            'Leave empty to apply this requirement to all grade levels.'
+        )
+
+
 class CourseAdministratorForm(ModelForm):
 
     id = forms.CharField(
@@ -672,6 +693,55 @@ class BulkAppRequirementUpdateForm(forms.Form):
     def save(self, request=None):
         data = self.cleaned_data
         records = CourseAppRequirement.objects.filter(id__in=data.get('record_ids'))
+        records.update(status=data.get('new_status'), required=data.get('new_required'))
+        return records
+
+
+class BulkCourseDocumentRequirementUpdateForm(forms.Form):
+    record_ids = forms.MultipleChoiceField(
+        required=False,
+        label='Records to Update',
+        widget=forms.CheckboxSelectMultiple,
+        choices=[]
+    )
+
+    new_status = forms.ChoiceField(
+        required=True,
+        label='New Status',
+        choices=CourseDocumentRequirement.STATUS_OPTIONS
+    )
+
+    new_required = forms.ChoiceField(
+        required=True,
+        label='Required',
+        choices=YES_NO_SELECT_OPTIONS
+    )
+
+    action = forms.CharField(
+        widget=forms.HiddenInput,
+        initial='update_course_doc_requirements'
+    )
+
+    def __init__(self, record_ids=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        if record_ids:
+            records = CourseDocumentRequirement.objects.filter(id__in=record_ids)
+            record_choices = [
+                (record.id, f"{record.document_label} / {record.course}") for record in records
+            ]
+            self.fields['record_ids'].choices = record_choices
+            self.fields['record_ids'].initial = record_ids
+        else:
+            record_choices = []
+            for record_id in kwargs.get('data').getlist('record_ids'):
+                record_choices.append((record_id, record_id))
+            self.fields['record_ids'].choices = record_choices
+            self.fields['record_ids'].required = False
+
+    def save(self, request=None):
+        data = self.cleaned_data
+        records = CourseDocumentRequirement.objects.filter(id__in=data.get('record_ids'))
         records.update(status=data.get('new_status'), required=data.get('new_required'))
         return records
 
@@ -875,3 +945,72 @@ class AddAppRequirementForm(forms.Form):
             records.append(obj)
         return records
 
+
+class AddCourseDocumentRequirementForm(forms.Form):
+    courses = forms.ModelMultipleChoiceField(
+        required=True,
+        label='Courses',
+        queryset=Course.objects.filter(status='Active').order_by('name'),
+        widget=forms.SelectMultiple(attrs={'class': 'form-control'})
+    )
+
+    document = forms.ChoiceField(
+        required=True,
+        label='Document',
+        choices=[]
+    )
+
+    grade_levels = forms.MultipleChoiceField(
+        required=False,
+        label='Grade Levels',
+        choices=[]
+    )
+
+    description = forms.CharField(
+        required=False,
+        label='Description',
+        widget=CKEditorWidget()
+    )
+
+    required = forms.ChoiceField(
+        required=True,
+        label='Required',
+        choices=YES_NO_SELECT_OPTIONS
+    )
+
+    status = forms.ChoiceField(
+        required=True,
+        label='Status',
+        choices=CourseDocumentRequirement.STATUS_OPTIONS
+    )
+
+    action = forms.CharField(
+        widget=forms.HiddenInput,
+        initial='add_course_doc_requirement'
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Resolve the tenant vocabularies per-request rather than at import time.
+        self.fields['document'].choices = course_document_choices()
+        self.fields['grade_levels'].choices = student_grade_choices()
+        self.fields['grade_levels'].help_text = (
+            'Leave empty to apply this requirement to all grade levels.'
+        )
+
+    def save(self, request=None):
+        data = self.cleaned_data
+        records = []
+        for course in data.get('courses'):
+            obj, created = CourseDocumentRequirement.objects.update_or_create(
+                course=course,
+                document=data.get('document'),
+                defaults={
+                    'grade_levels': data.get('grade_levels') or [],
+                    'description': data.get('description', ''),
+                    'required': data.get('required'),
+                    'status': data.get('status'),
+                }
+            )
+            records.append(obj)
+        return records

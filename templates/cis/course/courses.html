@@ -41,6 +41,9 @@
                     <li class="nav-item">
                         <a class="nav-link" data-toggle="tab" href="#app_requirements">Teacher App Requirements</a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-toggle="tab" href="#document_requirements">Course Document Requirements</a>
+                    </li>
                 </ul>
 
                 <div class="tab-content">
@@ -77,6 +80,16 @@
                             <div class="card border-top-0">
                                 <div class="card-body">
                                     {% include course_app_requirements_table.partial_template with config=course_app_requirements_table %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="tab-pane" id="document_requirements">
+                        <div class="bg-white border border-top-0">
+                            <div class="card border-top-0">
+                                <div class="card-body">
+                                    {% include course_document_requirements_table.partial_template with config=course_document_requirements_table %}
                                 </div>
                             </div>
                         </div>
