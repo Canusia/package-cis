@@ -839,20 +839,63 @@ INSTRUCTOR_MENU = [
     },
 ]
 
-def draw_menu(menu, active_menu, active_submenu='', role_name='ce'):
-    result = ''
+#: Values of a menu item's ``display`` key that mean "hidden". Anything else —
+#: including the key being absent — leaves the item visible, so menus written
+#: before the flag existed keep rendering in full.
+_HIDDEN_VALUES = (False, 0, '0', 'false', 'False')
+
+
+def is_visible(item):
+    """True unless the menu item's ``display`` flag marks it hidden.
+
+    Accepts booleans and the ``1``/``0`` (and string) forms the JSON is often
+    hand-edited with.
+    """
+    return item.get('display', True) not in _HIDDEN_VALUES
+
+
+def get_role_menu(role_name, visible_only=True):
+    """Return a role's menu as a list of nav-item dicts.
+
+    Reads the ``cis.settings.menu`` Setting, which is the single source of
+    truth for every portal's navigation. Hidden items — and hidden ``sub_menu``
+    children — are dropped unless ``visible_only`` is False. Returns ``[]`` when
+    the Setting is missing or its JSON is unparseable.
+    """
     import json
     from cis.settings.menu import menu as menu_settings
-    
+
     conf = menu_settings.from_db()
     try:
         menu = json.loads(conf.get(f'{role_name}_menu'))
-    except:
+    except (AttributeError, TypeError, ValueError):
+        return []
+
+    if not visible_only:
+        return menu
+
+    result = []
+    for item in menu:
+        if not is_visible(item):
+            continue
+        if item.get('sub_menu'):
+            # Copy, so filtering a menu for display never edits the stored one.
+            item = dict(item)
+            item['sub_menu'] = [
+                sub for sub in item['sub_menu'] if is_visible(sub)]
+        result.append(item)
+
+    return result
+
+
+def draw_menu(menu, active_menu, active_submenu='', role_name='ce'):
+    result = ''
+
+    menu = get_role_menu(role_name)
+    if not menu:
         return result
 
     for item in menu:
-        if not item.get('display', True):
-            continue
 
         if item['type'] == 'nav-item':
             result += "<li class='nav-item "

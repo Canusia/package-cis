@@ -18,12 +18,11 @@ class SettingForm(forms.Form):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        import json
-        from cis.settings.menu import menu as menu_settings
-        
-        role_name = 'student'
-        conf = menu_settings.from_db()
-        menu = json.loads(conf.get(f'{role_name}_menu'))
+        from cis.menu import get_role_menu
+
+        # Only visible menu items get a blurb field. Text already stored for a
+        # hidden item is left untouched by run_record().
+        menu = get_role_menu('student')
 
         menu.append({
             'name': 'side_bar',
@@ -162,7 +161,12 @@ class student_portal(SettingForm):
             setting = Setting()
             setting.key = self.key
 
-        setting.value = self._to_python()
+        # Merge, don't replace: a menu item hidden via its "display" flag has
+        # no field in this form, and a wholesale replace would drop the blurb
+        # stored for it.
+        value = dict(setting.value or {})
+        value.update(self._to_python())
+        setting.value = value
         setting.save()
 
         return JsonResponse({

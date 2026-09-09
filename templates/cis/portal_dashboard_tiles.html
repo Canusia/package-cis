@@ -1,5 +1,9 @@
+{% comment %}
+nav_items arrives pre-filtered by cis.menu.get_role_menu, which drops items
+flagged "display": false. Do not re-test the flag here — a template check
+cannot express its default-to-visible behaviour.
+{% endcomment %}
 {% for p in nav_items %}
-    {% if not p.dislay %}        
         {% if p.name != 'home' %}
             <div class="col-md-4 ">
                 <div class="card mb-4 shadow-sm" id="id_tile_{{p.name}}">
@@ -18,5 +22,4 @@
                 </div> <!-- end card -->
             </div>
         {% endif %}
-    {% endif %}
 {% endfor %}
