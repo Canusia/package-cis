@@ -166,6 +166,10 @@ class PendingRecommendationScopingTests(TestCase):
         Asserting constancy rather than a fixed number: the count is 1 when
         nothing is skipped and 2 when the exclude() runs, and which of those
         applies is not the point — that it stays flat as rows grow is.
+
+        The ceiling moved 2 -> 3 when the grade-level gate became a setting:
+        reading it costs one Setting query, resolved once per call rather than
+        per row. Constant, so the invariant this test exists for is unchanged.
         """
         for _ in range(3):
             self._register()
@@ -176,10 +180,14 @@ class PendingRecommendationScopingTests(TestCase):
         large = self._query_count()
 
         self.assertEqual(small, large)
-        self.assertLessEqual(large, 2)
+        self.assertLessEqual(large, 3)
 
     def test_query_count_is_flat_when_rows_are_skipped(self):
-        """With ineligible rows the exclude() runs; it must still be constant."""
+        """With ineligible rows the exclude() runs; it must still be constant.
+
+        Ceiling is 3, not 2: see the note in the test above — the grade-level
+        gate adds one constant Setting read per call.
+        """
         for _ in range(2):
             self._register(grade_level='JR', eligibility=['SR*'])
             self._register()
@@ -191,4 +199,4 @@ class PendingRecommendationScopingTests(TestCase):
         large = self._query_count()
 
         self.assertEqual(small, large)
-        self.assertLessEqual(large, 2)
+        self.assertLessEqual(large, 3)

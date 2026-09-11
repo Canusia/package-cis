@@ -264,6 +264,15 @@ class CisConfig(AppConfig):
                 '1'
             ]
         },
+        {
+            'name': 'recommendation_policy',
+            'title': 'Recommendation - Grade Level Requirement',
+            'description': 'Whether a recommendation is required only when the '
+                           "course marks the student's own grade level.",
+            'categories': [
+                '1'
+            ]
+        },
         # {
         #     'name': 'drop_wd_req_email',
         #     'title': 'Drop Request Emails',

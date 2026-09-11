@@ -2191,7 +2191,10 @@ class Student(models.Model):
         module also holds the registration-level ``needs_recommendation``; this
         one asks about the student across all their applied registrations.
         """
+        from cis.services.recommendation_policy import (
+            grade_gate_enabled, registration_requires_recommendation)
         from cis.services.tenant_services import get_tenant_override
+
         override = get_tenant_override(
             'registration', 'student_needs_recommendation')
         if override is not None:
@@ -2205,9 +2208,14 @@ class Student(models.Model):
                 student=self
         )
 
+        # Resolved once rather than per row: the gate reads a Setting row.
+        gate = grade_gate_enabled()
         skip_ids = []
         for record in records:
-            if f'{record.student.grade_level}*' not in record.class_section.course.registration_eligibility:
+            if not registration_requires_recommendation(
+                    record.student.grade_level,
+                    record.class_section.course.registration_eligibility,
+                    gate_enabled=gate):
                 skip_ids.append(record.id)
 
         records = records.exclude(id__in=skip_ids)
@@ -3002,8 +3010,19 @@ def recommendation_required_q(course_path='class_section__course',
     implementations (which use exact list membership) correctly match none.
     Pairing each literal token with an equality test on the grade keeps blank
     grade levels out by construction.
+
+    That reasoning holds only while the grade match is part of the rule. When
+    the `recommendation_policy` setting turns it off, matching every course that
+    carries any asterisk — blank grade levels included — is precisely the
+    intent, so the bare ``'*'`` token is used deliberately and the grade term is
+    dropped. A course with no asterisk still matches nothing either way.
     """
     from django.db.models import Q
+
+    from cis.services.recommendation_policy import grade_gate_enabled
+
+    if not grade_gate_enabled():
+        return Q(**{f'{course_path}__registration_eligibility__contains': '*'})
 
     q = Q()
     for code, _label in Student.GRADE_LEVEL:

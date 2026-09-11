@@ -2305,16 +2305,20 @@ class StudentRegistration(models.Model):
         """Whether this registration's course requires a recommendation.
 
         Tenants may override by defining ``needs_recommendation(registration)``
-        in their ``services/registration.py``.
+        in their ``services/registration.py``. Whether the student's own grade
+        level has to match is the `recommendation_policy` setting; the override
+        is checked first either way, so an overriding tenant is unaffected by it.
         """
+        from cis.services.recommendation_policy import (
+            registration_requires_recommendation)
+
         override = _tenant_registration_override('needs_recommendation')
         if override is not None:
             return override(self)
 
-        grade_level = self.student.grade_level
-        eligibility = self.class_section.course.registration_eligibility
-
-        return f'{grade_level}*' in eligibility
+        return registration_requires_recommendation(
+            self.student.grade_level,
+            self.class_section.course.registration_eligibility)
     
     def has_recommendation(self):
         """Whether a recommendation already exists for this registration.
@@ -2349,6 +2353,9 @@ class StudentRegistration(models.Model):
         ``get_pending_recommendations(student_ids=None, highschool_ids=None)``
         in their ``services/registration.py``.
         """
+        from cis.services.recommendation_policy import (
+            grade_gate_enabled, registration_requires_recommendation)
+
         override = _tenant_registration_override('get_pending_recommendations')
         if override is not None:
             return override(
@@ -2392,10 +2399,16 @@ class StudentRegistration(models.Model):
             # both in the same query, so this is two queries regardless of row
             # count rather than one per row plus one.
             records = records.select_related('student', 'class_section__course')
+            # Resolve the gate once, not per row: it reads a Setting row, and
+            # reading it inside the comprehension would reintroduce the N+1 that
+            # select_related above is here to prevent.
+            gate = grade_gate_enabled()
             skip_ids = [
                 record.id for record in records
-                if f'{record.student.grade_level}*' not in
-                (record.class_section.course.registration_eligibility or '')
+                if not registration_requires_recommendation(
+                    record.student.grade_level,
+                    record.class_section.course.registration_eligibility,
+                    gate_enabled=gate)
             ]
             if skip_ids:
                 records = records.exclude(id__in=skip_ids)
