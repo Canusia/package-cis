@@ -340,7 +340,10 @@ from cis.views.section_number import (
 
 from cis.views.users import (
     index as users, detail as user,
-    add_new as user_add_new
+    add_new as user_add_new,
+    locked_index as locked_users,
+    do_locked_bulk_action,
+    StaffUserViewSet, LockedUserViewSet
 )
 
 from cis.views.ajax import (
@@ -444,6 +447,9 @@ router_viewsets = {
 
     'credential-expiry': CredentialExpiryViewSet,
     'credential-summary': CredentialSummaryViewSet,
+
+    'user': StaffUserViewSet,
+    'locked-user': LockedUserViewSet,
 }
 
 for router_key in router_viewsets.keys():
@@ -757,6 +763,14 @@ urlpatterns = [
         'users/',
         user_passes_test(user_has_cis_role, login_url='/')(users),
         name='users'),
+    path(
+        'users/locked/',
+        user_passes_test(user_has_cis_role, login_url='/')(locked_users),
+        name='locked_users'),
+    path(
+        'users/locked/bulk_actions',
+        user_passes_test(user_has_cis_role, login_url='/')(do_locked_bulk_action),
+        name='locked_users_bulk_action'),
     path(
         'user/<int:record_id>',
         user_passes_test(user_has_cis_role, login_url='/')(user),

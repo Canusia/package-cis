@@ -140,6 +140,32 @@ class menu(SettingForm):
                     items.append(entry)
                 defaults[role_key] = json.dumps(items)
 
+        # Inject the "Locked Accounts" sub-menu entry into the ce_menu "Staff"
+        # nav-item, between "All Staff" and "Scheduled Tasks". Programmatic
+        # injection (matching the _support_entries pattern above) rather than
+        # hand-editing the giant JSON string, because this needs to land
+        # *inside* an existing nav-item's sub_menu rather than append a new
+        # top-level nav-item — doing that by hand inside the escaped JSON
+        # blob above would be error-prone and hard to review/diff.
+        _locked_accounts_entry = {
+            "label": "Locked Accounts",
+            "name": "locked_users",
+            "url": "cis:locked_users",
+        }
+        if "ce_menu" in defaults:
+            items = json.loads(defaults["ce_menu"])
+            for item in items:
+                if item.get("name") == "users":
+                    sub_menu = item.setdefault("sub_menu", [])
+                    if not any(s.get("name") == "locked_users" for s in sub_menu):
+                        # Insert after "All Staff" (index 0), before
+                        # "Scheduled Tasks" — falls back to append if the
+                        # sub_menu doesn't have the expected shape.
+                        insert_at = 1 if len(sub_menu) >= 1 else len(sub_menu)
+                        sub_menu.insert(insert_at, _locked_accounts_entry)
+                    break
+            defaults["ce_menu"] = json.dumps(items)
+
         setting.value = defaults
         setting.save()
 

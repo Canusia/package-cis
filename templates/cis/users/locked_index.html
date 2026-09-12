@@ -1,0 +1,41 @@
+{% extends "cis/logged-base.html" %}
+{%block title %}{{page_title}}{% endblock %}
+
+{% load templatehelpers %}
+{% load static %}
+
+{% block body %}
+
+<main>
+    <div class="">
+        <div class="row">
+            <div class="col-sm-6 col-xs-12">
+                <h1 class="h3 mb-4 text-gray-800">{{ page_title }}</h1>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            {% include "cis/messages.html" with messages=messages %}
+            <div class="card border-top-0">
+                <div class="card-body">
+
+                    <p class="text-muted">
+                        An account locks itself after {{ max_failed_logins }} failed sign-in
+                        attempts and cannot be used until it is unlocked. Locked accounts are
+                        listed here whatever their role &mdash; students, instructors and staff
+                        alike. Unlocking clears the failed-attempt counter; it does not change
+                        the password.
+                    </p>
+
+                    <div class="row">
+                        <div class="col-md-12 mb-3">
+                            {% include locked_users_table.partial_template with config=locked_users_table %}
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+{% endblock %}
