@@ -102,8 +102,12 @@
         },
       ],
       columns: [
-        { data: null, orderable: false, searchable: false,
-          className: 'select-checkbox', defaultContent: '' },
+        // Must send a non-empty data key: rest_framework_datatables stops
+        // reading columns at the first empty one, and `data: null` would make
+        // it see none -- silently dropping all search and ordering (#16).
+        { data: 'id', orderable: false, searchable: false,
+          className: 'select-checkbox', defaultContent: '',
+          render: function () { return ''; } },
         // data-* SerializerMethodFields have no ORM field; `name` gives
         // rest_framework_datatables the real model path to order/search on
         // (columns[i][name] -> order_by), else FieldError on sort.

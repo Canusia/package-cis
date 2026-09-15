@@ -7,6 +7,8 @@ so the inline template JS must send a real model field path (via each column's
 `name:`), not the SerializerMethodField name, or ordering those columns raises
 FieldError.
 """
+import re
+
 from django.contrib.auth.models import Group
 from django.contrib.auth.signals import user_logged_in
 from django.test import TestCase
@@ -81,7 +83,7 @@ class FailedMirrorOrderingTests(TestCase):
             'format': 'datatables', 'draw': '1', 'start': '0', 'length': '30',
             'search[value]': '', 'search[regex]': 'false',
             'order[0][column]': str(col_index), 'order[0][dir]': 'asc',
-            'columns[0][data]': '0',
+            'columns[0][data]': 'id',  # what the template's checkbox column sends
             'columns[0][name]': '',
             'columns[0][orderable]': 'false',
             'columns[0][searchable]': 'false',
@@ -104,3 +106,61 @@ class FailedMirrorOrderingTests(TestCase):
         for col, name in ((3, 'class_section.course.name'), (4, 'class_section.term.code')):
             resp = self.client.get(url, self._order_params(col, name))
             self.assertEqual(resp.status_code, 200, resp.content[:400])
+
+
+class FailedMirrorSearchTests(FailedMirrorOrderingTests):
+    """Search/order must survive the request the page actually sends (#16).
+
+    rest_framework_datatables' get_fields() stops reading columns at the first
+    column whose `data` is empty -- and DataTables sends a `data: null` column as
+    `columns[i][data]=`. A leading `data: null` checkbox column therefore made
+    the backend see zero columns: global search, column search and ordering
+    were all silently ignored. These tests derive columns[] from the rendered
+    template, so a hand-written request cannot mask that again.
+    """
+    COLUMN_RE = re.compile(
+        r"\{\s*data:\s*(?:null|'(?P<data>[^']*)')"
+        r"(?:\s*,\s*name:\s*'(?P<name>[^']*)')?"
+        r"(?P<rest>[^{}]*?searchable:\s*false)?")
+
+    def setUp(self):
+        super().setUp()
+        other_user = CustomUser.objects.create_user(
+            username='fmother', email='fmother@example.com', password='x',
+            first_name='Zed', last_name='Otherperson')
+        other = Student.objects.create(user=other_user)
+        StudentRegistration.objects.create(
+            student=other,
+            class_section=StudentRegistration.objects.first().class_section,
+            status='approved', status_changed_on={}, last_mirror_status='failed')
+
+    def _browser_params(self, search=''):
+        page = self.client.get(reverse('cis:registrations_failed_mirror')).content.decode()
+        block = page[page.index('columns: ['):]
+        params = {'format': 'datatables', 'draw': '1', 'start': '0', 'length': '30',
+                  'search[value]': search, 'search[regex]': 'false'}
+        for i, m in enumerate(self.COLUMN_RE.finditer(block)):
+            if i > 10:
+                break
+            params[f'columns[{i}][data]'] = m.group('data') or ''
+            params[f'columns[{i}][name]'] = m.group('name') or ''
+            params[f'columns[{i}][searchable]'] = 'false' if m.group('rest') else 'true'
+            params[f'columns[{i}][orderable]'] = 'true'
+            params[f'columns[{i}][search][value]'] = ''
+            params[f'columns[{i}][search][regex]'] = 'false'
+        return params
+
+    def _filtered(self, search):
+        url = reverse('cis:failed_mirror_registrations-list')
+        resp = self.client.get(url, self._browser_params(search))
+        self.assertEqual(resp.status_code, 200, resp.content[:400])
+        body = resp.json()
+        return body['recordsTotal'], body['recordsFiltered']
+
+    def test_no_leading_empty_data_column(self):
+        self.assertTrue(self._browser_params()['columns[0][data]'],
+                        msg='column 0 must send a non-empty data key')
+
+    def test_global_search_filters_rows(self):
+        self.assertEqual(self._filtered('Otherperson'), (2, 1))
+        self.assertEqual(self._filtered('zzqqnomatch'), (2, 0))
