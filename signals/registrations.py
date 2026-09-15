@@ -135,6 +135,11 @@ def update_registration(sender, instance, created, **kwargs):
     previous_status = instance.tracker.previous('status')
     status = instance.status
 
+    # Loaded once, and only when a branch below consults it.
+    email_settings = None
+    if created or previous_status != status:
+        email_settings = registration_status_email.from_db()
+
     coreqs = instance.class_section.co_reqs.all()
     if created:
 
@@ -146,6 +151,17 @@ def update_registration(sender, instance, created, **kwargs):
                 'registration_id': str(instance.id)
             }
         )
+
+        # A registration created directly at a trigger status must queue for
+        # the SIS mirror too (cis#8) -- FieldTracker reports no status change on
+        # creation, so the change-path check below never sees it. Co-reqs
+        # auto-created just below re-enter this receiver and are covered here.
+        if status in (email_settings.get('sis_mirror_trigger') or []):
+            StudentRegistration.objects.filter(
+                pk=instance.id
+            ).update(
+                needs_mirroring=True
+            )
 
         try:
             for coreq in coreqs:
@@ -229,9 +245,7 @@ def update_registration(sender, instance, created, **kwargs):
             print(e)
 
 
-        email_settings = registration_status_email.from_db()
-
-        if status in email_settings.get('sis_mirror_trigger', []):
+        if status in (email_settings.get('sis_mirror_trigger') or []):
             StudentRegistration.objects.filter(
                 pk=instance.id
             ).update(
