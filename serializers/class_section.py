@@ -165,7 +165,13 @@ class ClassSectionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ClassSection
-        fields = '__all__'
+        # `meta` is the raw SIS section payload -- on Ethos tenants it carries
+        # instructor Banner IDs and usernames -- and several KB per section.
+        # This serializer backs /ce/api/class_section/, which student,
+        # instructor and HS-admin pages call, and is nested in registration,
+        # drop-request, note and syllabus feeds. No client reads it; server
+        # code reads it off the model. Never serialize it (#14).
+        exclude = ['meta']
 
         datatables_always_serialize = [
             'id',
