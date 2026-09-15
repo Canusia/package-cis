@@ -1,0 +1,67 @@
+{% comment %}
+Delete preflight summary for /ce/users/ -- rendered by do_users_bulk_action
+(action=delete_preflight) and injected into #bulk_modal_content, which already
+sits inside the modal body with its own close button (cis/logged-base.html).
+The confirm form is wired by a delegated submit handler in
+myce_tenant_configs/staticfiles/js/users_table.js.
+{% endcomment %}
+<h5 class="mb-3">Delete Accounts</h5>
+
+{% if not plans %}
+  <p>None of the selected rows can be deleted: you cannot delete your own account.</p>
+{% endif %}
+
+{% for plan in plans %}
+  <div class="card mb-2 {% if plan.deletable %}border-left-danger{% else %}border-left-secondary{% endif %}">
+    <div class="card-body py-2">
+      <strong>{{ plan.user.first_name }} {{ plan.user.last_name }}</strong>
+      <span class="text-muted">&lt;{{ plan.user.email }}&gt;</span>
+      {% if plan.deletable %}
+        <span class="badge badge-danger">will be deleted</span>
+        {% if plan.effects %}
+          <ul class="mb-0 small">
+            {% for effect in plan.effects %}
+              <li>{{ effect.count }} {{ effect.verbose }}
+                {% for key, verb in strategy_verbs.items %}{% if key == effect.strategy %}{{ verb }}{% endif %}{% endfor %}
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <div class="small text-muted">No other records reference this account.</div>
+        {% endif %}
+      {% else %}
+        <span class="badge badge-secondary">blocked</span>
+        <ul class="mb-0 small">
+          {% for reason in plan.blockers %}<li>{{ reason }}</li>{% endfor %}
+        </ul>
+      {% endif %}
+    </div>
+  </div>
+{% endfor %}
+
+{% if skipped %}
+  <p class="small text-muted mt-2">{{ skipped }} selected row(s) skipped (your own account, or not a staff account).</p>
+{% endif %}
+
+{% if deletable_ids %}
+<form id="users_delete_confirm" action="{{ bulk_actions_url }}" method="post" class="mt-3">
+  <p class="small">
+    This cannot be undone. Login history and two-step devices are removed with the
+    account; impersonation and admin-log rows are removed but recorded in the
+    deletion log entry. Type <code>DELETE</code> to confirm.
+  </p>
+  {% for id in deletable_ids %}<input type="hidden" name="ids[]" value="{{ id }}">{% endfor %}
+  <input type="hidden" name="action" value="delete">
+  <div class="form-row">
+    <div class="col">
+      <input type="text" class="form-control" name="confirm_text" autocomplete="off"
+             placeholder="DELETE" aria-label="Type DELETE to confirm">
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-danger" disabled>
+        Delete {{ deletable_ids|length }} account(s)
+      </button>
+    </div>
+  </div>
+</form>
+{% endif %}

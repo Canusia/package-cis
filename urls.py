@@ -343,6 +343,7 @@ from cis.views.users import (
     add_new as user_add_new,
     locked_index as locked_users,
     do_locked_bulk_action,
+    do_users_bulk_action,
     StaffUserViewSet, LockedUserViewSet
 )
 
@@ -771,6 +772,10 @@ urlpatterns = [
         'users/locked/bulk_actions',
         user_passes_test(user_has_cis_role, login_url='/')(do_locked_bulk_action),
         name='locked_users_bulk_action'),
+    path(
+        'users/bulk_actions',
+        user_passes_test(user_has_cis_role, login_url='/')(do_users_bulk_action),
+        name='users_bulk_action'),
     path(
         'user/<int:record_id>',
         user_passes_test(user_has_cis_role, login_url='/')(user),
