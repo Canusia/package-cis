@@ -1,5 +1,6 @@
 # users/models.py
 import os, uuid, datetime, json, logging
+from django.utils.http import content_disposition_header
 
 from django.conf import settings
 from django.db import models, IntegrityError
@@ -388,7 +389,8 @@ class ClassSection(MyCEBaseModel):
         pdf = pdfkit.from_string(html, False, options)
 
         response = HttpResponse(pdf, content_type='application/pdf')
-        response['Content-Disposition'] = 'attachment; filename=' + "class_roster_" + str(self.class_number) + "_" + self.term.code + ".pdf"
+        response['Content-Disposition'] = content_disposition_header(
+            True, f'class_roster_{self.class_number}_{self.term.code}.pdf')
         
         return response
 

@@ -1,4 +1,5 @@
 from django.db.models import Q
+from django.utils.http import content_disposition_header
 from django.conf import settings
 from django.contrib import messages
 from django.shortcuts import get_object_or_404, redirect, render
@@ -275,7 +276,7 @@ def download_files(request, record_id):
         zf.close()
 
         response = HttpResponse(b.getvalue(), content_type="application/x-zip-compressed")
-        response['Content-Disposition'] = f'attachment; filename={ZIPFILE_NAME}'
+        response['Content-Disposition'] = content_disposition_header(True, ZIPFILE_NAME)
         return response
 
 def remind_reviewer(request):

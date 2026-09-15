@@ -2,6 +2,7 @@
 Student Views
 """
 import csv, io, logging, datetime, uuid
+from django.utils.http import content_disposition_header
 from itertools import chain
 
 from django.conf import settings
@@ -639,7 +640,7 @@ def import_emplid_from_file(request, type='registrations'):
 
         if result['status'] == 'success':
             response = HttpResponse(content_type='text/csv')
-            response['Content-Disposition'] = f'attachment; filename="{file_name}"'
+            response['Content-Disposition'] = content_disposition_header(True, file_name)
 
             writer = csv.writer(response)
             writer.writerow(result['records'][0].keys())
@@ -669,7 +670,7 @@ def import_students_from_file(request, type='registrations'):
 
         if result['status'] == 'success':
             response = HttpResponse(content_type='text/csv')
-            response['Content-Disposition'] = f'attachment; filename="{file_name}"'
+            response['Content-Disposition'] = content_disposition_header(True, file_name)
 
             writer = csv.writer(response)
             writer.writerow(result['records'][0].keys())
@@ -699,7 +700,7 @@ def import_registrations_from_file(request, type='registrations'):
 
         if result['status'] == 'success':
             response = HttpResponse(content_type='text/csv')
-            response['Content-Disposition'] = f'attachment; filename="{file_name}"'
+            response['Content-Disposition'] = content_disposition_header(True, file_name)
 
             writer = csv.writer(response)
             writer.writerow(result['records'][0].keys())
@@ -727,7 +728,7 @@ def import_from_s3(request):
         result = Student.import_from_csv(reader)
         if result['status'] == 'success':
             response = HttpResponse(content_type='text/csv')
-            response['Content-Disposition'] = f'attachment; filename="{file_name}"'
+            response['Content-Disposition'] = content_disposition_header(True, file_name)
 
             writer = csv.writer(response)
             writer.writerow(result['records'][0].keys())
@@ -818,7 +819,7 @@ def import_registrations_from_s3(request):
         result = StudentRegistration.import_from_csv(reader)
         if result['status'] == 'success':
             response = HttpResponse(content_type='text/csv')
-            response['Content-Disposition'] = f'attachment; filename="{file_name}"'
+            response['Content-Disposition'] = content_disposition_header(True, file_name)
 
             writer = csv.writer(response)
             writer.writerow(result['records'][0].keys())
@@ -1845,7 +1846,8 @@ def as_pdf(request, record_id):
     pdf = record.as_pdf()
 
     response = HttpResponse(pdf, content_type='application/pdf')
-    response['Content-Disposition'] = f'attachment; filename="student-{record.user.last_name}-{record.user.first_name}.pdf"'
+    response['Content-Disposition'] = content_disposition_header(
+        True, f'student-{record.user.last_name}-{record.user.first_name}.pdf')
 
     return response
 

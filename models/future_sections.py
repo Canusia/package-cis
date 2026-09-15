@@ -1,6 +1,7 @@
 # users/models.py
 import uuid, csv, datetime
 from django.conf import settings
+from django.utils.http import content_disposition_header
 
 from django.db import models
 from django.db.models import JSONField
@@ -401,7 +402,7 @@ class FutureSection(models.Model):
         file_name = "instructor_survey_export.csv"
 
         response = HttpResponse(content_type='text/csv')
-        response['Content-Disposition'] = f'attachment; filename="{file_name}"'
+        response['Content-Disposition'] = content_disposition_header(True, file_name)
         writer = csv.writer(response)
 
         fields = [
@@ -467,7 +468,7 @@ class FutureSection(models.Model):
         }
 
         response = HttpResponse(content_type='text/csv')
-        response['Content-Disposition'] = f'attachment; filename="{file_name}"'
+        response['Content-Disposition'] = content_disposition_header(True, file_name)
         writer = csv.writer(response)
 
         # Write Header

@@ -1,5 +1,7 @@
 import io, csv, datetime, time
 
+from django.utils.http import content_disposition_header
+
 from django import forms
 from django.db.models import Q
 from django.urls import reverse_lazy
@@ -146,7 +148,7 @@ class student_imaging_export(forms.Form):
             zf.close()
 
             response = HttpResponse(b.getvalue(), content_type="application/x-zip-compressed")
-            response['Content-Disposition'] = f'attachment; filename={ZIPFILE_NAME}'
+            response['Content-Disposition'] = content_disposition_header(True, ZIPFILE_NAME)
     
             path = media_storage.save(path_prefix+ZIPFILE_NAME, ContentFile(response.getvalue()))
             path = media_storage.url(path)

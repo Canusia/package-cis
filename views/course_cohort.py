@@ -1,5 +1,6 @@
 import csv
 import io
+from django.utils.http import content_disposition_header
 
 from django.db.models import Q
 from django.contrib import messages
@@ -179,7 +180,7 @@ def import_cohorts_from_file(request):
 
             file_name = "cohort_import_results.csv"
             response = HttpResponse(content_type='text/csv')
-            response['Content-Disposition'] = f'attachment; filename="{file_name}"'
+            response['Content-Disposition'] = content_disposition_header(True, file_name)
 
             writer = csv.writer(response)
             writer.writerow(result['records'][0].keys())

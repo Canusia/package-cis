@@ -3,6 +3,7 @@ Class Sections
 """
 
 import csv, io, logging, uuid
+from django.utils.http import content_disposition_header
 
 from django.db.models.functions import TruncDate
 from django.conf import settings
@@ -1095,7 +1096,7 @@ def import_from_s3(request):
 
         file_name = "class_section_import_results.csv"
         response = HttpResponse(content_type='text/csv')
-        response['Content-Disposition'] = f'attachment; filename="{file_name}"'
+        response['Content-Disposition'] = content_disposition_header(True, file_name)
 
         writer = csv.writer(response)
         writer.writerow(result['records'][0].keys())
@@ -1130,7 +1131,7 @@ def import_from_file(request):
 
             file_name = "class_section_import_results.csv"
             response = HttpResponse(content_type='text/csv')
-            response['Content-Disposition'] = f'attachment; filename="{file_name}"'
+            response['Content-Disposition'] = content_disposition_header(True, file_name)
 
             writer = csv.writer(response)
             writer.writerow(result['records'][0].keys())
@@ -1157,7 +1158,7 @@ def update_roster_verification(request):
         if result['status'] == 'success':
             file_name = "roster_verif_results.csv"
             response = HttpResponse(content_type='text/csv')
-            response['Content-Disposition'] = f'attachment; filename="{file_name}"'
+            response['Content-Disposition'] = content_disposition_header(True, file_name)
 
             writer = csv.writer(response)
             writer.writerow(result['records'][0].keys())

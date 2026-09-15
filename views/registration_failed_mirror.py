@@ -1,6 +1,8 @@
 """Triage list of registrations whose last SIS mirror attempt failed."""
 import csv
 
+from django.utils.http import content_disposition_header
+
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.http import HttpResponse
 from django.shortcuts import render
@@ -85,7 +87,7 @@ def failed_mirror_export(request):
     response = HttpResponse(content_type='text/csv')
     filename = 'failed_mirror_registrations_%s.csv' % (
         timezone.localtime().strftime('%Y%m%d_%H%M'))
-    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    response['Content-Disposition'] = content_disposition_header(True, filename)
 
     writer = csv.writer(response)
     writer.writerow([header for _, header in EXPORT_COLUMNS])

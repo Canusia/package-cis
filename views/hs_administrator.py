@@ -1,5 +1,6 @@
 import csv
 import io
+from django.utils.http import content_disposition_header
 import logging
 import uuid
 from datetime import datetime
@@ -549,7 +550,7 @@ def import_hs_members_from_file(request):
 
             file_name = "hs_member_import_results.csv"
             response = HttpResponse(content_type='text/csv')
-            response['Content-Disposition'] = f'attachment; filename="{file_name}"'
+            response['Content-Disposition'] = content_disposition_header(True, file_name)
 
             writer = csv.writer(response)
             writer.writerow(result['records'][0].keys())

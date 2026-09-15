@@ -6,6 +6,8 @@ Wired to the `student_id_importer` setting + CronTab (see cis/settings/).
 """
 import csv
 import datetime
+
+from django.utils.http import content_disposition_header
 import json
 import logging
 
@@ -119,7 +121,8 @@ class Command(BaseCommand):
             }))
 
             response = HttpResponse(content_type='text/csv')
-            response['Content-Disposition'] = f'attachment; filename="{results_file_name}"'
+            response['Content-Disposition'] = content_disposition_header(
+                True, results_file_name)
             writer = csv.writer(response)
             writer.writerow(['id', 'RESULT'])
             for row in rows:

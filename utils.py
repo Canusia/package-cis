@@ -3,6 +3,7 @@ Utility functions for CIS
 """
 import os, csv, datetime, re, json
 import socket
+from django.utils.http import content_disposition_header
 import ipaddress
 
 import logging
@@ -1540,7 +1541,7 @@ def export_to_excel(file_name, records, fields):
     Creates an excel export of file 'filename' with records with key in fields
     """
     response = HttpResponse(content_type='text/csv')
-    response['Content-Disposition'] = f'attachment; filename="{file_name}"'
+    response['Content-Disposition'] = content_disposition_header(True, file_name)
     writer = csv.writer(response, dialect='excel')
 
     # Write Header
