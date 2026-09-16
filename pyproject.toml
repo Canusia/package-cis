@@ -18,6 +18,18 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
+dependencies = [
+    # cis imports student_onboarding at module level (signals/onboarding.py,
+    # settings/student_regis_pending.py, forms/student.py), so this is a real
+    # dependency, not an optional integration like `grades`. The floor is the
+    # release carrying the Onboarding by Student search fix
+    # (package-student_onboarding#7). Deliberately a version floor, not a
+    # `@ git+...` direct reference: every tenant already pins the package by
+    # tag in webapp/requirements.txt, and a second direct URL here would
+    # conflict with that pin instead of raising it. A tenant below the floor
+    # fails the install loudly rather than silently keeping old code.
+    "myce_student_onboarding>=0.0.16",
+]
 
 [project.urls]
 "Homepage" = "https://github.com/Canusia/package-cis"
