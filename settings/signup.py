@@ -5,12 +5,69 @@ from django.http import JsonResponse
 from django.urls import reverse_lazy
 from django.core.exceptions import ValidationError
 
+from django.utils.html import format_html, format_html_join
+
 from cis.validators import validate_html_short_code, validate_json
 from crispy_forms.helper import FormHelper
 from crispy_forms.layout import Submit
 
 from ..models.term import Term, AcademicYear
 from ..models.settings import Setting
+
+#: Every key the signup flow looks up in the `error_messages` JSON, in the
+#: order they appear to a student. The value is free-form JSON, so this
+#: catalogue is the only place an admin can learn what is settable -- it drives
+#: the field's help text, and cis.tests.test_signup_error_messages_help pins it
+#: against the readers (student/views/onboarding.py and each tenant's
+#: verify_email_form). Add the key here in the same change that reads it.
+SIGNUP_ERROR_MESSAGE_KEYS = {
+    'start_app': [
+        ('success', 'Application started; check your email to verify.'),
+        ('error', 'The application could not be created.'),
+        ('form_validation_fail', 'The form has errors to correct.'),
+        ('dup_email.account_unverified',
+         'Email already on file, not yet verified (a new link is sent).'),
+        ('dup_email.being_processed',
+         'Email already on file, application in progress.'),
+        ('dup_email.pending_ernie_login',
+         'Email already on file; the student should sign in with campus credentials.'),
+        ('dup_email.non_student_account_exists',
+         'Email already on file on a non-student account.'),
+    ],
+    'verify_email': [
+        ('invalid_token', 'The verification link does not match the student.'),
+        ('account_already_verified', 'The email was verified previously.'),
+        ('success', 'The email was verified just now.'),
+    ],
+    'complete_signup': [
+        ('awaiting_processing_error', 'The application is still being processed.'),
+        ('error', 'The application could not be completed.'),
+        ('success', 'The application was received.'),
+        ('form_validation_fail', 'The form has errors to correct.'),
+    ],
+}
+
+
+def _error_messages_help_text():
+    """Help text listing every supported key, grouped by section.
+
+    Any key left unset falls back to wording in the code, so an admin only
+    needs to add the ones they want to reword -- notably the four
+    start_app.dup_email keys, which are the only way to word what a student
+    sees when their email is already on file.
+    """
+    sections = format_html_join(
+        '', '<li><code>{}</code><ul>{}</ul></li>',
+        (
+            (section, format_html_join(
+                '', '<li><code>{}</code> &mdash; {}</li>',
+                ((key, description) for key, description in keys)))
+            for section, keys in SIGNUP_ERROR_MESSAGE_KEYS.items()
+        ))
+    return format_html(
+        'Valid JSON. Supported keys (all optional &mdash; anything omitted '
+        'falls back to the built-in wording):<ul>{}</ul>', sections)
+
 
 class SettingForm(forms.Form):
 
@@ -65,7 +122,7 @@ class SettingForm(forms.Form):
         max_length=None,
         validators=[validate_json],
         widget=forms.Textarea,
-        help_text='Valid JSON',
+        help_text=_error_messages_help_text(),
         label="Alert/Error Messages")
 
     def __init__(self, *args, **kwargs):
