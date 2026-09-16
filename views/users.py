@@ -13,10 +13,10 @@ from django_login_history.models import Login
 
 from rest_framework import viewsets
 
+from cis.actions.user import registered_slugs, user_actions
 from cis.menu import draw_menu, cis_menu
 from cis.models.customuser import CustomUser
 from cis.serializers.user import StaffUserSerializer, LockedUserSerializer
-from cis.services import user_deletion
 from cis.services.table_configs import get_table_config
 from cis.utils import CIS_user_only
 
@@ -201,80 +201,18 @@ def do_locked_bulk_action(request):
     })
 
 
-USERS_BULK_ACTIONS = {
-    'enable': {
-        'label': 'Enable Selected',
-        'icon': 'fas fa-user-check',
-        'btn_class': 'btn-primary',
-        'confirm': 'Enable the selected account(s)? They will be able to sign in.',
-        'method': 'POST',
-    },
-    'disable': {
-        'label': 'Disable Selected',
-        'icon': 'fas fa-user-slash',
-        'btn_class': 'btn-warning',
-        'confirm': 'Disable the selected account(s)? They will be signed out and '
-                   'unable to sign in until re-enabled.',
-        'method': 'POST',
-    },
-}
-
-# Superuser-only; merged into the page's actions in index() only for them.
-USERS_DELETE_ACTION = {
-    'delete_preflight': {
-        'label': 'Delete Selected',
-        'icon': 'fas fa-trash',
-        'btn_class': 'btn-danger',
-        'confirm': None,
-        'method': 'POST',
-    },
-}
-
-_USERS_ACTIONS = ('enable', 'disable', 'delete_preflight', 'delete')
-
-
-def _selected_staff(request, ids):
-    """Parse ids[] and resolve them to CE accounts the requester may act on.
-
-    Returns (users, skipped). IDs are CustomUser AutoField ints; anything
-    unparseable, outside the `ce` group (the table's scope), the requester's
-    own account, or -- for non-superusers -- a superuser, is counted as skipped.
-    """
-    valid_ids = set()
-    for record_id in ids:
-        try:
-            valid_ids.add(int(record_id))
-        except (ValueError, TypeError):
-            continue
-
-    users = CustomUser.objects.filter(
-        id__in=valid_ids, groups__name='ce'
-    ).exclude(pk=request.user.pk).distinct()
-    if not request.user.is_superuser:
-        users = users.exclude(is_superuser=True)
-
-    users = list(users.order_by('last_name', 'first_name'))
-    return users, len(ids) - len(users)
-
-
 def do_users_bulk_action(request):
-    """Bulk actions for /ce/users/: enable, disable, and two-step delete.
+    """Dispatch a /ce/users/ bulk action to cis.actions.user.
 
     Guard order matches do_locked_bulk_action: unknown action (400) before the
-    POST-only check (405), so an unknown action over GET cannot reach a
-    mutation. Then authorization, which differs per action: enable/disable
-    need `can_edit_users` like the page; both delete steps need superuser,
-    because a delete cannot be undone. The endpoint re-checks rather than
-    trusting that the page only rendered the buttons the requester may use.
-
-    `delete_preflight` is read-only and returns an HTML summary that
-    bulk_action.js injects into #modal-bulk_actions; its confirm form posts
-    `delete` with the deletable ids. See cis.services.user_deletion.
+    POST-only check (405), so an unknown action arriving over GET can never
+    reach a mutation. Authorization is the registry's job from there --
+    `dispatch` enforces each action's declared permission, so an action stays
+    refused even when the page never rendered its button.
     """
     action = request.POST.get('action') or request.GET.get('action')
-    ids = request.POST.getlist('ids[]') or request.GET.getlist('ids[]')
 
-    if action not in _USERS_ACTIONS:
+    if action not in registered_slugs():
         return JsonResponse({
             'status': 'error',
             'message': 'Unknown action.',
@@ -286,71 +224,7 @@ def do_users_bulk_action(request):
             'message': 'This action requires POST.',
         }, status=405)
 
-    if action in ('delete_preflight', 'delete'):
-        if not request.user.is_superuser:
-            return JsonResponse({
-                'status': 'error',
-                'message': 'Only superusers can delete accounts.',
-            }, status=403)
-    elif not request.user.can_edit_users:
-        return JsonResponse({
-            'status': 'error',
-            'message': 'You do not have permission to change accounts.',
-        }, status=403)
-
-    users, skipped = _selected_staff(request, ids)
-
-    if action in ('enable', 'disable'):
-        target = action == 'enable'
-        updated = 0
-        for user in users:
-            if user.is_active == target:
-                skipped += 1
-                continue
-            user.is_active = target
-            # save(), not queryset.update(): CustomUser has HistoricalRecords.
-            user.save(update_fields=['is_active'])
-            updated += 1
-
-        return JsonResponse({
-            'status': 'success',
-            'message': (
-                f'{updated} account(s) {action}d, {skipped} skipped '
-                f'(already {action}d, not permitted, or not found).'
-            ),
-        })
-
-    if action == 'delete_preflight':
-        plans = [user_deletion.preflight(user) for user in users]
-        return render(request, 'cis/users/delete_preflight.html', {
-            'plans': plans,
-            'skipped': skipped,
-            'deletable_ids': [p.user.pk for p in plans if p.deletable],
-            'bulk_actions_url': reverse('cis:users_bulk_action'),
-            'strategy_verbs': {
-                user_deletion.REASSIGN: 'reassigned to you',
-                user_deletion.NULLIFY: 'cleared',
-                user_deletion.DELETE: 'removed',
-                'audit': 'removed (kept in the deletion log)',
-            },
-        })
-
-    # action == 'delete'
-    deleted = blocked = 0
-    for user in users:
-        try:
-            user_deletion.delete_user(user, acting_user=request.user)
-            deleted += 1
-        except user_deletion.UserDeletionBlocked:
-            blocked += 1
-
-    return JsonResponse({
-        'status': 'success',
-        'message': (
-            f'{deleted} account(s) deleted, {blocked} blocked, '
-            f'{skipped} skipped (not permitted or not found).'
-        ),
-    })
+    return user_actions.dispatch(request, action)
 
 
 def get_password_reset_link(request):
@@ -523,11 +397,10 @@ def index(request):
                 api_url='/ce/api/user?format=datatables',
                 details_prefix='/ce/user/',
                 filter_form_selector='#users_filter',
+                # Buttons come from the registry, filtered by each action's
+                # declared permission -- delete only appears for superusers.
                 **_supported_kwargs(build_users_table_config, {
-                    'bulk_actions': (
-                        {**USERS_BULK_ACTIONS, **USERS_DELETE_ACTION}
-                        if request.user.is_superuser else USERS_BULK_ACTIONS
-                    ),
+                    'bulk_actions': user_actions.for_scope('bulk', request.user),
                     'bulk_actions_url': reverse('cis:users_bulk_action'),
                 }),
             ),

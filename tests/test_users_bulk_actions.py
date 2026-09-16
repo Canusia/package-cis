@@ -89,6 +89,14 @@ class UsersBulkActionTests(TestCase):
         ids = raw_ids if raw_ids is not None else [u.id for u in users]
         return self.client.post(self.url, {'action': action, 'ids[]': ids})
 
+    def message(self, resp):
+        """ActionRegistry envelope: the summary rides in the
+        onBulkActionComplete args, not at the top level."""
+        body = json.loads(resp.content)
+        self.assertEqual(body['outcome'], 'call')
+        self.assertEqual(body['fn'], 'onBulkActionComplete')
+        return body['args']['message']
+
     def active(self, user):
         user.refresh_from_db()
         return user.is_active
@@ -113,12 +121,12 @@ class UsersBulkActionTests(TestCase):
 
         resp = self.post('disable', self.staff_a, self.staff_b)
         self.assertEqual(resp.status_code, 200)
-        self.assertIn('2 account(s) disabled', json.loads(resp.content)['message'])
+        self.assertIn('2 account(s) disabled', self.message(resp))
         self.assertFalse(self.active(self.staff_a))
         self.assertFalse(self.active(self.staff_b))
 
         resp = self.post('enable', self.staff_a)
-        self.assertIn('1 account(s) enabled', json.loads(resp.content)['message'])
+        self.assertIn('1 account(s) enabled', self.message(resp))
         self.assertTrue(self.active(self.staff_a))
 
     def test_disable_writes_history(self):
@@ -130,7 +138,7 @@ class UsersBulkActionTests(TestCase):
     def test_already_in_state_is_skipped(self):
         self.client.force_login(self.manager)
         resp = self.post('enable', self.staff_a)
-        body = json.loads(resp.content)['message']
+        body = self.message(resp)
         self.assertIn('0 account(s) enabled', body)
         self.assertIn('1 skipped', body)
 
@@ -191,7 +199,9 @@ class UsersBulkActionTests(TestCase):
         resp = self.post('delete_preflight', self.staff_a, self.teacher_staff)
 
         self.assertEqual(resp.status_code, 200)
-        html = resp.content.decode()
+        body = json.loads(resp.content)
+        self.assertEqual(body['outcome'], 'modal')
+        html = body['html']
         self.assertIn('will be deleted', html)
         self.assertIn('reassigned to you', html)
         self.assertIn('blocked', html)
@@ -208,7 +218,7 @@ class UsersBulkActionTests(TestCase):
 
         resp = self.post('delete', self.staff_a, self.teacher_staff)
 
-        body = json.loads(resp.content)['message']
+        body = self.message(resp)
         self.assertIn('1 account(s) deleted', body)
         self.assertIn('1 blocked', body)
         self.assertFalse(User.objects.filter(pk=self.staff_a.pk).exists())
