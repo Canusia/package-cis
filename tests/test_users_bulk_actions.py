@@ -232,3 +232,74 @@ class UsersBulkActionTests(TestCase):
         page = self.client.get(reverse('cis:users')).content.decode()
         self.assertIn('delete_preflight', page)
         self.assertIn('disable', page)
+
+
+class OldTenantSignatureTests(TestCase):
+    """A tenant whose users_table.build_config predates bulk actions must not
+    break (cis#18).
+
+    The tenant table config is per-tenant in-tree, so a tenant can bump cis
+    without porting its myce_tenant_configs copy. Passing bulk_actions to an
+    older build_config raised TypeError -- a 500 on /ce/users for a tenant that
+    had not adopted the feature. The page now renders without the bulk buttons
+    instead, and the tenant opts in by accepting the two kwargs.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        if _login_history_post_login is not None:
+            user_logged_in.disconnect(_login_history_post_login)
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        if _login_history_post_login is not None:
+            user_logged_in.connect(_login_history_post_login)
+
+    @classmethod
+    def setUpTestData(cls):
+        ce, _ = Group.objects.get_or_create(name='ce')
+        cls.superuser = User.objects.create_superuser(
+            username='oldsig_su', email='oldsig_su@example.com', password='x')
+        cls.superuser.groups.add(ce)
+
+    def test_build_config_kwargs_are_gated_on_the_tenant_signature(self):
+        from cis.views.users import _supported_kwargs
+
+        def old(*, variant, api_url, details_prefix='', filter_form_selector=None):
+            pass
+
+        def new(*, variant, api_url, details_prefix='', filter_form_selector=None,
+                bulk_actions=None, bulk_actions_url=None):
+            pass
+
+        def catch_all(*, variant, api_url, **kwargs):
+            pass
+
+        payload = {'bulk_actions': {}, 'bulk_actions_url': '/x'}
+        self.assertEqual(_supported_kwargs(old, payload), {})
+        self.assertEqual(_supported_kwargs(new, payload), payload)
+        self.assertEqual(_supported_kwargs(catch_all, payload), payload)
+
+    def test_page_renders_when_tenant_config_predates_bulk_actions(self):
+        from unittest import mock
+
+        import cis.views.users as users_views
+
+        real = users_views.build_users_table_config
+
+        def old_signature(*, variant, api_url, details_prefix='',
+                          filter_form_selector=None):
+            return real(variant=variant, api_url=api_url,
+                        details_prefix=details_prefix,
+                        filter_form_selector=filter_form_selector)
+
+        self.client.force_login(self.superuser)
+        with mock.patch.object(users_views, 'build_users_table_config', old_signature):
+            resp = self.client.get(reverse('cis:users'))
+
+        self.assertEqual(resp.status_code, 200)
+        page = resp.content.decode()
+        self.assertNotIn('delete_preflight', page)
+        self.assertIn('records_staff_users', page)

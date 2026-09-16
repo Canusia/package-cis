@@ -1,6 +1,8 @@
 """
 Staff User Views
 """
+import inspect
+
 from django.db import IntegrityError
 from django.contrib import messages
 from django.shortcuts import get_object_or_404, redirect, render
@@ -22,6 +24,22 @@ from cis.forms.user import UserForm
 
 build_users_table_config = get_table_config('users_table').build_config
 build_locked_users_table_config = get_table_config('locked_users_table').build_config
+
+
+def _supported_kwargs(build_config, kwargs):
+    """Drop kwargs a tenant's build_config does not accept.
+
+    The users table config lives in each tenant's TABLE_CONFIGS_APP, so a
+    tenant can bump cis without porting its copy. Passing bulk_actions to a
+    build_config that predates them raised TypeError -- a 500 on /ce/users for
+    a tenant that had not adopted the feature. Gate on the signature instead:
+    an un-ported tenant renders the table as before, and adopts the bulk
+    actions by accepting the two kwargs (cis#18).
+    """
+    params = inspect.signature(build_config).parameters
+    if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()):
+        return dict(kwargs)
+    return {name: value for name, value in kwargs.items() if name in params}
 
 # The one bulk action on /ce/users/locked/. Kept at module level because both
 # the page view (which renders the buttons) and do_locked_bulk_action (which
@@ -505,10 +523,12 @@ def index(request):
                 api_url='/ce/api/user?format=datatables',
                 details_prefix='/ce/user/',
                 filter_form_selector='#users_filter',
-                bulk_actions=(
-                    {**USERS_BULK_ACTIONS, **USERS_DELETE_ACTION}
-                    if request.user.is_superuser else USERS_BULK_ACTIONS
-                ),
-                bulk_actions_url=reverse('cis:users_bulk_action'),
+                **_supported_kwargs(build_users_table_config, {
+                    'bulk_actions': (
+                        {**USERS_BULK_ACTIONS, **USERS_DELETE_ACTION}
+                        if request.user.is_superuser else USERS_BULK_ACTIONS
+                    ),
+                    'bulk_actions_url': reverse('cis:users_bulk_action'),
+                }),
             ),
         })
