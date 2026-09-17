@@ -113,19 +113,24 @@ def processable_ids(model, ids, user, campus_path='campus'):
 # --- Student campus gate -----------------------------------------------------
 # A Student has no campus FK. A student is associated with a campus by having
 # *applied for a class* there: a StudentRegistration whose
-# class_section -> course -> campus is one the ce user processes. Unverified
-# students (account_verified=False) are not yet tied to any campus, so they are
-# universally visible/editable/actionable — the student analogue of a
-# null-campus record.
+# class_section -> course -> campus is one the ce user processes. Two kinds of
+# student are not tied to any campus yet and so are universally
+# visible/editable/actionable — the student analogue of a null-campus record:
+# unverified students (account_verified=False), and students with no
+# registration at all (verified but not yet applied for a class, i.e. still
+# mid-onboarding). Without the second case a verified student would vanish from
+# every ce user's reach between verifying their email and applying for a class
+# — 27% of EWU's student body when this was measured.
 _STUDENT_CAMPUS_PATH = 'studentregistration__class_section__course__campus'
 
 
 def scope_students_by_campus(students, user, selected_campus=None):
     """Narrow a Student queryset for a ce user.
 
-    ce user sees students who applied at one of their processable campuses OR
-    whose account is not verified. ``selected_campus`` (a campus-id string from
-    the dropdown) narrows the applied-at set to that one campus, but only if the
+    ce user sees students who applied at one of their processable campuses, plus
+    those not yet tied to any campus — unverified accounts and accounts with no
+    registration at all. ``selected_campus`` (a campus-id string from the
+    dropdown) narrows the applied-at set to that one campus, but only if the
     user may process it — it can never widen the scope. Superusers and non-ce
     roles are returned unchanged (their upstream role scoping governs).
     """
@@ -141,6 +146,7 @@ def scope_students_by_campus(students, user, selected_campus=None):
     return students.filter(
         Q(**{f'{_STUDENT_CAMPUS_PATH}__id__in': campus_ids})
         | Q(account_verified=False)
+        | Q(studentregistration__isnull=True)
     ).distinct()
 
 
@@ -175,8 +181,11 @@ def scope_records_by_student_campus(records, user, student_path='student',
 def can_access_student(user, student):
     """Object-level check: may ``user`` view/edit this student's record?
 
-    True for superusers; False for non-ce; True for any unverified student;
-    otherwise True only if the student applied at a campus the user processes.
+    True for superusers; False for non-ce; True for any student not yet tied to
+    a campus (unverified, or no registration at all); otherwise True only if
+    the student applied at a campus the user processes. Mirrors
+    ``scope_students_by_campus`` — the queryset filter and this object-level
+    check must agree, or a student shows in the list and 403s on open.
     """
     if getattr(user, 'is_superuser', False):
         return True
@@ -185,9 +194,11 @@ def can_access_student(user, student):
     if not student.account_verified:
         return True
     ids = get_process_campus_ids(user)
-    return student.studentregistration_set.filter(
-        class_section__course__campus__id__in=ids
-    ).exists()
+    regs = student.studentregistration_set
+    if regs.filter(class_section__course__campus__id__in=ids).exists():
+        return True
+    # No application anywhere -> not tied to a campus -> universally visible.
+    return not regs.exists()
 
 
 def processable_student_ids(ids, user):

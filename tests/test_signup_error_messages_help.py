@@ -15,7 +15,8 @@ class SignupErrorMessagesHelpTextTests(TestCase):
     EXPECTED = {
         'start_app': [
             'success', 'error', 'form_validation_fail',
-            'dup_email.account_unverified', 'dup_email.being_processed',
+            'dup_email.account_unverified',
+            'dup_email.incomplete_application', 'dup_email.being_processed',
             'dup_email.pending_ernie_login',
             'dup_email.non_student_account_exists',
         ],

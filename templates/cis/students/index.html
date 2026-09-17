@@ -5,6 +5,16 @@
 {% load static %}
 
 {% block body %}
+{% comment %}
+  The onboarding tabs included below ship inside the student_onboarding package
+  and call ActionRegistry.doBulkAction(student_bulk_actions_url, ...) for their
+  Send/Get Verification Link buttons. The package never defines that global and
+  does not document it as a host requirement, so without this block both
+  buttons throw ReferenceError. Same declaration as cis/students/detail.html.
+{% endcomment %}
+<script>
+    var student_bulk_actions_url = "{% url 'cis:student_bulk_actions' %}";
+</script>
 <main>
     <div class="">
         <div class="row">
