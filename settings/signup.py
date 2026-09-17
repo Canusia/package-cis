@@ -69,6 +69,8 @@ def _error_messages_help_text():
     return format_html(
         'Valid JSON. Supported keys (all optional &mdash; anything omitted '
         'falls back to the built-in wording):<ul>{}</ul>', sections)
+
+
 # --- Signup message catalog --------------------------------------------------
 # Every user-facing string in the student self-signup flow lives here and is
 # overridable per tenant through the `error_messages` JSON on this setting.
@@ -339,9 +341,12 @@ class signup(SettingForm):
         # wipes both a tenant's edited wording and the repair
         # myce_tenant_configs.0001_ewu_signup_message_catalog performs, and the
         # whole message catalog now lives under this key.
+        # `field not in value`, not `not value.get(field)`: signup_terms is
+        # required=False, so a tenant can deliberately save it empty and must
+        # not have the placeholder text put back.
         value = setting.value if isinstance(setting.value, dict) else {}
         for field, default in defaults.items():
-            if not value.get(field):
+            if field not in value:
                 value[field] = default
 
         setting.value = value

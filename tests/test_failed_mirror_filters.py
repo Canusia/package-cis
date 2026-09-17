@@ -230,6 +230,13 @@ class FailedMirrorFilterTests(TestCase):
         self.assertEqual(self._feed_ids(campus=str(self.campus_b.id)),
                          {str(self.spring_reg.id)})
 
+    def test_unknown_record_type_returns_no_rows(self):
+        # 'sis_error' is off the dropdown now, but the value still arrives from
+        # a bookmarked or hand-typed URL, and apply_filters has no branch for
+        # it -- so it used to read as applied and return everything.
+        self.assertEqual(self._feed_ids(record_type='sis_error'), set())
+        self.assertEqual(self._export_names(record_type='sis_error'), set())
+
     def test_malformed_campus_returns_no_rows_instead_of_500(self):
         # Matches the term filter. Dropping the filter instead would render a
         # full table the admin reads as scoped to one campus, and Export All

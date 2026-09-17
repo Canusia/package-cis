@@ -34,7 +34,11 @@ def _sfx():
     return uuid.uuid4().hex[:8]
 
 
-class VerificationLinkSelectionTests(TestCase):
+class _StudentStates:
+    """Fixtures shared by both suites. A plain mixin, not a TestCase: making
+    the action suite a subclass of the selection suite would re-run all of its
+    tests a second time."""
+
     def setUp(self):
         Group.objects.get_or_create(name='student')
         User.objects.get_or_create(
@@ -88,6 +92,10 @@ class VerificationLinkSelectionTests(TestCase):
     def _split(self, *students):
         return _students_needing_verification_link(
             [str(s.id) for s in students])
+
+
+class VerificationLinkSelectionTests(_StudentStates, TestCase):
+    """Which students the two actions consider at all."""
 
     # --- selection -----------------------------------------------------------
 
@@ -158,7 +166,7 @@ class VerificationLinkSelectionTests(TestCase):
         self.assertEqual(live[0].verification_id, original)
 
 
-class VerificationLinkActionTests(VerificationLinkSelectionTests):
+class VerificationLinkActionTests(_StudentStates, TestCase):
     """Which of the two actions is allowed to write."""
 
     def _post(self, action, *students):

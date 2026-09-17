@@ -155,16 +155,26 @@ class cisPasswordResetForm(PasswordResetForm):
         
             user_roles = user.get_roles()
             if 'student' in user_roles:
-                # No password was ever stored, so there is nothing to reset --
-                # send a fresh verification link instead and let them set one.
+                # An abandoned signup: no password was ever stored AND no SIS id
+                # was ever stamped, so there is nothing to reset and nothing to
+                # log into. Send a fresh verification link instead.
                 #
-                # This must not key off psid: an imported student has a real
-                # password and a NULL psid, and reset_verification_id() below
-                # would flip their verified account back to unverified. Nor off
-                # has_usable_password(), which answers True for the empty
-                # password these accounts actually carry (see
+                # Both halves are load-bearing, and this is the same predicate
+                # as _NEEDS_VERIFICATION_LINK (cis/views/student.py) -- keep
+                # them in step.
+                #   * psid alone is not enough: an imported student has a real
+                #     password and a NULL psid, and reset_verification_id()
+                #     below would flip their verified account to unverified.
+                #   * the password alone is not enough either: a student who
+                #     holds a real SIS id but no MyCE password is the ordinary
+                #     case here, and they can use a reset link perfectly well.
+                #     Sending them down this path instead strands them --
+                #     complete_signup turns away anyone with a psid
+                #     ('awaiting_processing_error'), so the link leads nowhere.
+                # has_usable_password() is not the test, since it answers True
+                # for the empty password these accounts carry (see
                 # CustomUser.has_login_password).
-                if not user.has_login_password():
+                if not user.has_login_password() and user.psid in ['', None]:
                     student = user.student
 
                     student.reset_verification_id()

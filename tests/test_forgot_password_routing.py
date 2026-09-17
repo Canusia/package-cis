@@ -108,3 +108,26 @@ class ForgotPasswordRoutingTests(TestCase):
         student.refresh_from_db()
         self.assertTrue(student.account_verified)
         self.assertIsNone(student.verification_id)
+
+    def test_student_with_a_sis_id_but_no_password_gets_a_reset(self):
+        # The commonest shape in this database: a real SIS id and no MyCE
+        # password, because the account was provisioned rather than self-signed
+        # -up. A reset link works perfectly well against an empty password.
+        # Sending a verification link instead strands them: complete_signup
+        # turns away anyone holding a psid, so the link leads nowhere.
+        student = self._student(psid='H1234567', password=None)
+        self._forgot(student)
+
+        student.refresh_from_db()
+        self.assertIsNone(student.verification_id)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertNotIn('Verify your email', mail.outbox[0].subject)
+
+    def test_unverified_student_with_a_sis_id_keeps_their_verified_flag(self):
+        # Same shape, unverified -- which is how all 179 such rows currently
+        # sit. reset_verification_id() must not fire for them either.
+        student = self._student(psid='H1234567', password=None, verified=False)
+        self._forgot(student)
+
+        student.refresh_from_db()
+        self.assertIsNone(student.verification_id)

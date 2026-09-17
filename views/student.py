@@ -15,6 +15,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.http import JsonResponse, HttpResponse
 from django.views.decorators.clickjacking import xframe_options_exempt
 from django.views.decorators.http import require_POST
+from django.utils.html import escape
 from django.utils.safestring import mark_safe
 from django.template.loader import get_template, render_to_string
 
@@ -2233,12 +2234,17 @@ def resend_verification_link(request):
 def get_verification_link(request):
     """Show the link for students who already have a live one.
 
-    Strictly read-only. Minting a token to fill a gap here would flip the
-    account back to unverified and invalidate whatever link the student was
-    already sent -- an outcome nobody asks for by clicking something labelled
-    'Get'. It is a bulk action, so a select-all would have done that to every
-    matching row at once, with no confirmation and no undo. Students with no
-    live link are named instead, pointing at the action that does issue one.
+    Writes no verification state (it does still add a note per student).
+    Minting a token to fill a gap here would flip the account back to
+    unverified and invalidate whatever link the student was already sent -- an
+    outcome nobody asks for by clicking something labelled 'Get'. It is a bulk
+    action, so a select-all would have done that to every matching row at once,
+    with no confirmation and no undo. Students with no live link are named
+    instead, pointing at the action that does issue one.
+
+    Note that `student.verify_email` mints a token itself when
+    verification_id is falsy (cis/models/student.py), so the read-only promise
+    holds only because `live` is defined as "already has a token".
     """
     ids = request.POST.getlist('ids[]')
     live, needs_token = _students_needing_verification_link(ids)
@@ -2246,8 +2252,10 @@ def get_verification_link(request):
     recipient_list = []
     index = 1
     for student in live:
+        # The name is student-supplied and this string is rendered as HTML in
+        # the admin's alert modal.
         recipient_list.append(
-            f'{student}<br><span id=\'copy_to_{index}\'>{student.verify_email}</span>&nbsp;&nbsp;<i title=\'copy to clipboard\' class=\'fas fa fa-paste copy-clipboard\' data-clipboard-target=\'#copy_to_{index}\' style=\'cursor: pointer\'></i>'
+            f'{escape(str(student))}<br><span id=\'copy_to_{index}\'>{student.verify_email}</span>&nbsp;&nbsp;<i title=\'copy to clipboard\' class=\'fas fa fa-paste copy-clipboard\' data-clipboard-target=\'#copy_to_{index}\' style=\'cursor: pointer\'></i>'
         )
         index += 1
         student.add_note(request.user, 'Generated account verification link')
@@ -2257,7 +2265,7 @@ def get_verification_link(request):
         message = 'Verification Links are below<br><br>' + '<br>'.join(recipient_list)
 
     if needs_token:
-        names = '<br>'.join(str(student) for student in needs_token)
+        names = '<br>'.join(escape(str(student)) for student in needs_token)
         if message:
             message += '<br><br>'
         message += (

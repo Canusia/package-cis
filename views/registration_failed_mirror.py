@@ -93,6 +93,13 @@ def apply_filters(records, request):
         )
     elif record_type == 'needs_mirroring':
         records = records.filter(needs_mirroring=True)
+    elif record_type:
+        # Same rule as a malformed term or campus. The dropdown only offers the
+        # two above, but the Registrations tab's "sis_error" value reaches here
+        # from a hand-typed or bookmarked URL, and returning every row for a
+        # filter the user believes is applied is the failure this page exists
+        # to avoid.
+        return records.none()
 
     if term:
         if term == '-2':
