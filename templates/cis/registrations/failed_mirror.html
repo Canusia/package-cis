@@ -14,6 +14,83 @@
       </div>
     </div>
 
+    <div class="row">
+      <div class="col-md-12 mb-3">
+        <div class="card">
+          <div class="card-body bg-gray-200">
+            {% comment %}
+              Same controls as the Registrations tab (cis/registrations/index.html);
+              the param names match so both feeds read a filter the same way.
+            {% endcomment %}
+            <form id="failed_mirror_filter" class="form-inline filter">
+              <div class="form-row">
+                <div class="col">
+                  <div class="float-right">
+                    {% comment %}
+                      signed_parent_consent stays d-none, as on the Registrations
+                      tab (Canusia/package-cis#21). The apply_filters branch
+                      behind it works and is tested, so the control can be shown
+                      by deleting one class if this tenant starts collecting
+                      parent consent -- until then it would filter on data that
+                      is not there.
+                    {% endcomment %}
+                    <select class="form-control mt-2 d-none" name="signed_parent_consent">
+                      <option value="">By Parent Consent</option>
+                      {% for c, c_label in yes_no %}
+                      <option value="{{c}}">{{c_label}}</option>
+                      {% endfor %}
+                    </select>
+                    &nbsp;<select class="form-control mt-2" name="signed_student_agreement">
+                      <option value="">By Student Agreement</option>
+                      {% for c, c_label in yes_no %}
+                      <option value="{{c}}">{{c_label}}</option>
+                      {% endfor %}
+                    </select>
+                    &nbsp;
+                    {% comment %}
+                      The Registrations tab also offers "**SIS Error(s)" here,
+                      which apply_filters has no branch for -- it reads as
+                      applied and changes nothing. It is dropped rather than
+                      implemented: every row on this page is already a failed
+                      SIS mirror, so the option has nothing left to narrow.
+                    {% endcomment %}
+                    <select class="form-control mt-2" name="record_type">
+                      <option value="">By Record Type</option>
+                      <option value="with_prereq">With Prereqs</option>
+                      <option value="needs_mirroring">Needs Mirroring</option>
+                    </select>
+                    &nbsp;
+                    <select class="form-control mt-2" name="status">
+                      <option value="">By Registration Status</option>
+                      {% for c, c_label in registration_status %}
+                      <option value="{{c}}">{{c_label}}</option>
+                      {% endfor %}
+                    </select>
+                    &nbsp;
+                    {% comment %}
+                      Unlike Registrations, this triage page defaults to every
+                      term -- a term default would hide older failures.
+                    {% endcomment %}
+                    <select class="form-control mt-2" name="term">
+                      <option selected value="-3">By Term</option>
+                      <option value="-2">Current Registration Term(s)</option>
+                      {% for c in terms %}
+                      <option value="{{c.id}}">{{c}}</option>
+                      {% endfor %}
+                    </select>
+                    &nbsp;
+                    {% include 'snippets/campus.html' with campus=campus %}
+                    <div class="clearfix">&nbsp;</div>
+                    <input name="btn_search" id="id_btn_filter" type="button" value="Filter & Get Results" class="btn btn-primary">
+                  </div>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="bg-white border responsive p-3">
       <div class="table-responsive">
         <table id="failed-mirror-table"
@@ -61,10 +138,18 @@
       });
     }
 
+    var $filterForm = $('#failed_mirror_filter');
+
+    // data_url already carries ?format=datatables, so the form appends with '&'.
+    // The export endpoint has no query string of its own, so it appends with '?'.
+    function filteredUrl() { return '{{ data_url|safe }}&' + $filterForm.serialize(); }
+    function filteredExportUrl() { return '{{ export_url }}?' + $filterForm.serialize(); }
+
     window.table = $('#failed-mirror-table').DataTable({
       processing: true,
       serverSide: true,
-      ajax: '{{ data_url|safe }}',
+      // Seeded from the filter form so the first draw is a single request.
+      ajax: filteredUrl(),
       rowId: 'id',
       order: [[7, 'desc']],
       lengthMenu: [25, 50, 100],
@@ -97,8 +182,8 @@
           // Server-side: walks the whole queryset, ignoring paging.
           text: '<i class="fas fa-download"></i>&nbsp;Export All (CSV)',
           className: 'btn btn-sm btn-success text-white',
-          titleAttr: 'Export every failed-mirror registration, not just this page',
-          action: function () { window.location = '{{ export_url }}'; },
+          titleAttr: 'Export every failed-mirror registration matching the filters, not just this page',
+          action: function () { window.location = filteredExportUrl(); },
         },
       ],
       columns: [
@@ -147,6 +232,10 @@
               : '';
         }},
       ],
+    });
+
+    $('#id_btn_filter').on('click', function () {
+      window.table.ajax.url(filteredUrl()).load();
     });
 
     // ajax-base.html's bulk-action success handler calls window.parent.refreshTable()

@@ -1,6 +1,7 @@
 """Campus gate for /ce/students/ — a student is scoped to the campuses they
-applied at (via registration -> class_section -> course -> campus); unverified
-students (account_verified=False) are universally visible/actionable."""
+applied at (via registration -> class_section -> course -> campus). Students not
+yet tied to any campus are universally visible/actionable: unverified accounts
+(account_verified=False) and accounts with no registration at all."""
 import uuid
 
 from django.conf import settings
@@ -82,6 +83,8 @@ class StudentCampusScopeTests(_NoLoginSignal):
             status_changed_on={'applied_on': '01/01/2024'})
         # unverified student, no application anywhere
         self.stu_unverified = self._student(verified=False)
+        # verified student who has not applied for a class yet (mid-onboarding)
+        self.stu_verified_no_reg = self._student(verified=True)
 
         self.user = User.objects.create_user(
             username=f'ce_{_sfx()}', email=f'ce_{_sfx()}@x.com', password='x')
@@ -121,6 +124,24 @@ class StudentCampusScopeTests(_NoLoginSignal):
         qs = scope_students_by_campus(Student.objects.all(), self.user)
         self.assertEqual(list(qs).count(self.stu_a), 1)
 
+    def test_scope_includes_verified_student_with_no_registration(self):
+        # A verified student who has not applied for a class is not tied to any
+        # campus yet, so every ce user must still see them.
+        qs = scope_students_by_campus(Student.objects.all(), self.user)
+        self.assertIn(self.stu_verified_no_reg, qs)
+
+    def test_scope_selected_campus_keeps_verified_student_with_no_registration(self):
+        qs = scope_students_by_campus(
+            Student.objects.all(), self.user, selected_campus=str(self.campus_a.id))
+        self.assertIn(self.stu_verified_no_reg, qs)
+
+    def test_scope_returns_each_student_once(self):
+        # The no-registration Q ORs over the same reverse join as the
+        # campus-id Q, so without .distinct() a student could be duplicated.
+        qs = scope_students_by_campus(Student.objects.all(), self.user)
+        ids = [s.id for s in qs]
+        self.assertEqual(len(ids), len(set(ids)))
+
     def test_scope_noop_for_non_ce(self):
         instructor = User.objects.create_user(
             username=f'inst_{_sfx()}', email=f'inst_{_sfx()}@x.com', password='x')
@@ -138,6 +159,41 @@ class StudentCampusScopeTests(_NoLoginSignal):
     def test_can_access_unverified(self):
         self.assertTrue(can_access_student(self.user, self.stu_unverified))
 
+    def test_can_access_verified_student_with_no_registration(self):
+        # The /ce/student/<uuid> 403 this fixes: verified, still mid-onboarding,
+        # no registration anywhere.
+        self.assertTrue(can_access_student(self.user, self.stu_verified_no_reg))
+
+    def test_can_access_verified_no_registration_when_user_has_no_campuses(self):
+        # Even a ce user with an empty process_campus list must reach a student
+        # who is not tied to any campus.
+        self.user.campus = {'process_campus': []}
+        self.assertTrue(can_access_student(self.user, self.stu_verified_no_reg))
+
+    def test_registration_at_other_campus_still_blocks(self):
+        # The exemption is "no registration at all", not "no matching
+        # registration" -- stu_b applied at campus B and must stay hidden.
+        self.assertFalse(can_access_student(self.user, self.stu_b))
+
+    def test_access_revoked_once_student_applies_at_other_campus(self):
+        StudentRegistration.objects.create(
+            student=self.stu_verified_no_reg, class_section=self.sec_b,
+            status_changed_on={'applied_on': '03/03/2024'})
+        self.assertFalse(can_access_student(self.user, self.stu_verified_no_reg))
+
+
+    def test_scope_and_can_access_agree_for_every_student(self):
+        # A row the list shows must open, and a row it hides must 403 -- the two
+        # checks drifting apart is what produced the reported "Unauthorized
+        # Access" on rows the admin could see.
+        scoped = set(
+            s.id for s in scope_students_by_campus(Student.objects.all(), self.user))
+        for student in Student.objects.all():
+            self.assertEqual(
+                student.id in scoped,
+                can_access_student(self.user, student),
+                msg=f'disagreement for student {student.id}')
+
     def test_non_ce_cannot_access(self):
         instructor = User.objects.create_user(
             username=f'inst2_{_sfx()}', email=f'inst2_{_sfx()}@x.com', password='x')
@@ -153,6 +209,27 @@ class StudentCampusScopeTests(_NoLoginSignal):
         self.assertIn(str(self.stu_unverified.id), result)
         self.assertNotIn(str(self.stu_b.id), result)
         self.assertNotIn('not-a-uuid', result)
+
+    def test_processable_ids_keeps_verified_student_with_no_registration(self):
+        result = processable_student_ids(
+            [str(self.stu_verified_no_reg.id), str(self.stu_b.id)], self.user)
+        self.assertIn(str(self.stu_verified_no_reg.id), result)
+        self.assertNotIn(str(self.stu_b.id), result)
+
+    def test_scope_records_by_student_campus_keeps_no_registration_student(self):
+        from cis.campus_gate import scope_records_by_student_campus
+        from cis.models.student import StudentNote
+        # meta={'type': ...} is required: the StudentNote post_save signal reads
+        # instance.meta['type'] unguarded (cis/signals/notes.py).
+        keep = StudentNote.objects.create(
+            student=self.stu_verified_no_reg, note='mid-onboarding',
+            createdby=self.user, meta={'type': 'private'})
+        drop = StudentNote.objects.create(
+            student=self.stu_b, note='other campus',
+            createdby=self.user, meta={'type': 'private'})
+        qs = scope_records_by_student_campus(StudentNote.objects.all(), self.user)
+        self.assertIn(keep, qs)
+        self.assertNotIn(drop, qs)
 
 
 class StudentCampusGateViewTests(_NoLoginSignal):

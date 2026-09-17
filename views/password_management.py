@@ -155,8 +155,16 @@ class cisPasswordResetForm(PasswordResetForm):
         
             user_roles = user.get_roles()
             if 'student' in user_roles:
-                # Student has not completed part 2 of the student app
-                if not user.has_usable_password() or user.psid in ['', None]:
+                # No password was ever stored, so there is nothing to reset --
+                # send a fresh verification link instead and let them set one.
+                #
+                # This must not key off psid: an imported student has a real
+                # password and a NULL psid, and reset_verification_id() below
+                # would flip their verified account back to unverified. Nor off
+                # has_usable_password(), which answers True for the empty
+                # password these accounts actually carry (see
+                # CustomUser.has_login_password).
+                if not user.has_login_password():
                     student = user.student
 
                     student.reset_verification_id()

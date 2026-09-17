@@ -98,7 +98,7 @@ from cis.utils import CIS_user_only, FACULTY_user_only, INSTRUCTOR_user_only, ST
 
 from ..serializers.note import StudentNoteSerializer
 from ..serializers.history import HistorySerializer
-from cis.models.customuser import CustomUser
+from cis.models.customuser import CustomUser, no_login_password_q
 
 from cis.views.eager import (
     eager_queryset,
@@ -503,17 +503,20 @@ class StudentViewSet(viewsets.ReadOnlyModelViewSet):
                 )
 
             if record_type == 'not_applied':
-                not_applied = Student.objects.raw('select id from cis_Student where id not in (select distinct student_id from cis_StudentRegistration)')
-                not_applied_ids = [ d.id for d in not_applied ]
-                
-                records = records.filter(
-                    id__in=not_applied_ids
-                )
-
-            if record_type == 'not_applied':
-                records = records.filter(
-                    account_verified=False
-                )
+                # "Not Applied for Class" = no StudentRegistration at all.
+                #
+                # This used to be two separate `if record_type == 'not_applied'`
+                # blocks: the first selected students with no registration, the
+                # second then narrowed to account_verified=False. The net effect
+                # was that the filter returned ONLY unverified students, hiding
+                # every verified student who had signed up but not yet applied
+                # for a class -- 286 of EWU's 1041 students, and the exact
+                # population admins were using this filter to find.
+                #
+                # The first block also ran raw SQL, pulled every matching id
+                # into Python and shipped them back as one huge IN (...) clause.
+                # One ORM filter does the same work in the database.
+                records = records.filter(studentregistration__isnull=True)
 
             if record_type == 'missing_ssn':
                 records = records.filter(
@@ -2150,10 +2153,69 @@ def mark_as_unverified(request):
 
     return JsonResponse({'outcome': 'alert', 'status': status, 'title': 'Mark as UnVerified', 'message': message})
 
+# A student needs a verification link in two states, not one:
+#   * account_verified=False -- the ordinary "never clicked the link" case;
+#   * account_verified=True, no psid, and no password ever stored -- clicked
+#     the link, then abandoned before setting one. They can neither log in nor
+#     re-apply, and admins had no tool to reach them.
+# psid == '-' is deliberately excluded: that student finished the application
+# and has a password, so Forgot Password is their route, not a new link.
+#
+# The password clause is not optional. A missing psid alone does NOT mean the
+# account is unreachable: the CSV importer
+# (cis/services/importers/student_importer.py) creates verified students with a
+# real password and psid=NULL while the SIS id is pending. Selecting on psid
+# alone swept those up, and because this list mints a fresh token it would flip
+# correctly provisioned accounts back to unverified -- from 'Get Verification
+# Link' as readily as from 'Send'.
+_NEEDS_VERIFICATION_LINK = (
+    Q(account_verified=False)
+    | (Q(account_verified=True)
+       & (Q(user__psid__isnull=True) | Q(user__psid=''))
+       & no_login_password_q())
+)
+
+
+def _students_needing_verification_link(ids):
+    """Split ``ids`` into the students who can be handed a verification link.
+
+    Read-only on purpose. A verified-but-abandoned student has
+    verification_id=None, so ``student.verify_email`` would build a broken URL,
+    and the repair -- reset_verification_id() -- is a *write*: it mints a fresh
+    UUID and flips account_verified back to False, which also kills any link
+    already emailed to that student. Only the caller knows whether its action
+    is allowed to do that, so this function never does it.
+
+    Returns (live, needs_token): students whose existing link still works, and
+    students who would need one minted first.
+
+    Lists, not querysets: minting mutates the very columns the queryset filters
+    on, so a lazy re-evaluation would not see the same rows.
+    """
+    students = list(
+        Student.objects.filter(_NEEDS_VERIFICATION_LINK, id__in=ids)
+        .select_related('user')
+        .distinct()
+    )
+    live, needs_token = [], []
+    for student in students:
+        if student.account_verified or not student.verification_id:
+            needs_token.append(student)
+        else:
+            live.append(student)
+    return live, needs_token
+
+
 @student_actions.action('verification', label='Send Verification Link', icon='fa fa-envelope', scope=['detail', 'bulk'])
 def resend_verification_link(request):
     ids = request.POST.getlist('ids[]')
-    students = Student.objects.filter(id__in=ids, account_verified=False)
+    live, needs_token = _students_needing_verification_link(ids)
+
+    # This action emails a link, so superseding an older one is the point of
+    # it; minting here is expected. 'Get Verification Link' below must not.
+    for student in needs_token:
+        student.reset_verification_id()
+    students = live + needs_token
 
     recipient_list = []
     for student in students:
@@ -2162,28 +2224,51 @@ def resend_verification_link(request):
         recipient_list.append(student.user.email)
 
     message = 'Successfully sent email(s) to <br>' + '<br>'.join(recipient_list)
-    if students.count() == 0:
-        message = 'No students pending account verification found.'
+    if len(recipient_list) == 0:
+        message = 'No students needing account verification found.'
 
     return JsonResponse({'outcome': 'alert', 'status': 'success', 'title': 'Send Verification Link', 'message': message})
 
 @student_actions.action('verification', label='Get Verification Link', icon='fa fa-link', scope=['detail', 'bulk'])
 def get_verification_link(request):
+    """Show the link for students who already have a live one.
+
+    Strictly read-only. Minting a token to fill a gap here would flip the
+    account back to unverified and invalidate whatever link the student was
+    already sent -- an outcome nobody asks for by clicking something labelled
+    'Get'. It is a bulk action, so a select-all would have done that to every
+    matching row at once, with no confirmation and no undo. Students with no
+    live link are named instead, pointing at the action that does issue one.
+    """
     ids = request.POST.getlist('ids[]')
-    students = Student.objects.filter(id__in=ids, account_verified=False)
+    live, needs_token = _students_needing_verification_link(ids)
 
     recipient_list = []
     index = 1
-    for student in students:
+    for student in live:
         recipient_list.append(
             f'{student}<br><span id=\'copy_to_{index}\'>{student.verify_email}</span>&nbsp;&nbsp;<i title=\'copy to clipboard\' class=\'fas fa fa-paste copy-clipboard\' data-clipboard-target=\'#copy_to_{index}\' style=\'cursor: pointer\'></i>'
         )
         index += 1
         student.add_note(request.user, 'Generated account verification link')
 
-    message = 'Verification Links are below<br><br>' + '<br>'.join(recipient_list)
-    if students.count() == 0:
-        message = 'No students pending account verification found.'
+    message = ''
+    if recipient_list:
+        message = 'Verification Links are below<br><br>' + '<br>'.join(recipient_list)
+
+    if needs_token:
+        names = '<br>'.join(str(student) for student in needs_token)
+        if message:
+            message += '<br><br>'
+        message += (
+            'No current verification link for:<br>' + names
+            + '<br><br>Use \'Send Verification Link\' to issue a new one. That '
+              'resets the account to unverified and emails a fresh link, so it '
+              'is not done from here.'
+        )
+
+    if not message:
+        message = 'No students needing account verification found.'
 
     return JsonResponse({'outcome': 'alert', 'status': 'success', 'title': 'Get Verification Link', 'message': message})
 
