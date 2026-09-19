@@ -87,7 +87,13 @@ def apply_filters(records, request):
         term = None
 
     if record_type == 'with_prereq':
-        records = records.filter(
+        # prereq is free-text; a non-empty value means a prerequisite exists,
+        # which is how the model reads it (`if self.prereq:`). The
+        # Registrations tab has this test inverted -- Canusia/package-cis#18 --
+        # so the filter there returns the complement of its label. Don't copy
+        # that here: this page's whole purpose is not misreporting what it
+        # filtered, and the same branch drives Export All.
+        records = records.exclude(
             Q(class_section__course__prereq=None) |
             Q(class_section__course__prereq='')
         )

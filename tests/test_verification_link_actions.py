@@ -14,6 +14,7 @@ too -- which is why the absence of a stored password is part of the test.
 """
 import json
 import uuid
+from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
@@ -196,6 +197,49 @@ class VerificationLinkActionTests(_StudentStates, TestCase):
         self._post(resend_verification_link, self.unverified)
         self.unverified.refresh_from_db()
         self.assertEqual(self.unverified.verification_id, original)
+
+    def test_send_failure_for_one_student_still_sends_to_the_rest(self):
+        # send_verification_request_email() raises KeyError when a tenant has
+        # not registered the registration_email setting. Tokens used to be
+        # minted for the whole selection up front, so one raise left every
+        # remaining student un-verified with no email on the way.
+        real_send = Student.send_verification_request_email
+
+        def send(student):
+            if student.id == self.orphan.id:
+                raise KeyError('registration_email')
+            return real_send(student)
+
+        before = len(mail.outbox)
+        with mock.patch.object(Student, 'send_verification_request_email',
+                               autospec=True, side_effect=send):
+            message = self._post(
+                resend_verification_link, self.orphan, self.orphan_blank_psid)
+
+        self.assertEqual(len(mail.outbox), before + 1)
+        self.assertIn('Could not send to', message)
+        self.assertIn(self.orphan.user.email, message)
+
+    def test_send_when_every_student_fails_does_not_claim_none_were_found(self):
+        # The students were found; sending to them failed. Saying "No students
+        # needing account verification found" would send the admin looking for
+        # a selection problem that does not exist.
+        with mock.patch.object(Student, 'send_verification_request_email',
+                               autospec=True,
+                               side_effect=KeyError('registration_email')):
+            message = self._post(resend_verification_link, self.orphan)
+        self.assertNotIn('No students needing', message)
+        self.assertIn('Could not send to', message)
+        self.assertIn(self.orphan.user.email, message)
+
+    def test_send_escapes_addresses_in_the_alert(self):
+        # The message is rendered as HTML in the admin's alert modal, and a
+        # quoted local part may legally contain < and >.
+        self.orphan.user.email = '"<b>x</b>"@example.com'
+        self.orphan.user.save()
+        message = self._post(resend_verification_link, self.orphan)
+        self.assertNotIn('<b>x</b>', message)
+        self.assertIn('&lt;b&gt;x&lt;/b&gt;', message)
 
     # --- 'Get Verification Link' is read-only -------------------------------
 

@@ -219,10 +219,17 @@ class FailedMirrorFilterTests(TestCase):
         self.assertEqual(self._feed_ids(record_type='needs_mirroring'),
                          {str(self.spring_reg.id)})
 
-    def test_record_type_with_prereq_matches_the_registrations_tab(self):
-        """'With Prereqs' selects courses with an empty/null prereq upstream."""
+    def test_record_type_with_prereq_selects_courses_that_have_prereqs(self):
+        """'With Prereqs' means the course has one -- fall_reg, not spring_reg.
+
+        This deliberately diverges from the Registrations tab, where the same
+        branch is inverted and returns the complement of its label (filed as
+        Canusia/package-cis#18). Matching that bug here would make the filter
+        and Export All misreport what they selected, which is the failure this
+        page exists to avoid.
+        """
         self.assertEqual(self._feed_ids(record_type='with_prereq'),
-                         {str(self.spring_reg.id)})
+                         {str(self.fall_reg.id)})
 
     def test_campus_filter(self):
         self.assertEqual(self._feed_ids(campus=str(self.campus_a.id)),

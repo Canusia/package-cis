@@ -2214,21 +2214,45 @@ def resend_verification_link(request):
 
     # This action emails a link, so superseding an older one is the point of
     # it; minting here is expected. 'Get Verification Link' below must not.
-    for student in needs_token:
-        student.reset_verification_id()
-    students = live + needs_token
+    # Mint per student rather than up front: send_verification_request_email()
+    # reads the registration_email setting with [] and raises KeyError when a
+    # tenant has not registered it (the same failure clean_email guards). One
+    # raise partway through a bulk selection would otherwise leave every
+    # remaining student flipped to unverified with no email on the way.
+    needs_token_ids = {student.id for student in needs_token}
 
-    recipient_list = []
-    for student in students:
-        student.send_verification_request_email()
+    recipient_list, failed = [], []
+    for student in live + needs_token:
+        try:
+            if student.id in needs_token_ids:
+                student.reset_verification_id()
+            student.send_verification_request_email()
+        except Exception:
+            logger.exception(
+                'resend_verification_link: could not send the verification '
+                'email to student %s', student.id)
+            failed.append(student.user.email)
+            continue
         student.add_note(request.user, 'Resent account verification link')
         recipient_list.append(student.user.email)
 
-    message = 'Successfully sent email(s) to <br>' + '<br>'.join(recipient_list)
-    if len(recipient_list) == 0:
-        message = 'No students needing account verification found.'
+    # Addresses are student-supplied (a quoted local part may contain < and >)
+    # and this string is rendered as HTML in the admin's alert modal.
+    status = 'success'
+    parts = []
+    if recipient_list:
+        parts.append('Successfully sent email(s) to <br>' + '<br>'.join(
+            escape(email) for email in recipient_list))
+    if failed:
+        status = 'warning'
+        parts.append('Could not send to <br>' + '<br>'.join(
+            escape(email) for email in failed))
+    if not parts:
+        status = 'warning'
+        parts.append('No students needing account verification found.')
+    message = '<br><br>'.join(parts)
 
-    return JsonResponse({'outcome': 'alert', 'status': 'success', 'title': 'Send Verification Link', 'message': message})
+    return JsonResponse({'outcome': 'alert', 'status': status, 'title': 'Send Verification Link', 'message': message})
 
 @student_actions.action('verification', label='Get Verification Link', icon='fa fa-link', scope=['detail', 'bulk'])
 def get_verification_link(request):

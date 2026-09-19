@@ -102,7 +102,11 @@ class duplicate_students(forms.Form):
         )
 
         return (
-            base.filter(name_key__in=list(duplicate_keys))
+            # Not list(): materializing every duplicate key into Python only to
+            # ship it back as one large IN (...) is the pattern not_applied was
+            # rewritten to avoid (views/student.py). Django turns the queryset
+            # into a subquery.
+            base.filter(name_key__in=duplicate_keys)
                 .select_related('user', 'highschool')
                 .annotate(n_reg=Count('studentregistration', distinct=True))
                 .order_by('ln', 'fn', 'user__id')

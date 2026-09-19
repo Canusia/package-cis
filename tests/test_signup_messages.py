@@ -69,6 +69,20 @@ class SignupMessageCatalogTests(TestCase):
             'Tenant text',
         )
 
+    def test_tenant_catalog_stored_already_decoded_is_honoured(self):
+        # Setting.value is a JSONField, so error_messages can be stored as an
+        # object rather than a JSON string. json.loads() on that dict raised
+        # TypeError, which was caught and silently threw away every message
+        # the tenant had customised.
+        Setting.objects.create(key=signup.key, value={
+            'error_messages': {'verify_email': {'success': 'Custom!'}},
+        })
+        self.assertEqual(message('verify_email', 'success'), 'Custom!')
+        self.assertEqual(
+            message('verify_email', 'invalid_token'),
+            DEFAULT_MESSAGES['verify_email']['invalid_token'],
+        )
+
     def test_unknown_key_is_none_not_an_exception(self):
         self.assertIsNone(message('start_app', 'no_such_key'))
 

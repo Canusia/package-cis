@@ -156,7 +156,14 @@ def message(section, key, subsection=None):
     malformed, stale or absent the tenant's JSON is.
     """
     try:
-        configured = json.loads(signup.from_db().get('error_messages') or '{}')
+        raw = signup.from_db().get('error_messages') or '{}'
+        # Setting.value is a JSONField, so this can come back already decoded.
+        # json.loads() would raise TypeError on a dict, get caught below, and
+        # silently discard every message the tenant customised. Tenant
+        # migrations that seed this setting (e.g. ewu's signup catalog
+        # migration) branch on isinstance(raw, dict) for the same reason --
+        # every reader has to agree about one stored value.
+        configured = raw if isinstance(raw, dict) else json.loads(raw)
     except (json.JSONDecodeError, TypeError, AttributeError):
         configured = {}
 

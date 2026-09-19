@@ -7,8 +7,8 @@ get_tenant_service('onboarding_steps'). This module owns only the wiring:
 default-step seeding, event-bus handler registration, and the term-rollover
 reseed receiver.
 
-`user_logged_in` is Django's built-in signal, not part of our generic event
-bus, so it stays as a normal @receiver below.
+`user_logged_in` and `post_save` are Django's built-in signals, not part of our
+generic event bus, so they stay as normal @receiver blocks below.
 """
 import inspect
 import logging
