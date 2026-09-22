@@ -82,3 +82,47 @@ class DeleteCourseDocRequirementsTests(_Base):
 
         self.assertTrue(
             CourseDocumentRequirement.objects.filter(id=sibling.id).exists())
+
+
+class DeleteAppRequirementsTests(_Base):
+    def setUp(self):
+        super().setUp()
+        self.req_a = CourseAppRequirement.objects.create(
+            course=self.course_a, name='Resume')
+        self.req_b = CourseAppRequirement.objects.create(
+            course=self.course_b, name='Resume')
+
+    def test_deletes_requirement_in_users_campus(self):
+        from cis.views.course import delete_app_requirements
+
+        delete_app_requirements(self._post([str(self.req_a.id)]))
+
+        self.assertFalse(
+            CourseAppRequirement.objects.filter(id=self.req_a.id).exists())
+
+    def test_skips_requirement_outside_users_campus(self):
+        from cis.views.course import delete_app_requirements
+
+        response = delete_app_requirements(self._post([str(self.req_b.id)]))
+
+        self.assertTrue(
+            CourseAppRequirement.objects.filter(id=self.req_b.id).exists())
+        self.assertIn(b'Skipped 1', response.content)
+
+    def test_confirm_text_warns_about_reviewed_applications(self):
+        # `for_scope` returns an OrderedDict keyed by action group, each
+        # holding {'actions': OrderedDict(slug -> action_dict)} (see
+        # myce/component_registry/__init__.py) rather than a flat list of
+        # dicts carrying their own 'slug' key. user=None is safe here: the
+        # registry only consults `permission` when a user is given.
+        from myce.component_registry.course import course_actions
+
+        groups = course_actions.for_scope('bulk', None)
+        spec = None
+        for group in groups.values():
+            if 'delete_app_requirements' in group['actions']:
+                spec = group['actions']['delete_app_requirements']
+                break
+
+        self.assertIsNotNone(spec, 'delete_app_requirements not registered for bulk scope')
+        self.assertIn('Applications already reviewed', spec['confirm'])

@@ -339,6 +339,38 @@ def add_app_requirement(request):
     return JsonResponse({'outcome': 'modal', 'html': html})
 
 
+@course_actions.action(
+    'app_req', label='Delete Selected', icon='fas fa-trash-alt',
+    scope=['bulk'], btn_class='btn-danger',
+    confirm=('Permanently delete the selected application requirement(s)? '
+             'Applications already reviewed against them will no longer '
+             'show them.'))
+def delete_app_requirements(request):
+    """Delete the selected instructor-application requirements.
+
+    Unlike document requirements, these are read by instructor_app when
+    deciding whether an applicant's uploads are complete, so deleting one
+    changes what already-reviewed applications appear to have satisfied.
+    The confirm text says so.
+    """
+    submitted = request.POST.getlist('ids[]')
+    ids = processable_ids(
+        CourseAppRequirement, submitted, request.user,
+        campus_path='course__campus')
+
+    deleted, _ = CourseAppRequirement.objects.filter(id__in=ids).delete()
+    skipped = len(submitted) - len(ids)
+
+    message = f'Deleted {deleted} application requirement(s).'
+    if skipped:
+        message += f' Skipped {skipped} outside your campus.'
+
+    return JsonResponse({
+        'outcome': 'call', 'fn': 'onBulkActionComplete',
+        'args': {'title': 'Delete', 'message': message, 'status': 'success'},
+    })
+
+
 @course_actions.action('doc_req', label='Update Status/Required', icon='fas fa-edit', scope=['bulk_doc_req'])
 def update_course_doc_requirements(request):
     template = 'cis/course/bulk_action.html'
