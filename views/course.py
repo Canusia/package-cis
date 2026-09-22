@@ -370,6 +370,35 @@ def update_course_doc_requirements(request):
     return JsonResponse({'outcome': 'modal', 'html': html})
 
 
+@course_actions.action(
+    'doc_req', label='Delete Selected', icon='fas fa-trash-alt',
+    scope=['bulk_doc_req'], btn_class='btn-danger',
+    confirm='Permanently delete the selected document requirement(s)?')
+def delete_course_doc_requirements(request):
+    """Delete the selected document requirements.
+
+    Ids are re-validated against the caller's campus here: the rendered
+    button list is not a permission check, and this endpoint accepts any id
+    the client cares to post.
+    """
+    submitted = request.POST.getlist('ids[]')
+    ids = processable_ids(
+        CourseDocumentRequirement, submitted, request.user,
+        campus_path='course__campus')
+
+    deleted, _ = CourseDocumentRequirement.objects.filter(id__in=ids).delete()
+    skipped = len(submitted) - len(ids)
+
+    message = f'Deleted {deleted} document requirement(s).'
+    if skipped:
+        message += f' Skipped {skipped} outside your campus.'
+
+    return JsonResponse({
+        'outcome': 'call', 'fn': 'onBulkActionComplete',
+        'args': {'title': 'Delete', 'message': message, 'status': 'success'},
+    })
+
+
 @course_actions.action('doc_req', label='Add New', icon='fas fa-plus', btn_class='btn-success', scope=['add_doc_req'])
 def add_course_doc_requirement(request):
     template = 'cis/course/bulk_action.html'
