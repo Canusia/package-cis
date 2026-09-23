@@ -2986,6 +2986,9 @@ class StudentSupportingDocument(models.Model):
         # Dual-write, same contract as CourseDocumentRequirement: the FK wins
         # when set, the legacy label column is kept populated for readers that
         # have not moved over yet.
+        # NOTE: QuerySet.update() and bulk_create() bypass save() entirely --
+        # any bulk path must set both `document_type_ref` and `document_type`
+        # itself or the two columns can drift apart silently.
         if self.document_type_ref_id and not self.document_type:
             self.document_type = self.document_type_ref.label
         super().save(*args, **kwargs)

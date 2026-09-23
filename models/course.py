@@ -802,6 +802,10 @@ class CourseDocumentRequirement(models.Model):
         # Dual-write: the FK is authoritative when set, but the legacy code
         # column is kept in sync so anything still reading it -- including
         # tenants that have not seeded -- keeps working through the migration.
+        # NOTE: QuerySet.update() and bulk_create() bypass save() entirely --
+        # any bulk path (e.g. a bulk-edit form's records.update(...)) must set
+        # both `document_type` and `document` itself or the two columns can
+        # drift apart silently.
         if self.document_type_id and not self.document:
             self.document = self.document_type.code
         super().save(*args, **kwargs)
