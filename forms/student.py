@@ -7,6 +7,7 @@ from django.db.models import Q
 from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
 
+from django.utils.html import format_html, format_html_join
 from django.utils.safestring import mark_safe
 
 from passwords.validators import (
@@ -1252,17 +1253,22 @@ class ManageFAAForm(forms.Form):
             files = faa.files
 
             if files:
-                file_label = '<br><h5>Uploaded Files</h5><table class="table table-striped">'
-                for file in files:
-                    file_label += "<tr><td>"
-                    file_label += f"<a href='{file.media.url}'>{file.filename}</a><br>"
-                    file_label += "</td>"
-
-                    file_label += f"<td><a href='?delete_taa_file={file.id}'>Delete</a></td>"
-                    file_label += "</tr>"
-                
-                file_label += "</table>"
-                self.fields['file'].help_text = mark_safe(file_label)
+                # format_html_join escapes each interpolated value and leaves
+                # the surrounding markup intact. The previous version
+                # concatenated raw strings and passed the result through
+                # mark_safe(), which asserts escaping has already happened --
+                # it had not, and `filename` is whatever the uploader named
+                # their file, rendered in the CE admin's page.
+                self.fields['file'].help_text = format_html(
+                    '<br><h5>Uploaded Files</h5>'
+                    '<table class="table table-striped">{}</table>',
+                    format_html_join(
+                        '',
+                        '<tr><td><a href="{}">{}</a><br></td>'
+                        '<td><a href="?delete_taa_file={}">Delete</a></td></tr>',
+                        ((f.media.url, f.filename, f.id) for f in files),
+                    ),
+                )
 
     def clean_amount(self):
         amount = self.data.get('amount')
@@ -1393,20 +1399,20 @@ class StudentTuitionAssistanceForm(forms.Form):
             files = faa.files
 
             if files:
-                file_label = '<br><h5>Uploaded Files</h5><table class="table table-striped">'
-                for file in files:
-                    file_label += "<tr><td>"
-                    file_label += f"<a href='{file.media.url}'>{file.filename}</a><br>"
-                    file_label += "</td>"
-                    file_label += "<td>"
-                    file_label += f"{file.description}"
-                    file_label += "</td>"
-
-                    file_label += f"<td><a href='?delete_taa_file={file.id}'>Delete</a></td>"
-                    file_label += "</tr>"
-                
-                file_label += "</table>"
-                self.fields['file'].help_text = mark_safe(file_label)
+                # See the matching block in ManageFAAForm. This copy renders
+                # `description` as well, which is uploader-supplied too and was
+                # equally unescaped.
+                self.fields['file'].help_text = format_html(
+                    '<br><h5>Uploaded Files</h5>'
+                    '<table class="table table-striped">{}</table>',
+                    format_html_join(
+                        '',
+                        '<tr><td><a href="{}">{}</a><br></td><td>{}</td>'
+                        '<td><a href="?delete_taa_file={}">Delete</a></td></tr>',
+                        ((f.media.url, f.filename, f.description, f.id)
+                         for f in files),
+                    ),
+                )
 
     def save(self, commit=True):
         data = self.cleaned_data
