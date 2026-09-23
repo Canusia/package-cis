@@ -752,16 +752,22 @@ def detail(request, record_id):
     file_form = CourseUploadForm(course=record, user=request.user)
 
     if course_app_id:
+        # `course=record` is load-bearing, not tidiness: the POST handler below
+        # reassigns whatever it loads onto `record`, so a bare pk lookup let a
+        # ce user name any requirement on any course -- on any campus -- and
+        # move it onto one of theirs, removing it from the original. The page
+        # is campus-gated on the Course; this scopes the sub-record to it.
         course_app_req = get_object_or_404(
-            CourseAppRequirement, pk=course_app_id
-        )        
+            CourseAppRequirement, pk=course_app_id, course=record
+        )
     course_app_req_form = CourseAppRequirementForm(
         instance=course_app_req
     )
 
     if course_doc_id:
+        # Scoped to `record` for the same reason as course_app_req above.
         course_doc_req = get_object_or_404(
-            CourseDocumentRequirement, pk=course_doc_id
+            CourseDocumentRequirement, pk=course_doc_id, course=record
         )
     course_doc_req_form = CourseDocumentRequirementForm(
         instance=course_doc_req, course=record
