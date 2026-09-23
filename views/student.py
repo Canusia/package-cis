@@ -15,6 +15,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.http import JsonResponse, HttpResponse
 from django.views.decorators.clickjacking import xframe_options_exempt
 from django.views.decorators.http import require_POST
+from django.utils.html import escape
 from django.utils.safestring import mark_safe
 from django.template.loader import get_template, render_to_string
 
@@ -1547,7 +1548,10 @@ def get_parent_consent_link(request):
 
     url = ParentConsent.get_url(student_id, term_id)
     index = 1
-    parent_consent_link = f'<span id=\'copy_to_{index}\'>{url}</span>&nbsp;&nbsp;<i title=\'copy to clipboard\' class=\'fas fa fa-paste copy-clipboard\' data-clipboard-target=\'#copy_to_{index}\' style=\'cursor: pointer\'></i>'
+    # A generated URL rather than user input, so lower risk than the name
+    # interpolations above -- escaped for consistency so the pattern in this
+    # file is uniform rather than "escaped where someone remembered".
+    parent_consent_link = f'<span id=\'copy_to_{index}\'>{escape(url)}</span>&nbsp;&nbsp;<i title=\'copy to clipboard\' class=\'fas fa fa-paste copy-clipboard\' data-clipboard-target=\'#copy_to_{index}\' style=\'cursor: pointer\'></i>'
     data = {
         'message': 'Please send the following link\r\n\r\n' + parent_consent_link,
         'status': 'success'
@@ -2176,7 +2180,11 @@ def get_verification_link(request):
     index = 1
     for student in students:
         recipient_list.append(
-            f'{student}<br><span id=\'copy_to_{index}\'>{student.verify_email}</span>&nbsp;&nbsp;<i title=\'copy to clipboard\' class=\'fas fa fa-paste copy-clipboard\' data-clipboard-target=\'#copy_to_{index}\' style=\'cursor: pointer\'></i>'
+            # str(student) is the student's own first/last name, which is
+            # self-service input on the signup form. This blob is rendered as
+            # an alert in the CE admin's page, so an unescaped name executes
+            # in the admin's session, not the student's.
+            f'{escape(str(student))}<br><span id=\'copy_to_{index}\'>{escape(student.verify_email)}</span>&nbsp;&nbsp;<i title=\'copy to clipboard\' class=\'fas fa fa-paste copy-clipboard\' data-clipboard-target=\'#copy_to_{index}\' style=\'cursor: pointer\'></i>'
         )
         index += 1
         student.add_note(request.user, 'Generated account verification link')
@@ -2196,7 +2204,8 @@ def get_password_reset_link(request):
     index = 1
     for student in students:
         recipient_list.append(
-            f'{student}<br><span id=\'copy_to_{index}\'>{student.user.get_password_reset_link()}</span>&nbsp;&nbsp;<i title=\'copy to clipboard\' class=\'fas fa fa-paste copy-clipboard\' data-clipboard-target=\'#copy_to_{index}\' style=\'cursor: pointer\'></i>'
+            # Same reasoning as get_verification_link above.
+            f'{escape(str(student))}<br><span id=\'copy_to_{index}\'>{escape(student.user.get_password_reset_link())}</span>&nbsp;&nbsp;<i title=\'copy to clipboard\' class=\'fas fa fa-paste copy-clipboard\' data-clipboard-target=\'#copy_to_{index}\' style=\'cursor: pointer\'></i>'
         )
         index += 1
         student.add_note(request.user, 'Generated password reset link')
