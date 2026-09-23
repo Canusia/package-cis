@@ -341,7 +341,7 @@ def add_app_requirement(request):
 
 @course_actions.action(
     'app_req', label='Delete Selected', icon='fas fa-trash-alt',
-    scope=['bulk'], btn_class='btn-danger',
+    scope=['bulk_app_req'], btn_class='btn-danger',
     confirm=('Permanently delete the selected application requirement(s)? '
              'Applications already reviewed against them will no longer '
              'show them.'))

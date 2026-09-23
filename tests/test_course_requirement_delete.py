@@ -117,12 +117,32 @@ class DeleteAppRequirementsTests(_Base):
         # registry only consults `permission` when a user is given.
         from myce.component_registry.course import course_actions
 
-        groups = course_actions.for_scope('bulk', None)
+        groups = course_actions.for_scope('bulk_app_req', None)
         spec = None
         for group in groups.values():
             if 'delete_app_requirements' in group['actions']:
                 spec = group['actions']['delete_app_requirements']
                 break
 
-        self.assertIsNotNone(spec, 'delete_app_requirements not registered for bulk scope')
+        self.assertIsNotNone(
+            spec, 'delete_app_requirements not registered for bulk_app_req scope')
         self.assertIn('Applications already reviewed', spec['confirm'])
+
+    def test_registered_under_bulk_app_req_not_bulk(self):
+        # Regression guard: delete_app_requirements was briefly scoped
+        # 'bulk' (the Courses table's scope) instead of 'bulk_app_req' (the
+        # App Requirements table's scope, per views/course.py's
+        # for_scope('bulk_app_req', ...) call site). Scoped wrong, the
+        # button renders on the wrong table, posts course ids, matches no
+        # CourseAppRequirement rows, and silently deletes nothing.
+        from myce.component_registry.course import course_actions
+
+        def _has_slug(scope, slug):
+            groups = course_actions.for_scope(scope, None)
+            return any(slug in group['actions'] for group in groups.values())
+
+        self.assertTrue(_has_slug('bulk_app_req', 'delete_app_requirements'))
+        self.assertFalse(_has_slug('bulk', 'delete_app_requirements'))
+
+        self.assertTrue(_has_slug('bulk_doc_req', 'delete_course_doc_requirements'))
+        self.assertFalse(_has_slug('bulk', 'delete_course_doc_requirements'))
