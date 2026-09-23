@@ -170,3 +170,76 @@ class StudentSupportingDocumentDualWriteTests(TestCase):
         doc.refresh_from_db()
         self.assertIsNone(doc.document_type_ref)
         self.assertEqual(doc.document_type, 'Transcript')
+
+
+from io import StringIO
+
+from django.core.management import call_command
+from django.core.management.base import CommandError
+
+from cis.models.settings import Setting
+
+
+class InitDocumentTypesTests(TestCase):
+    def setUp(self):
+        self.campus_a = Campus.objects.create(name=f'A{_sfx()}', code=f'A{_sfx()}')
+        self.campus_b = Campus.objects.create(name=f'B{_sfx()}', code=f'B{_sfx()}')
+
+    def _run(self, **kwargs):
+        out = StringIO()
+        call_command('init_document_types', stdout=out, stderr=out, **kwargs)
+        return out.getvalue()
+
+    def test_seeds_one_copy_per_campus(self):
+        self._run()
+
+        for campus in (self.campus_a, self.campus_b):
+            codes = set(DocumentType.objects.filter(campus=campus)
+                        .values_list('code', flat=True))
+            self.assertIn('transcript', codes)
+
+    def test_is_idempotent(self):
+        self._run()
+        before = DocumentType.objects.count()
+
+        self._run()
+
+        self.assertEqual(DocumentType.objects.count(), before)
+
+    def test_dry_run_writes_nothing(self):
+        self._run(dry_run=True)
+
+        self.assertEqual(DocumentType.objects.count(), 0)
+
+    def test_campus_flag_restricts_seeding(self):
+        self._run(campus=self.campus_a.code)
+
+        self.assertGreater(DocumentType.objects.filter(campus=self.campus_a).count(), 0)
+        self.assertEqual(DocumentType.objects.filter(campus=self.campus_b).count(), 0)
+
+    def test_unmatched_setting_value_raises(self):
+        """A support_docs type that matches no known code must be reported,
+        never silently dropped or silently invented."""
+        Setting.objects.update_or_create(
+            key='cis.settings.support_docs',
+            defaults={'value': {'types': ['Completely Unknown Doc']}})
+
+        with self.assertRaises(CommandError) as ctx:
+            self._run()
+
+        self.assertIn('Completely Unknown Doc', str(ctx.exception))
+
+    def test_backfills_requirement_fk_from_legacy_code(self):
+        cohort = Cohort.objects.create(name=f'C{_sfx()}')
+        course = Course.objects.create(
+            name='C', catalog_number=f'X{_sfx()}',
+            cohort=cohort, campus=self.campus_a)
+        req = CourseDocumentRequirement.objects.create(
+            course=course, document='transcript')
+
+        self._run()
+        req.refresh_from_db()
+
+        self.assertIsNotNone(req.document_type)
+        self.assertEqual(req.document_type.code, 'transcript')
+        self.assertEqual(req.document_type.campus, self.campus_a)
