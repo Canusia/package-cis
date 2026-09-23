@@ -765,6 +765,12 @@ class CourseDocumentRequirement(models.Model):
 
     document = models.CharField(max_length=100, choices=course_document_choices)
 
+    # Nullable during the additive release: the legacy `document` code column
+    # above stays authoritative until a tenant runs init_document_types.
+    # #47 makes this required and drops `document`.
+    document_type = models.ForeignKey(
+        'cis.DocumentType', blank=True, null=True, on_delete=models.PROTECT)
+
     # Blank means "all grades", so a requirement never silently applies to nobody
     # and the no-grade-dimension default matches existing behaviour.
     grade_levels = MultiSelectField(
@@ -792,22 +798,32 @@ class CourseDocumentRequirement(models.Model):
             ('course', 'document')
         ]
 
+    def save(self, *args, **kwargs):
+        # Dual-write: the FK is authoritative when set, but the legacy code
+        # column is kept in sync so anything still reading it -- including
+        # tenants that have not seeded -- keeps working through the migration.
+        if self.document_type_id and not self.document:
+            self.document = self.document_type.code
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return f"{self.course} / {self.document}"
 
     @property
     def document_label(self):
-        """Display label for the stored document code.
+        """Display label for this requirement's document.
 
-        Anything rendering `document` to a user must go through this — the column
-        holds a code ('transcript'), not wording.
+        Prefers the DocumentType row when one is linked; falls back to
+        resolving the legacy code through the tenant vocabulary, and finally
+        to the raw code, so a retired code never breaks a page.
         """
+        if self.document_type_id:
+            return self.document_type.label
+
         from cis.services.tenant_services import get_tenant_override
         override = get_tenant_override('course_document_types', 'label_for')
         if override is not None:
             return override(self.document)
-        # Falls back to the code rather than raising: a code retired from the
-        # vocabulary must not break pages showing requirements still carrying it.
         return dict(DEFAULT_DOCUMENT_TYPES).get(self.document, self.document)
 
     @property

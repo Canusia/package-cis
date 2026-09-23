@@ -68,3 +68,45 @@ class DocumentTypeNormalizeTests(TestCase):
     def test_returns_none_for_blank(self):
         self.assertIsNone(DocumentType.normalize('', campus=self.campus))
         self.assertIsNone(DocumentType.normalize(None, campus=self.campus))
+
+
+from cis.models.course import Cohort, Course, CourseDocumentRequirement
+
+
+class DualWriteTests(TestCase):
+    def setUp(self):
+        self.campus = Campus.objects.create(name=f'A{_sfx()}', code=f'A{_sfx()}')
+        self.cohort = Cohort.objects.create(name=f'C{_sfx()}')
+        self.course = Course.objects.create(
+            name='C', catalog_number=f'X{_sfx()}',
+            cohort=self.cohort, campus=self.campus)
+        self.dt = DocumentType.objects.create(
+            code='transcript', label='HS Transcript', campus=self.campus)
+
+    def test_setting_fk_syncs_the_legacy_string(self):
+        req = CourseDocumentRequirement.objects.create(
+            course=self.course, document_type=self.dt)
+
+        req.refresh_from_db()
+        self.assertEqual(req.document, 'transcript')
+
+    def test_legacy_string_alone_still_works(self):
+        """A tenant that never seeds must be completely unaffected."""
+        req = CourseDocumentRequirement.objects.create(
+            course=self.course, document='tsi')
+
+        req.refresh_from_db()
+        self.assertIsNone(req.document_type)
+        self.assertEqual(req.document, 'tsi')
+
+    def test_document_label_prefers_the_fk(self):
+        req = CourseDocumentRequirement.objects.create(
+            course=self.course, document_type=self.dt)
+
+        self.assertEqual(req.document_label, 'HS Transcript')
+
+    def test_document_label_falls_back_to_the_string(self):
+        req = CourseDocumentRequirement.objects.create(
+            course=self.course, document='transcript')
+
+        self.assertEqual(req.document_label, 'High School Transcript')

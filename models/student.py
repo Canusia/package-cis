@@ -2977,6 +2977,18 @@ class StudentSupportingDocument(models.Model):
     student = models.ForeignKey('cis.Student', on_delete=models.PROTECT)
     uploaded_on = models.DateTimeField(auto_now=True)
 
+    # Named _ref because `document_type` above is the legacy free-text column
+    # and the names would collide. #47 drops that column and renames this.
+    document_type_ref = models.ForeignKey(
+        'cis.DocumentType', blank=True, null=True, on_delete=models.PROTECT)
+
+    def save(self, *args, **kwargs):
+        # Dual-write, same contract as CourseDocumentRequirement: the FK wins
+        # when set, the legacy label column is kept populated for readers that
+        # have not moved over yet.
+        if self.document_type_ref_id and not self.document_type:
+            self.document_type = self.document_type_ref.label
+        super().save(*args, **kwargs)
 
     @property
     def filename(self):
