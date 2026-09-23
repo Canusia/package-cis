@@ -1,4 +1,5 @@
 from django import forms
+from django.db.models import Q
 from django.forms import ModelForm
 
 from django_ckeditor_5.widgets import CKEditor5Widget as CKEditorWidget
@@ -577,8 +578,19 @@ class CourseDocumentRequirementForm(ModelForm):
         # template filter would hide the option and still accept the POST.
         campus = course.campus if course is not None else getattr(
             getattr(self.instance, 'course', None), 'campus', None)
-        self.fields['document_type'].queryset = DocumentType.objects.filter(
-            campus=campus, status='Active')
+        offered = Q(campus=campus, status='Active')
+        # Always include the instance's own current document_type, even if it
+        # has since been retired (status='Inactive'), the documented way to
+        # retire a type. Without this, editing an already-linked requirement
+        # would render the dropdown with nothing selected, and saving any
+        # unrelated change would silently write document_type=None -- this
+        # widening only ever adds the id already stored on this exact row,
+        # so it cannot be used to select a different (or another campus's)
+        # type.
+        current_id = getattr(self.instance, 'document_type_id', None)
+        if current_id:
+            offered |= Q(pk=current_id)
+        self.fields['document_type'].queryset = DocumentType.objects.filter(offered)
 
 
 class CourseAdministratorForm(ModelForm):

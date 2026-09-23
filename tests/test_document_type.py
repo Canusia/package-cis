@@ -406,6 +406,75 @@ class DocumentTypeDropdownScopeTests(TestCase):
         self.assertIn(self.type_a, offered)
         self.assertNotIn(self.type_b, offered)
 
+    def test_retired_current_type_still_renders_selected(self):
+        """A requirement linked to a type that has since been retired
+        (status='Inactive', the documented way to retire a type) must still
+        show that type as an option, so the widget can render it selected
+        and resubmitting the unchanged form preserves the FK."""
+        from cis.forms.course import CourseDocumentRequirementForm
+
+        req = CourseDocumentRequirement.objects.create(
+            course=self.course_a, document_type=self.type_a,
+            required='1', status='Active')
+        self.type_a.status = 'Inactive'
+        self.type_a.save()
+
+        form = CourseDocumentRequirementForm(instance=req)
+        offered = set(form.fields['document_type'].queryset)
+        self.assertIn(self.type_a, offered)
+
+        bound = CourseDocumentRequirementForm(
+            instance=req,
+            data={'document_type': str(self.type_a.id), 'document': 'transcript',
+                  'status': 'Active', 'required': '1'})
+        self.assertTrue(bound.is_valid(), bound.errors)
+        saved = bound.save(commit=False)
+        self.assertEqual(saved.document_type_id, self.type_a.id)
+
+    def test_editing_an_unrelated_field_does_not_clear_a_retired_types_fk(self):
+        """The actual data-loss scenario: an admin opens a requirement linked
+        to a since-retired type, changes only an unrelated field (here,
+        `required`), and saves. The FK must survive."""
+        from cis.forms.course import CourseDocumentRequirementForm
+
+        req = CourseDocumentRequirement.objects.create(
+            course=self.course_a, document_type=self.type_a,
+            required='1', status='Active')
+        self.type_a.status = 'Inactive'
+        self.type_a.save()
+
+        # Simulate the browser round-trip: the bound form is built from
+        # what the widget actually rendered, i.e. document_type is present
+        # and selected because it's now in the (widened) queryset.
+        form = CourseDocumentRequirementForm(
+            instance=req,
+            data={'document_type': str(self.type_a.id), 'document': 'transcript',
+                  'status': 'Active', 'required': '2'})
+        self.assertTrue(form.is_valid(), form.errors)
+        saved = form.save(commit=False)
+        saved.save()
+
+        req.refresh_from_db()
+        self.assertEqual(req.document_type_id, self.type_a.id)
+        self.assertEqual(req.required, '2')
+
+    def test_a_different_campus_type_is_still_rejected(self):
+        """Widening the queryset for the instance's own current type must
+        not open the door to picking a different campus's type."""
+        from cis.forms.course import CourseDocumentRequirementForm
+
+        req = CourseDocumentRequirement.objects.create(
+            course=self.course_a, document_type=self.type_a,
+            required='1', status='Active')
+
+        form = CourseDocumentRequirementForm(
+            instance=req,
+            data={'document_type': str(self.type_b.id),
+                  'status': 'Active', 'required': '1'})
+
+        self.assertFalse(form.is_valid())
+        self.assertIn('document_type', form.errors)
+
 
 class AddCourseDocumentRequirementFormScopeTests(TestCase):
     def setUp(self):
