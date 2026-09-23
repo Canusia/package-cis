@@ -3,6 +3,7 @@ import uuid
 from django.db import models
 from django.dispatch import receiver
 from django.db.models import JSONField
+from django.db.models import Q
 
 from multiselectfield import MultiSelectField
 from cis.storage_backend import PrivateMediaStorage
@@ -119,6 +120,82 @@ class Campus(models.Model):
         return Campus.objects.all()
     # filter(
     #         code__contains=prefix).all()
+
+class DocumentType(models.Model):
+    """The document vocabulary, owned by CE admins rather than by code.
+
+    Replaces two competing lists: the hardcoded DOCUMENT_TYPES tuple in each
+    tenant's course_document_types.py (what a course could require) and the
+    free-text cis.settings.support_docs['types'] lines (what a student could
+    upload). Those never agreed, and nothing could make them.
+
+    `code` is stable and never edited; `label` is the only tenant-facing
+    wording. That split is the property both previous designs lacked:
+    relabeling 'TSI Assessment' to 'TSI Score' updates every screen and
+    detaches nothing.
+
+    Retire a type with status='Inactive', never by deleting it — both FKs
+    pointing here are PROTECT.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    code = models.SlugField(max_length=100)
+    label = models.CharField(max_length=255)
+
+    STATUS_OPTIONS = (
+        ('Active', 'Active'),
+        ('Inactive', 'Inactive'),
+    )
+    status = models.CharField(
+        max_length=10, choices=STATUS_OPTIONS, default='Active')
+
+    # Nullable purely as a backward-compatibility affordance for rows that
+    # predate campus assignment. NULL means *unassigned*, never "applies to
+    # every campus" -- #47 makes it required once every tenant has backfilled.
+    campus = models.ForeignKey(
+        'cis.Campus', blank=True, null=True, on_delete=models.PROTECT)
+
+    class Meta:
+        constraints = [
+            # Two partial constraints rather than unique_together('campus',
+            # 'code'): Postgres treats NULLs as distinct in a unique index, so
+            # the simple form would happily allow two legacy null-campus rows
+            # with the same code. nulls_distinct=False would also work but
+            # needs PostgreSQL 15+.
+            models.UniqueConstraint(
+                fields=['code'], condition=Q(campus__isnull=True),
+                name='documenttype_unique_code_unassigned'),
+            models.UniqueConstraint(
+                fields=['campus', 'code'], condition=Q(campus__isnull=False),
+                name='documenttype_unique_code_per_campus'),
+        ]
+        ordering = ['label']
+
+    def __str__(self):
+        return self.label
+
+    @classmethod
+    def normalize(cls, value, campus=None):
+        """Resolve a code or a display label to a DocumentType, or None.
+
+        Case-insensitive on both, so spreadsheets and settings lines that
+        carry human labels keep working. Returns None rather than raising so
+        callers decide whether an unmatched value is an error (the seeding
+        command) or a silent skip.
+        """
+        if value is None:
+            return None
+        candidate = str(value).strip()
+        if not candidate:
+            return None
+
+        rows = cls.objects.filter(campus=campus)
+        folded = candidate.casefold()
+        for row in rows:
+            if folded in (row.code.casefold(), row.label.casefold()):
+                return row
+        return None
+
 
 class College(models.Model):
     """
