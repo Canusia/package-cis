@@ -160,24 +160,47 @@ class Command(BaseCommand):
         return linked
 
     def _backfill_uploads(self):
-        """Link uploaded documents via the null-campus (unassigned) types.
+        """Link uploaded documents to the type for their own term's campus.
 
-        StudentSupportingDocument carries no campus of its own, so there is
-        nothing to scope by; unassigned (null-campus) types are used, and a
-        row that matches nothing is left alone rather than guessed at.
+        StudentSupportingDocument carries no campus column of its own, but
+        every row has a required `term`, and `term.academic_year.campus` is
+        the same derivation `backfill_course_campus.py` documents the SIS
+        importer using to stamp Course.campus. A row whose academic year has
+        no campus assigned yet (a legitimate legacy state) falls back to the
+        null-campus (unassigned) index. A row is NEVER matched against a
+        *different* campus's vocabulary than its own -- a wrong-campus link
+        is worse than no link -- so if the row's own campus has no match, it
+        falls back to the null-campus index only, never another campus's.
         """
         linked = 0
-        pending = StudentSupportingDocument.objects.filter(
-            document_type_ref__isnull=True).exclude(document_type='')
+        pending = (StudentSupportingDocument.objects
+                   .filter(document_type_ref__isnull=True)
+                   .exclude(document_type='')
+                   .select_related('term__academic_year__campus'))
 
-        index = self._build_index(None)
+        indexes = {}
+        unassigned_index = self._build_index(None)
+
+        def _index_for(campus):
+            if campus is None:
+                return unassigned_index
+            if campus.pk not in indexes:
+                indexes[campus.pk] = self._build_index(campus)
+            return indexes[campus.pk]
+
         for doc in pending:
             value = (doc.document_type or '').strip()
             if not value:
                 continue
-            match = index.get(value.casefold())
+            folded = value.casefold()
+
+            campus = doc.term.academic_year.campus
+            match = _index_for(campus).get(folded)
+            if match is None and campus is not None:
+                match = unassigned_index.get(folded)
             if match is None:
                 continue
+
             doc.document_type_ref = match
             doc.save(update_fields=['document_type_ref'])
             linked += 1

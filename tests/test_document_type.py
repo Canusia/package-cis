@@ -243,3 +243,87 @@ class InitDocumentTypesTests(TestCase):
         self.assertIsNotNone(req.document_type)
         self.assertEqual(req.document_type.code, 'transcript')
         self.assertEqual(req.document_type.campus, self.campus_a)
+
+
+class InitDocumentTypesUploadBackfillTests(TestCase):
+    """Coverage for the fix-round-1 gap: uploads must resolve against their
+    OWN term's academic-year campus, never a null-campus type that can never
+    exist (the command only ever creates per-campus rows), and never a
+    different campus's type.
+    """
+
+    def setUp(self):
+        patcher = mock.patch(
+            'cis.storage_backend.PrivateMediaStorage._save',
+            side_effect=lambda name, content: name)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+        self.campus_a = Campus.objects.create(name=f'A{_sfx()}', code=f'A{_sfx()}')
+        self.campus_b = Campus.objects.create(name=f'B{_sfx()}', code=f'B{_sfx()}')
+
+        Group.objects.get_or_create(name='student')
+        email = f'{_sfx()}@example.com'
+        user = CustomUser.objects.create_user(
+            username=email, email=email, password='x')
+        self.student = Student.objects.create(user=user)
+
+    def _run(self, **kwargs):
+        out = StringIO()
+        call_command('init_document_types', stdout=out, stderr=out, **kwargs)
+        return out.getvalue()
+
+    def _term(self, campus):
+        academic_year = AcademicYear.objects.create(
+            name=f'AY{_sfx()}', campus=campus)
+        return Term.objects.create(
+            academic_year=academic_year, code=f'T{_sfx()}', label=f'L{_sfx()}')
+
+    def _doc(self, term, document_type):
+        return StudentSupportingDocument.objects.create(
+            term=term, student=self.student,
+            media=SimpleUploadedFile('doc.pdf', b'contents'),
+            document_type=document_type)
+
+    def test_links_to_its_own_campus_type(self):
+        term_a = self._term(self.campus_a)
+        doc = self._doc(term_a, 'transcript')
+
+        self._run()
+        doc.refresh_from_db()
+
+        self.assertIsNotNone(doc.document_type_ref)
+        self.assertEqual(doc.document_type_ref.campus, self.campus_a)
+        self.assertEqual(doc.document_type_ref.code, 'transcript')
+
+    def test_never_links_to_a_different_campus_type(self):
+        """A document's own campus (campus_a) has no matching type yet, while
+        a DIFFERENT campus (campus_b) does. The backfill must leave the
+        document unmatched rather than borrow campus_b's type -- wrong-campus
+        is worse than no link. Once campus_a is seeded too, it links to
+        campus_a's own type, never campus_b's."""
+        term_a = self._term(self.campus_a)
+        doc = self._doc(term_a, 'transcript')
+
+        # Seed only campus_b's vocabulary (the --campus flag scopes the
+        # seeding step; campus_a still has zero DocumentType rows).
+        self._run(campus=self.campus_b.code)
+        doc.refresh_from_db()
+        self.assertIsNone(doc.document_type_ref)
+
+        # Now seed every campus, including campus_a.
+        self._run()
+        doc.refresh_from_db()
+
+        self.assertIsNotNone(doc.document_type_ref)
+        self.assertEqual(doc.document_type_ref.campus, self.campus_a)
+
+    def test_unmatched_free_text_left_alone(self):
+        term_a = self._term(self.campus_a)
+        doc = self._doc(term_a, 'Some Totally Unknown Type')
+
+        self._run()
+        doc.refresh_from_db()
+
+        self.assertIsNone(doc.document_type_ref)
+        self.assertEqual(doc.document_type, 'Some Totally Unknown Type')
