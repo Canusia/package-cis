@@ -12,6 +12,7 @@ from cis.models.course import (
     CourseDocumentRequirement,
     CourseAdministrator,
     CourseUpload,
+    DocumentType,
     course_document_choices,
     student_grade_choices
 )
@@ -564,11 +565,20 @@ class CourseDocumentRequirementForm(ModelForm):
             'description': CKEditorWidget()
         }
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, course=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['grade_levels'].help_text = (
             'Leave empty to apply this requirement to all grade levels.'
         )
+
+        # The course's campus decides which vocabulary is on offer. This has
+        # to be the queryset, not a template filter: the only other campus
+        # check on this model runs through course__campus on the view, so a
+        # template filter would hide the option and still accept the POST.
+        campus = course.campus if course is not None else getattr(
+            getattr(self.instance, 'course', None), 'campus', None)
+        self.fields['document_type'].queryset = DocumentType.objects.filter(
+            campus=campus, status='Active')
 
 
 class CourseAdministratorForm(ModelForm):
@@ -960,6 +970,12 @@ class AddCourseDocumentRequirementForm(forms.Form):
         choices=[]
     )
 
+    document_type = forms.ModelChoiceField(
+        required=False,
+        label='Document Type',
+        queryset=DocumentType.objects.none(),
+    )
+
     grade_levels = forms.MultipleChoiceField(
         required=False,
         label='Grade Levels',
@@ -993,6 +1009,11 @@ class AddCourseDocumentRequirementForm(forms.Form):
         super().__init__(*args, **kwargs)
         # Resolve the tenant vocabularies per-request rather than at import time.
         self.fields['document'].choices = course_document_choices()
+        self.fields['document_type'].queryset = DocumentType.objects.filter(
+            status='Active')
+        self.fields['document_type'].help_text = (
+            'Only applied to courses on the same campus as the chosen type.'
+        )
         self.fields['grade_levels'].choices = student_grade_choices()
         self.fields['grade_levels'].help_text = (
             'Leave empty to apply this requirement to all grade levels.'
@@ -1001,7 +1022,10 @@ class AddCourseDocumentRequirementForm(forms.Form):
     def save(self, request=None):
         data = self.cleaned_data
         records = []
+        document_type = data.get('document_type')
         for course in data.get('courses'):
+            if document_type is not None and course.campus_id != document_type.campus_id:
+                continue
             obj, created = CourseDocumentRequirement.objects.update_or_create(
                 course=course,
                 document=data.get('document'),

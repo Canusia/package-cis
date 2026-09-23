@@ -116,10 +116,11 @@ def document_requirements_tab(request, record):
     if request.method == 'POST' and request.POST.get('action') == 'save_course_doc_req':
         # Bind to POST purely to populate form.errors for re-display;
         # detail() owns the actual save.
-        form = CourseDocumentRequirementForm(request.POST, instance=course_doc_req)
+        form = CourseDocumentRequirementForm(
+            request.POST, instance=course_doc_req, course=record)
         form.is_valid()
     else:
-        form = CourseDocumentRequirementForm(instance=course_doc_req)
+        form = CourseDocumentRequirementForm(instance=course_doc_req, course=record)
     return {'doc_reqs': CourseDocumentRequirement.objects.filter(course=record),
             'course_doc_req_form': form}
 

@@ -327,3 +327,116 @@ class InitDocumentTypesUploadBackfillTests(TestCase):
 
         self.assertIsNone(doc.document_type_ref)
         self.assertEqual(doc.document_type, 'Some Totally Unknown Type')
+
+    def test_relabeling_survives_reseeding(self):
+        """code is the stable key; label is freely editable by a CE admin.
+        Re-running the seed command must never clobber an edited label or
+        create a duplicate row for the same (campus, code)."""
+        self._run()
+
+        dt = DocumentType.objects.get(code='transcript', campus=self.campus_a)
+        dt.label = 'TSI Score'
+        dt.save()
+
+        self._run()
+
+        dt.refresh_from_db()
+        self.assertEqual(dt.label, 'TSI Score')
+        self.assertEqual(
+            DocumentType.objects.filter(
+                code='transcript', campus=self.campus_a).count(),
+            1)
+
+
+class DocumentTypeDropdownScopeTests(TestCase):
+    def setUp(self):
+        self.campus_a = Campus.objects.create(name=f'A{_sfx()}', code=f'A{_sfx()}')
+        self.campus_b = Campus.objects.create(name=f'B{_sfx()}', code=f'B{_sfx()}')
+        self.cohort = Cohort.objects.create(name=f'C{_sfx()}')
+        self.course_a = Course.objects.create(
+            name='A', catalog_number=f'A{_sfx()}',
+            cohort=self.cohort, campus=self.campus_a)
+
+        self.type_a = DocumentType.objects.create(
+            code='transcript', label='A Transcript', campus=self.campus_a)
+        self.type_b = DocumentType.objects.create(
+            code='transcript', label='B Transcript', campus=self.campus_b)
+
+    def test_form_offers_only_the_courses_campus_types(self):
+        from cis.forms.course import CourseDocumentRequirementForm
+
+        form = CourseDocumentRequirementForm(course=self.course_a)
+        offered = set(form.fields['document_type'].queryset)
+
+        self.assertIn(self.type_a, offered)
+        self.assertNotIn(self.type_b, offered)
+
+    def test_form_rejects_a_type_from_another_campus(self):
+        from cis.forms.course import CourseDocumentRequirementForm
+
+        form = CourseDocumentRequirementForm(
+            course=self.course_a,
+            data={'document_type': str(self.type_b.id),
+                  'status': 'Active', 'required': '1'})
+
+        self.assertFalse(form.is_valid())
+        self.assertIn('document_type', form.errors)
+
+    def test_inactive_types_are_not_offered(self):
+        from cis.forms.course import CourseDocumentRequirementForm
+
+        self.type_a.status = 'Inactive'
+        self.type_a.save()
+
+        form = CourseDocumentRequirementForm(course=self.course_a)
+
+        self.assertNotIn(self.type_a, set(form.fields['document_type'].queryset))
+
+    def test_form_constructible_without_a_course(self):
+        """Falls back to self.instance.course.campus when no course kwarg
+        is given -- callers that only pass instance= must keep working."""
+        from cis.forms.course import CourseDocumentRequirementForm
+
+        req = CourseDocumentRequirement.objects.create(
+            course=self.course_a, document_type=self.type_a)
+
+        form = CourseDocumentRequirementForm(instance=req)
+        offered = set(form.fields['document_type'].queryset)
+
+        self.assertIn(self.type_a, offered)
+        self.assertNotIn(self.type_b, offered)
+
+
+class AddCourseDocumentRequirementFormScopeTests(TestCase):
+    def setUp(self):
+        self.campus_a = Campus.objects.create(name=f'A{_sfx()}', code=f'A{_sfx()}')
+        self.campus_b = Campus.objects.create(name=f'B{_sfx()}', code=f'B{_sfx()}')
+        self.cohort = Cohort.objects.create(name=f'C{_sfx()}')
+        self.course_a = Course.objects.create(
+            name='A', catalog_number=f'A{_sfx()}',
+            cohort=self.cohort, campus=self.campus_a, status='Active')
+        self.course_b = Course.objects.create(
+            name='B', catalog_number=f'B{_sfx()}',
+            cohort=self.cohort, campus=self.campus_b, status='Active')
+
+        self.type_a = DocumentType.objects.create(
+            code='transcript', label='A Transcript', campus=self.campus_a)
+
+    def test_save_skips_courses_on_a_different_campus_than_the_type(self):
+        from cis.forms.course import AddCourseDocumentRequirementForm
+
+        form = AddCourseDocumentRequirementForm(data={
+            'courses': [self.course_a.id, self.course_b.id],
+            'document_type': str(self.type_a.id),
+            'document': 'transcript',
+            'required': '1',
+            'status': 'Active',
+            'action': 'add_course_doc_requirement',
+        })
+
+        self.assertTrue(form.is_valid(), form.errors)
+        records = form.save()
+
+        courses_saved = {r.course_id for r in records}
+        self.assertIn(self.course_a.id, courses_saved)
+        self.assertNotIn(self.course_b.id, courses_saved)

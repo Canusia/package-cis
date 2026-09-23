@@ -747,7 +747,7 @@ def detail(request, record_id):
             CourseDocumentRequirement, pk=course_doc_id
         )
     course_doc_req_form = CourseDocumentRequirementForm(
-        instance=course_doc_req
+        instance=course_doc_req, course=record
     )
 
     migration_form = MigrateForm(record=record)
@@ -843,7 +843,8 @@ def detail(request, record_id):
         if request.POST.get('action') == 'save_course_doc_req':
             course_doc_req_form = CourseDocumentRequirementForm(
                 request.POST,
-                instance=course_doc_req
+                instance=course_doc_req,
+                course=record
             )
             if course_doc_req_form.is_valid():
                 course_doc_req = course_doc_req_form.save(commit=False)
