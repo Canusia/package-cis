@@ -29,6 +29,8 @@ DocumentType for a campus and compares in Python, so calling it once per row
 would be a full table load per row. `normalize()` itself is unchanged and
 still correct for its other (low-volume) callers.
 """
+from collections import Counter
+
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
@@ -74,11 +76,33 @@ class Command(BaseCommand):
         Built once per campus so the backfills below resolve each row with a
         dict lookup instead of a fresh `DocumentType.normalize()` query (and
         full in-Python scan) per row.
+
+        Two passes on purpose: labels first, then codes, so a code always
+        wins a collision with another type's label. A tenant with
+        (code='hs_transcript', label='Transcript') and
+        (code='transcript', label='HS Transcript') used to have the label
+        pass run second and silently overwrite the code key -- every
+        requirement with document='transcript' would backfill to the WRONG
+        type. If a code still collides with a *different* type's label after
+        that ordering, that's a genuine ambiguity in the vocabulary, and this
+        refuses to guess (consistent with the settings-value refusal below)
+        rather than pick one silently.
         """
+        types = list(DocumentType.objects.filter(campus=campus))
+
         index = {}
-        for dt in DocumentType.objects.filter(campus=campus):
-            index[dt.code.casefold()] = dt
+        for dt in types:
             index[dt.label.casefold()] = dt
+        for dt in types:
+            key = dt.code.casefold()
+            existing = index.get(key)
+            if existing is not None and existing.pk != dt.pk:
+                raise CommandError(
+                    f'Ambiguous document type vocabulary on campus '
+                    f'{campus!r}: type {dt.pk} (code={dt.code!r}) collides '
+                    f'with type {existing.pk} (label={existing.label!r}) -- '
+                    f'rename one of them and re-run.')
+            index[key] = dt
         return index
 
     def handle(self, *args, **options):
@@ -114,8 +138,10 @@ class Command(BaseCommand):
                         DocumentType.objects.create(
                             campus=campus, code=code, label=label)
 
-            linked_reqs = 0 if dry_run else self._backfill_requirements()
-            linked_docs = 0 if dry_run else self._backfill_uploads()
+            linked_reqs, skipped_reqs = (
+                (0, Counter()) if dry_run else self._backfill_requirements())
+            linked_docs, skipped_docs = (
+                (0, Counter()) if dry_run else self._backfill_uploads())
 
             if dry_run:
                 transaction.set_rollback(True)
@@ -127,37 +153,85 @@ class Command(BaseCommand):
             self.stdout.write(
                 f'Linked {linked_reqs} course requirement(s) and '
                 f'{linked_docs} uploaded document(s).')
+            # The docstring promises this command refuses to guess and never
+            # half-succeeds silently -- that promise held for the settings
+            # values below and was broken for the rows themselves: a tenant
+            # with 5,000 requirements and 900 links used to see only
+            # "Linked 900" with no hint that 4,100 were left unlinked.
+            self._report_skips('course requirement(s)', skipped_reqs)
+            self._report_skips('uploaded document(s)', skipped_docs)
 
         if unmatched:
-            raise CommandError(
+            # A caller reading only the exit code can't tell whether *anything*
+            # ran before this refusal. Say so explicitly when it did: seeding
+            # and backfilling are real work already committed by the time this
+            # raises, they just don't cover these particular free-text values.
+            did_anything = not dry_run and (created or linked_reqs or linked_docs)
+            lead = (
+                'Valid types were seeded and links were made above; only '
+                'these support_docs values match no known document type and '
+                'were not seeded'
+                if did_anything else
                 'These support_docs types match no known document type and '
-                'were not seeded — add them to the vocabulary or correct the '
+                'were not seeded')
+            raise CommandError(
+                f'{lead} — add them to the vocabulary or correct the '
                 'setting, then re-run:\n  ' + '\n  '.join(sorted(unmatched)))
 
+    def _report_skips(self, noun, skipped):
+        if not skipped:
+            return
+        total = sum(skipped.values())
+        breakdown = ', '.join(
+            f'{count} {reason}' for reason, count in sorted(skipped.items()))
+        self.stdout.write(f'Skipped {total} {noun}: {breakdown}.')
+
     def _backfill_requirements(self):
-        """Link requirements to the type for their own course's campus."""
+        """Link requirements to the type for their own course's campus.
+
+        A campus-less course (`Course.campus` is nullable and historically
+        unset -- see `backfill_course_campus.py`) falls back to the
+        null-campus index, mirroring `_backfill_uploads` below. Before this,
+        a campus-less course always built an empty index (this command only
+        ever CREATES per-campus rows) and every one of its requirements was
+        silently unbackfillable.
+        """
         linked = 0
+        skipped = Counter()
         pending = (CourseDocumentRequirement.objects
                    .filter(document_type__isnull=True)
-                   .select_related('course'))
+                   .select_related('course__campus'))
 
         indexes = {}
-        for req in pending:
-            campus_id = req.course.campus_id
-            if campus_id not in indexes:
-                indexes[campus_id] = self._build_index(req.course.campus)
-            index = indexes[campus_id]
+        unassigned_index = self._build_index(None)
 
+        def _index_for(campus):
+            if campus is None:
+                return unassigned_index
+            if campus.pk not in indexes:
+                indexes[campus.pk] = self._build_index(campus)
+            return indexes[campus.pk]
+
+        for req in pending:
             value = (req.document or '').strip()
             if not value:
+                skipped['blank document value'] += 1
                 continue
-            match = index.get(value.casefold())
+            folded = value.casefold()
+
+            campus = req.course.campus
+            match = _index_for(campus).get(folded)
+            if match is None and campus is not None:
+                match = unassigned_index.get(folded)
             if match is None:
+                skipped['no matching type (campus-less course)'
+                        if campus is None else 'no matching type'] += 1
                 continue
+
             req.document_type = match
             req.save(update_fields=['document_type'])
             linked += 1
-        return linked
+        return linked, skipped
 
     def _backfill_uploads(self):
         """Link uploaded documents to the type for their own term's campus.
@@ -173,6 +247,7 @@ class Command(BaseCommand):
         falls back to the null-campus index only, never another campus's.
         """
         linked = 0
+        skipped = Counter()
         pending = (StudentSupportingDocument.objects
                    .filter(document_type_ref__isnull=True)
                    .exclude(document_type='')
@@ -191,6 +266,7 @@ class Command(BaseCommand):
         for doc in pending:
             value = (doc.document_type or '').strip()
             if not value:
+                skipped['blank document_type value'] += 1
                 continue
             folded = value.casefold()
 
@@ -199,9 +275,11 @@ class Command(BaseCommand):
             if match is None and campus is not None:
                 match = unassigned_index.get(folded)
             if match is None:
+                skipped['no matching type (campus-less term)'
+                        if campus is None else 'no matching type'] += 1
                 continue
 
             doc.document_type_ref = match
             doc.save(update_fields=['document_type_ref'])
             linked += 1
-        return linked
+        return linked, skipped

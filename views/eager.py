@@ -385,9 +385,27 @@ def with_course_note_related(records):
 
 
 def with_course_upload_related(records):
-    """CourseUploadSerializer(course) / CourseAppRequirementSerializer(course) / CourseDocumentRequirementSerializer(course)."""
+    """CourseUploadSerializer(course) / CourseAppRequirementSerializer(course)."""
     return records.select_related(
         *course_select_related('course__')
+    ).prefetch_related(
+        *course_prefetch_related('course__')
+    )
+
+
+def with_course_document_requirement_related(records):
+    """CourseDocumentRequirementSerializer(course, document_type).
+
+    Split out from ``with_course_upload_related`` rather than adding
+    ``document_type`` there: that helper also serves CourseUpload and
+    CourseAppRequirement, neither of which has a ``document_type`` column, so
+    a shared ``select_related('document_type')`` would raise a FieldError on
+    those feeds. `document_label` (models/course.py) dereferences
+    `self.document_type` once a tenant backfills the FK, which is an extra
+    query per row on this feed unless it's eager-loaded here.
+    """
+    return records.select_related(
+        *course_select_related('course__'), 'document_type'
     ).prefetch_related(
         *course_prefetch_related('course__')
     )

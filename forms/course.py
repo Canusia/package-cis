@@ -592,6 +592,27 @@ class CourseDocumentRequirementForm(ModelForm):
             offered |= Q(pk=current_id)
         self.fields['document_type'].queryset = DocumentType.objects.filter(offered)
 
+    def clean(self):
+        cleaned_data = super().clean()
+        document = cleaned_data.get('document')
+        document_type = cleaned_data.get('document_type')
+
+        # Both fields are independently editable on this form ('__all__'), and
+        # nothing else cross-validates them. If they disagree, the row would
+        # display document_type's label while every downstream branch (and
+        # the unique_together('course', 'document') key) reads `document` --
+        # silently enforcing/showing the wrong requirement forever. The two
+        # values come from the same vocabulary (init_document_types seeds
+        # DocumentType.code from the same course_document_choices() that
+        # populates `document`), so equality is the correct invariant.
+        if document and document_type and document_type.code != document:
+            self.add_error(
+                'document_type',
+                'Document Type does not match Document. Choose the Document '
+                'Type whose code matches the selected Document, or leave '
+                'Document Type blank.')
+        return cleaned_data
+
 
 class CourseAdministratorForm(ModelForm):
 
@@ -1017,12 +1038,27 @@ class AddCourseDocumentRequirementForm(forms.Form):
         initial='add_course_doc_requirement'
     )
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
         # Resolve the tenant vocabularies per-request rather than at import time.
         self.fields['document'].choices = course_document_choices()
-        self.fields['document_type'].queryset = DocumentType.objects.filter(
-            status='Active')
+
+        # Scope the offered types to the campuses this user may process --
+        # otherwise a ce admin can pick another campus's identically-labelled
+        # type (e.g. both campuses have a "Transcript") and every course on
+        # the other campus is silently skipped in save() below. `user=None`
+        # (e.g. a form built without a request, as some tests do) keeps the
+        # unscoped queryset rather than resolving to nothing.
+        types = DocumentType.objects.filter(status='Active').select_related('campus')
+        if user is not None:
+            from cis.campus_gate import get_accessible_campuses
+            types = types.filter(campus__in=get_accessible_campuses(user))
+        self.fields['document_type'].queryset = types
+        # Two campuses can label a type identically ("Transcript"), so the
+        # dropdown must show which campus each option belongs to.
+        self.fields['document_type'].label_from_instance = (
+            lambda obj: f'{obj.label} ({obj.campus.code})' if obj.campus_id
+            else f'{obj.label} (No campus)')
         self.fields['document_type'].help_text = (
             'Only applied to courses on the same campus as the chosen type.'
         )
@@ -1030,6 +1066,22 @@ class AddCourseDocumentRequirementForm(forms.Form):
         self.fields['grade_levels'].help_text = (
             'Leave empty to apply this requirement to all grade levels.'
         )
+
+    def clean(self):
+        cleaned_data = super().clean()
+        document = cleaned_data.get('document')
+        document_type = cleaned_data.get('document_type')
+
+        # Same hazard as CourseDocumentRequirementForm.clean(): `document` and
+        # `document_type` are independent inputs here too, and nothing else
+        # cross-validates them.
+        if document and document_type and document_type.code != document:
+            self.add_error(
+                'document_type',
+                'Document Type does not match Document. Choose the Document '
+                'Type whose code matches the selected Document, or leave '
+                'Document Type blank.')
+        return cleaned_data
 
     def save(self, request=None):
         data = self.cleaned_data

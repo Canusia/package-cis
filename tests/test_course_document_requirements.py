@@ -443,3 +443,83 @@ class AddCourseDocumentRequirementFormTests(TestCase):
                          course_document_choices())
         self.assertEqual(list(form.fields['grade_levels'].choices),
                          student_grade_choices())
+
+
+class AddCourseDocumentRequirementViewSkipReasonTests(_NoLoginHistoryMixin, TestCase):
+    """I6: the two ways a course can be dropped from a bulk add are distinct
+    and must be reported as such -- 'outside your campus' used to be printed
+    for BOTH a course the user cannot process at all, and a course that is
+    merely on a different campus than the document type chosen for this
+    submission. Only the first is actually about the user's own campus
+    access."""
+
+    def setUp(self):
+        self.campus_a = Campus.objects.create(
+            name=f'A-{_sfx()}', code=f'{settings.CAMPUS_CODE_PREFIX}-{_sfx()}')
+        self.campus_b = Campus.objects.create(
+            name=f'B-{_sfx()}', code=f'{settings.CAMPUS_CODE_PREFIX}-{_sfx()}')
+
+        self.course_a = _make_course('901', self.campus_a)
+        self.course_b = _make_course('902', self.campus_b)
+
+        from cis.models.course import DocumentType
+        self.type_a = DocumentType.objects.create(
+            code='transcript', label='Transcript', campus=self.campus_a)
+
+        self.client = self.client_class(REMOTE_ADDR='127.0.0.1')
+
+    def _post(self, courses, document_type_id, user):
+        self.client.force_login(user)
+        return self.client.post(reverse('cis:course_bulk_actions'), {
+            'action': 'add_course_doc_requirement',
+            'action_confirmed': '1',
+            'courses': [str(c.id) for c in courses],
+            'document': 'transcript',
+            'document_type': str(document_type_id),
+            'required': '1',
+            'status': 'Active',
+        })
+
+    def test_course_outside_the_users_campus_is_reported_as_such(self):
+        # The user only processes campus_a, so course_b is dropped before the
+        # form ever sees it (processable_ids), independent of any document
+        # type chosen.
+        user = _make_ce_user(self.campus_a)
+
+        resp = self._post([self.course_a, self.course_b], self.type_a.id, user)
+
+        self.assertEqual(resp.status_code, 200, resp.content)
+        body = resp.json()
+        self.assertIn('outside your campus', body['args']['message'])
+        self.assertNotIn(
+            "chosen document type's campus", body['args']['message'])
+        self.assertEqual(
+            CourseDocumentRequirement.objects.filter(
+                course=self.course_a).count(), 1)
+        self.assertEqual(
+            CourseDocumentRequirement.objects.filter(
+                course=self.course_b).count(), 0)
+
+    def test_course_mismatching_the_chosen_types_campus_is_reported_as_such(self):
+        # The user processes BOTH campuses (so neither course is dropped by
+        # processable_ids), but the chosen document type belongs only to
+        # campus_a -- course_b is skipped by the form's own campus check,
+        # a different reason than "outside your campus".
+        user = _make_ce_user(self.campus_a)
+        user.campus = {
+            'process_campus': [str(self.campus_a.id), str(self.campus_b.id)]}
+        user.save()
+
+        resp = self._post([self.course_a, self.course_b], self.type_a.id, user)
+
+        self.assertEqual(resp.status_code, 200, resp.content)
+        body = resp.json()
+        self.assertIn(
+            "chosen document type's campus", body['args']['message'])
+        self.assertNotIn('outside your campus', body['args']['message'])
+        self.assertEqual(
+            CourseDocumentRequirement.objects.filter(
+                course=self.course_a).count(), 1)
+        self.assertEqual(
+            CourseDocumentRequirement.objects.filter(
+                course=self.course_b).count(), 0)

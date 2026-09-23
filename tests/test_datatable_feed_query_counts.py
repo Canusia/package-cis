@@ -32,7 +32,8 @@ from django.test.utils import CaptureQueriesContext
 
 from cis.models import CustomUser
 from cis.models.course import (
-    Campus, Category, Cohort, Course, CourseUpload, Location)
+    Campus, Category, Cohort, Course, CourseDocumentRequirement,
+    CourseUpload, DocumentType, Location)
 from cis.models.district import District
 from cis.models.highschool import HighSchool
 from cis.models.course import CourseAdministrator
@@ -51,7 +52,8 @@ from cis.models.teacher import (
     Teacher, TeacherCourseCertificate, TeacherHighSchool)
 from cis.models.term import AcademicYear, Term
 from cis.serializers.class_section import ClassSectionSerializer
-from cis.serializers.course import CourseSerializer
+from cis.serializers.course import (
+    CourseDocumentRequirementSerializer, CourseSerializer)
 from cis.serializers.highschool import (
     HighSchoolTeacherSerializer, TeacherCourseSerializer)
 from cis.serializers.faculty import CourseAdministratorSerializer
@@ -203,6 +205,14 @@ class FeedFixture:
             student=student, createdby=staff, note='student note',
             meta={'type': ''})
         CourseAdministrator.objects.create(user=staff, course=course)
+
+        # A backfilled DocumentType FK is what makes document_label dereference
+        # the relation -- see the module docstring's #67 follow-on (I5): this
+        # feed is only N+1 once a tenant has actually seeded/backfilled.
+        document_type = DocumentType.objects.create(
+            code='transcript', label='Transcript', campus=campus)
+        CourseDocumentRequirement.objects.create(
+            course=course, document_type=document_type)
 
         hs_admin_user = CustomUser.objects.create_user(
             username=f'hsa-{short}', email=f'hsa-{short}@example.com',
@@ -364,6 +374,9 @@ class DataTableFeedQueryCountTests(TestCase):
          eager.with_course_related, CourseSerializer, 1, 0),
         ('course-notes', CourseNote,
          eager.with_course_note_related, CourseNoteSerializer, 1, 0),
+        ('course-document-requirement', CourseDocumentRequirement,
+         eager.with_course_document_requirement_related,
+         CourseDocumentRequirementSerializer, 1, 0),
         ('teacher', Teacher,
          eager.with_teacher_related, TeacherSerializer, 1, 0),
         ('teacher-notes', TeacherNote,

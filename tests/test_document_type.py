@@ -244,6 +244,72 @@ class InitDocumentTypesTests(TestCase):
         self.assertEqual(req.document_type.code, 'transcript')
         self.assertEqual(req.document_type.campus, self.campus_a)
 
+    def test_campus_less_course_requirement_backfills_via_null_campus_index(self):
+        """I3: Course.campus is nullable and historically unset. Before this
+        fix, a campus-less course's requirement always built an EMPTY index
+        (_build_index(None) against a table that only ever gets per-campus
+        rows created), so it could never link -- silently, forever."""
+        cohort = Cohort.objects.create(name=f'C{_sfx()}')
+        course = Course.objects.create(
+            name='C', catalog_number=f'X{_sfx()}', cohort=cohort, campus=None)
+        req = CourseDocumentRequirement.objects.create(
+            course=course, document='transcript')
+
+        null_campus_type = DocumentType.objects.create(
+            code='transcript', label='HS Transcript', campus=None)
+
+        self._run()
+        req.refresh_from_db()
+
+        self.assertEqual(req.document_type, null_campus_type)
+
+    def test_label_code_collision_across_types_raises(self):
+        """I1: a label written second used to silently overwrite a colliding
+        code key in the backfill index, so a legacy `document` string could
+        resolve to the WRONG DocumentType with no error at all. Now it must
+        refuse to guess, the same way the settings-value mismatch does."""
+        # Seed first so the vocabulary-creation step doesn't collide with
+        # these hand-built rows via the (campus, code) uniqueness check.
+        self._run()
+
+        # Craft the exact ambiguity: one type's code equals another type's
+        # label, casefolded.
+        DocumentType.objects.filter(
+            campus=self.campus_a, code='transcript').delete()
+        DocumentType.objects.create(
+            code='hs_doc', label='transcript', campus=self.campus_a)
+        DocumentType.objects.create(
+            code='transcript', label='Something Else', campus=self.campus_a)
+
+        cohort = Cohort.objects.create(name=f'C{_sfx()}')
+        course = Course.objects.create(
+            name='C', catalog_number=f'X{_sfx()}',
+            cohort=cohort, campus=self.campus_a)
+        CourseDocumentRequirement.objects.create(
+            course=course, document='transcript')
+
+        with self.assertRaises(CommandError) as ctx:
+            self._run()
+
+        self.assertIn('Ambiguous', str(ctx.exception))
+
+    def test_unlinked_rows_are_reported_by_skip_reason(self):
+        """I2: skips used to be entirely invisible -- only the link count was
+        ever printed. A row whose value matches no known type, and a row
+        with a blank value, must each show up in the command's output."""
+        cohort = Cohort.objects.create(name=f'C{_sfx()}')
+        course = Course.objects.create(
+            name='C', catalog_number=f'X{_sfx()}',
+            cohort=cohort, campus=self.campus_a)
+        CourseDocumentRequirement.objects.create(
+            course=course, document='retired_code_no_longer_in_vocabulary')
+
+        out = self._run()
+
+        self.assertIn('Skipped', out)
+        self.assertIn('course requirement(s)', out)
+        self.assertIn('no matching type', out)
+
 
 class InitDocumentTypesUploadBackfillTests(TestCase):
     """Coverage for the fix-round-1 gap: uploads must resolve against their
@@ -476,6 +542,78 @@ class DocumentTypeDropdownScopeTests(TestCase):
         self.assertIn('document_type', form.errors)
 
 
+class CourseDocumentRequirementFormMismatchTests(TestCase):
+    """C1: `document` and `document_type` are two independent inputs on this
+    `fields = '__all__'` form. Nothing else cross-checks them, so a mismatched
+    save used to be accepted silently -- the row then displayed the FK's
+    label while every downstream branch (and unique_together) read the
+    diverging legacy `document` code."""
+
+    def setUp(self):
+        self.campus = Campus.objects.create(name=f'A{_sfx()}', code=f'A{_sfx()}')
+        self.cohort = Cohort.objects.create(name=f'C{_sfx()}')
+        self.course = Course.objects.create(
+            name='A', catalog_number=f'A{_sfx()}',
+            cohort=self.cohort, campus=self.campus, status='Active')
+        self.transcript = DocumentType.objects.create(
+            code='transcript', label='HS Transcript', campus=self.campus)
+        self.tsi = DocumentType.objects.create(
+            code='tsi', label='TSI Assessment', campus=self.campus)
+
+    def test_mismatched_document_and_document_type_is_rejected(self):
+        from cis.forms.course import CourseDocumentRequirementForm
+
+        form = CourseDocumentRequirementForm(
+            course=self.course,
+            data={'document': 'transcript',
+                  'document_type': str(self.tsi.id),
+                  'status': 'Active', 'required': '1'})
+
+        self.assertFalse(form.is_valid())
+        self.assertIn('document_type', form.errors)
+
+    def test_matching_document_and_document_type_is_accepted(self):
+        from cis.forms.course import CourseDocumentRequirementForm
+
+        form = CourseDocumentRequirementForm(
+            course=self.course,
+            data={'document': 'transcript',
+                  'document_type': str(self.transcript.id),
+                  'status': 'Active', 'required': '1'})
+
+        self.assertTrue(form.is_valid(), form.errors)
+
+
+class AddCourseDocumentRequirementFormMismatchTests(TestCase):
+    """Same hazard as CourseDocumentRequirementFormMismatchTests, but on the
+    bulk-add form, which has its own independent `document`/`document_type`
+    inputs."""
+
+    def setUp(self):
+        self.campus = Campus.objects.create(name=f'A{_sfx()}', code=f'A{_sfx()}')
+        self.cohort = Cohort.objects.create(name=f'C{_sfx()}')
+        self.course = Course.objects.create(
+            name='A', catalog_number=f'A{_sfx()}',
+            cohort=self.cohort, campus=self.campus, status='Active')
+        self.tsi = DocumentType.objects.create(
+            code='tsi', label='TSI Assessment', campus=self.campus)
+
+    def test_mismatched_document_and_document_type_is_rejected(self):
+        from cis.forms.course import AddCourseDocumentRequirementForm
+
+        form = AddCourseDocumentRequirementForm(data={
+            'courses': [self.course.id],
+            'document': 'transcript',
+            'document_type': str(self.tsi.id),
+            'required': '1',
+            'status': 'Active',
+            'action': 'add_course_doc_requirement',
+        })
+
+        self.assertFalse(form.is_valid())
+        self.assertIn('document_type', form.errors)
+
+
 class AddCourseDocumentRequirementFormScopeTests(TestCase):
     def setUp(self):
         self.campus_a = Campus.objects.create(name=f'A{_sfx()}', code=f'A{_sfx()}')
@@ -558,3 +696,80 @@ class AddCourseDocumentRequirementFormScopeTests(TestCase):
 
         existing.refresh_from_db()
         self.assertEqual(existing.document_type, self.type_a)
+
+
+class AddCourseDocumentRequirementFormCampusScopedDropdownTests(TestCase):
+    """I6: the bulk-add dropdown must be scoped to the requesting user's
+    processable campuses. Before this fix, `document_type`'s queryset was
+    every campus's Active types undifferentiated, and DocumentType.__str__
+    returns only `label` -- so two campuses each having a "Transcript" were
+    indistinguishable, and picking the wrong one silently skipped every
+    course on the other campus."""
+
+    def setUp(self):
+        from django.conf import settings
+
+        self.campus_a = Campus.objects.create(
+            name=f'A{_sfx()}', code=f'{settings.CAMPUS_CODE_PREFIX}-{_sfx()}')
+        self.campus_b = Campus.objects.create(
+            name=f'B{_sfx()}', code=f'{settings.CAMPUS_CODE_PREFIX}-{_sfx()}')
+        self.type_a = DocumentType.objects.create(
+            code='transcript', label='Transcript', campus=self.campus_a)
+        self.type_b = DocumentType.objects.create(
+            code='transcript', label='Transcript', campus=self.campus_b)
+
+    def _ce_user(self, campus):
+        from django.contrib.auth import get_user_model
+        from django.contrib.auth.models import Group
+
+        User = get_user_model()
+        user = User.objects.create_user(
+            username=f'ce_{_sfx()}', email=f'ce_{_sfx()}@x.com', password='x')
+        user.groups.add(Group.objects.get_or_create(name='ce')[0])
+        user.campus = {'process_campus': [str(campus.id)]}
+        user.save()
+        return user
+
+    def test_dropdown_excludes_types_outside_the_users_campuses(self):
+        from cis.forms.course import AddCourseDocumentRequirementForm
+
+        user = self._ce_user(self.campus_a)
+        form = AddCourseDocumentRequirementForm(user=user)
+        offered = set(form.fields['document_type'].queryset)
+
+        self.assertIn(self.type_a, offered)
+        self.assertNotIn(self.type_b, offered)
+
+    def test_superuser_sees_every_campus(self):
+        from django.contrib.auth import get_user_model
+
+        from cis.forms.course import AddCourseDocumentRequirementForm
+
+        User = get_user_model()
+        superuser = User.objects.create_superuser(
+            username=f'su_{_sfx()}', email=f'su_{_sfx()}@x.com', password='x')
+        form = AddCourseDocumentRequirementForm(user=superuser)
+        offered = set(form.fields['document_type'].queryset)
+
+        self.assertIn(self.type_a, offered)
+        self.assertIn(self.type_b, offered)
+
+    def test_no_user_falls_back_to_the_unscoped_queryset(self):
+        """Callers that build the form without a request (as tests upstream
+        of this fix do) must keep working."""
+        from cis.forms.course import AddCourseDocumentRequirementForm
+
+        form = AddCourseDocumentRequirementForm()
+        offered = set(form.fields['document_type'].queryset)
+
+        self.assertIn(self.type_a, offered)
+        self.assertIn(self.type_b, offered)
+
+    def test_label_from_instance_shows_each_options_campus(self):
+        from cis.forms.course import AddCourseDocumentRequirementForm
+
+        form = AddCourseDocumentRequirementForm(user=self._ce_user(self.campus_a))
+        field = form.fields['document_type']
+
+        label_a = field.label_from_instance(self.type_a)
+        self.assertIn(self.type_a.campus.code, label_a)

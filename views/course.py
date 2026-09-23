@@ -68,6 +68,7 @@ from cis.campus_gate import scope_queryset_by_campus, campus_gate, get_accessibl
 
 from cis.views.eager import (
     eager_queryset,
+    with_course_document_requirement_related,
     with_course_note_related,
     with_course_related,
     with_course_upload_related,
@@ -90,7 +91,7 @@ class CourseAppRequirementViewSet(viewsets.ReadOnlyModelViewSet):
             records, self.request.user, campus_path='course__campus')
 
 
-@eager_queryset(with_course_upload_related)
+@eager_queryset(with_course_document_requirement_related)
 class CourseDocumentRequirementViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = CourseDocumentRequirementSerializer
     permission_classes = [CIS_user_only]
@@ -437,19 +438,31 @@ def add_course_doc_requirement(request):
 
     if request.POST.get('action_confirmed'):
         data = request.POST.copy()
-        gated_courses = processable_ids(Course, request.POST.getlist('courses'), request.user)
+        submitted_courses = request.POST.getlist('courses')
+        gated_courses = processable_ids(Course, submitted_courses, request.user)
+        # Courses dropped here are outside the user's own processable
+        # campuses -- a distinct reason from a course being on a different
+        # campus than the CHOSEN document type (form.skipped_courses below).
+        outside_campus = len(set(submitted_courses) - set(gated_courses))
         data.setlist('courses', gated_courses)
-        form = AddCourseDocumentRequirementForm(data=data)
+        form = AddCourseDocumentRequirementForm(data=data, user=request.user)
         if form.is_valid():
             created = form.save(request)
             message = f'Successfully created {len(created)} record(s).'
-            skipped = len(getattr(form, 'skipped_courses', []))
-            if skipped:
-                message += f' Skipped {skipped} outside your campus.'
+            type_campus_mismatch = len(getattr(form, 'skipped_courses', []))
+            skip_reasons = []
+            if outside_campus:
+                skip_reasons.append(f'{outside_campus} outside your campus')
+            if type_campus_mismatch:
+                skip_reasons.append(
+                    f"{type_campus_mismatch} not on the chosen document "
+                    f"type's campus")
+            if skip_reasons:
+                message += ' Skipped ' + '; '.join(skip_reasons) + '.'
             return JsonResponse({'outcome': 'call', 'fn': 'onBulkActionComplete', 'args': {'message': message, 'status': 'success'}})
         return JsonResponse({'message': 'Please correct the errors and try again.', 'errors': form.errors.as_json()}, status=400)
 
-    form = AddCourseDocumentRequirementForm()
+    form = AddCourseDocumentRequirementForm(user=request.user)
     html = render_to_string(template, {
         'title': 'Add Document Requirement',
         'form': form,
