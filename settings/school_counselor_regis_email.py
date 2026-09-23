@@ -138,14 +138,7 @@ class school_counselor_regis_email(SettingForm):
     def install(self):
         defaults = {'cron': '10 11 * * *', 'pending_rec_email': 'Change this in Settings -> Misc -> Counselor Emails', 'pending_rec_email_subject': 'Change this in Settings -> Misc -> Counselor Emails'}
 
-        try:
-            setting = Setting.objects.get(key=self.key)
-        except Setting.DoesNotExist:
-            setting = Setting()
-            setting.key = self.key
-
-        setting.value = defaults
-        setting.save()
+        Setting.install_defaults(self.key, defaults)
 
     def run_record(self):
         try:

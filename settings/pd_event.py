@@ -103,14 +103,7 @@ class pd_event(SettingForm):
             'pd_email_template': "Change this in Settings -> Misc -> PD Event",
         }
 
-        try:
-            setting = Setting.objects.get(key=self.key)
-        except Setting.DoesNotExist:
-            setting = Setting()
-            setting.key = self.key
-
-        setting.value = defaults
-        setting.save()
+        Setting.install_defaults(self.key, defaults)
 
     def preview(self, request, field_name):
 

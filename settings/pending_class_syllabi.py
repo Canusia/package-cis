@@ -235,14 +235,7 @@ class pending_class_syllabi(forms.Form):
     def install(self):
         defaults = {"mode": "test", "testers": "kadaji@gmail.com", "email_message": "{{instructor_first_name}}, {{instructor_last_name}}, {{section_list}}, {{term}}", "email_subject": "Missing Syllabi", "faculty_message": "note to faculty", "instructor_message": "note to teacher"}
 
-        try:
-            setting = Setting.objects.get(key=self.key)
-        except Setting.DoesNotExist:
-            setting = Setting()
-            setting.key = self.key
-
-        setting.value = defaults
-        setting.save()
+        Setting.install_defaults(self.key, defaults)
 
     @classmethod
     def from_db(cls):

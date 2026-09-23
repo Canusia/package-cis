@@ -83,14 +83,7 @@ class instructor_portal(SettingForm):
             'documents_blurb': "Change this in Settings -> Instructor -> Portal Language"
         }
 
-        try:
-            setting = Setting.objects.get(key=self.key)
-        except Setting.DoesNotExist:
-            setting = Setting()
-            setting.key = self.key
-
-        setting.value = defaults
-        setting.save()
+        Setting.install_defaults(self.key, defaults)
 
     def preview(self, request, field_name):
         from django.shortcuts import (

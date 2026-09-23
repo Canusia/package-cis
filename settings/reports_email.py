@@ -58,14 +58,7 @@ class reports_email(SettingForm):
     def install(self):
         defaults = {'email': '<p style=\'font-size: 16px; line-height: 24px\'>Dear {{first_name}},</p>\r\n\r\n<p style=\'font-size: 16px; line-height: 24px\'>Your requested report for {{report_title}} is ready for download at <br><a href="{{report_download_url}}">{{report_download_url}}</a></p>', 'subject': 'Report is ready for download'}
 
-        try:
-            setting = Setting.objects.get(key=self.key)
-        except Setting.DoesNotExist:
-            setting = Setting()
-            setting.key = self.key
-
-        setting.value = defaults
-        setting.save()
+        Setting.install_defaults(self.key, defaults)
 
 
     def preview(self, request, field_name):

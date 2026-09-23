@@ -104,14 +104,7 @@ class class_search(SettingForm):
             'ftr_tab_my_classes': "Change this in Settings -> Students -> Class Search",
         }
 
-        try:
-            setting = Setting.objects.get(key=self.key)
-        except Setting.DoesNotExist:
-            setting = Setting()
-            setting.key = self.key
-
-        setting.value = defaults
-        setting.save()
+        Setting.install_defaults(self.key, defaults)
 
     @classmethod
     def from_db(cls):

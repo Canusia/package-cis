@@ -253,14 +253,7 @@ class roster_verification(SettingForm):
             'notify_verify_confirmation_subject': 'roster status changed'
         }
 
-        try:
-            setting = Setting.objects.get(key=self.key)
-        except Setting.DoesNotExist:
-            setting = Setting()
-            setting.key = self.key
-
-        setting.value = defaults
-        setting.save()
+        Setting.install_defaults(self.key, defaults)
 
     @classmethod
     def from_db(cls):

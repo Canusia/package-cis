@@ -87,14 +87,7 @@ class student_notes_email(SettingForm):
     def install(self):
         defaults = {'is_active': 'Yes', 'student_note_message': "<p style='font-size: 16px; line-height: 24px'>Dear {{student_first_name}},</p>\r\n\r\n<p style='font-size: 16px; line-height: 24px'>The following note has been added to your account by {{created_by_first_name}} {{created_by_last_name}}. You can contact them at {{created_by_email}}</p>\r\n\r\n<p style='font-size: 16px; line-height: 24px'>{{note}}</p>\r\n\r\n<p style='font-size: 16px; line-height: 24px'>Thank you,</p>\r\n<p style='font-size: 16px; line-height: 24px'>&nbsp;</p>", 'student_note_subject': 'Note added to your account', 'student_note_parent_message': "<p style='font-size: 16px; line-height: 24px'>Dear {{parent_first_name}},</p>\r\n\r\n<p style='font-size: 16px; line-height: 24px'>The following note has been added to your student's account by {{created_by_first_name}} {{created_by_last_name}}. You can contact them at {{created_by_email}}</p>\r\n\r\n<p style='font-size: 16px; line-height: 24px'>{{note}}</p>\r\n\r\n<p style='font-size: 16px; line-height: 24px'>Thank you,</p>\r\n<p style='font-size: 16px; line-height: 24px'>&nbsp;</p>", 'student_note_parent_subject': "Note added to your student's account"}
 
-        try:
-            setting = Setting.objects.get(key=self.key)
-        except Setting.DoesNotExist:
-            setting = Setting()
-            setting.key = self.key
-
-        setting.value = defaults
-        setting.save()
+        Setting.install_defaults(self.key, defaults)
 
     @classmethod
     def from_db(cls):

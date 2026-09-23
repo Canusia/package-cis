@@ -147,14 +147,7 @@ class password_reset(SettingForm):
             'password_reset_email': "Change me in Settings -> Misc"
         }
 
-        try:
-            setting = Setting.objects.get(key=self.key)
-        except Setting.DoesNotExist:
-            setting = Setting()
-            setting.key = self.key
-
-        setting.value = defaults
-        setting.save()
+        Setting.install_defaults(self.key, defaults)
 
     def run_record(self):
         try:

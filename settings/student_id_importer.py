@@ -93,14 +93,7 @@ class student_id_importer(SettingForm):
             'is_active': "No",
         }
 
-        try:
-            setting = Setting.objects.get(key=self.key)
-        except Setting.DoesNotExist:
-            setting = Setting()
-            setting.key = self.key
-
-        setting.value = defaults
-        setting.save()
+        Setting.install_defaults(self.key, defaults)
 
     def run_record(self):
         try:

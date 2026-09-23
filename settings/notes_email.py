@@ -102,14 +102,7 @@ class notes_email(SettingForm):
             'teacherapplication_note_to_instructor_email': "Change this in Settings -> Misc -> Email",
         }
 
-        try:
-            setting = Setting.objects.get(key=self.key)
-        except Setting.DoesNotExist:
-            setting = Setting()
-            setting.key = self.key
-
-        setting.value = defaults
-        setting.save()
+        Setting.install_defaults(self.key, defaults)
 
     @classmethod
     def from_db(cls):
