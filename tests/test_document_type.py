@@ -740,6 +740,25 @@ class AddCourseDocumentRequirementFormCampusScopedDropdownTests(TestCase):
         self.assertIn(self.type_a, offered)
         self.assertNotIn(self.type_b, offered)
 
+    def test_dropdown_still_offers_a_null_campus_type(self):
+        """A null-campus DocumentType is visible/editable to every ce user --
+        campus_gate.py's own convention (scope_queryset_by_campus,
+        can_process_campus both treat campus=None as universal) -- and I3
+        seeds/backfills against exactly that null-campus fallback. A plain
+        `campus__in=...` would silently make those same types unselectable
+        here, arguing both sides in one commit."""
+        from cis.forms.course import AddCourseDocumentRequirementForm
+
+        unassigned_type = DocumentType.objects.create(
+            code='unassigned_doc', label='Unassigned Doc', campus=None)
+
+        user = self._ce_user(self.campus_a)
+        form = AddCourseDocumentRequirementForm(user=user)
+        offered = set(form.fields['document_type'].queryset)
+
+        self.assertIn(unassigned_type, offered)
+        self.assertNotIn(self.type_b, offered)
+
     def test_superuser_sees_every_campus(self):
         from django.contrib.auth import get_user_model
 

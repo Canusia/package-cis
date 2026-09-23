@@ -1049,16 +1049,27 @@ class AddCourseDocumentRequirementForm(forms.Form):
         # the other campus is silently skipped in save() below. `user=None`
         # (e.g. a form built without a request, as some tests do) keeps the
         # unscoped queryset rather than resolving to nothing.
+        #
+        # A null-campus type must stay selectable by everyone, same as every
+        # other campus scope in this codebase (campus_gate.py's
+        # scope_queryset_by_campus, can_process_campus): null campus means
+        # "visible/editable to every ce user", not "belongs to nobody". A
+        # plain `campus__in=...` would silently exclude it, which would also
+        # contradict init_document_types' null-campus fallback (I3) by
+        # seeding/backfilling types that this dropdown then made impossible
+        # to choose.
         types = DocumentType.objects.filter(status='Active').select_related('campus')
         if user is not None:
             from cis.campus_gate import get_accessible_campuses
-            types = types.filter(campus__in=get_accessible_campuses(user))
+            types = types.filter(
+                Q(campus__in=get_accessible_campuses(user))
+                | Q(campus__isnull=True))
         self.fields['document_type'].queryset = types
         # Two campuses can label a type identically ("Transcript"), so the
         # dropdown must show which campus each option belongs to.
         self.fields['document_type'].label_from_instance = (
             lambda obj: f'{obj.label} ({obj.campus.code})' if obj.campus_id
-            else f'{obj.label} (No campus)')
+            else f'{obj.label} (unassigned)')
         self.fields['document_type'].help_text = (
             'Only applied to courses on the same campus as the chosen type.'
         )
