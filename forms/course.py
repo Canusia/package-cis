@@ -1022,19 +1022,29 @@ class AddCourseDocumentRequirementForm(forms.Form):
     def save(self, request=None):
         data = self.cleaned_data
         records = []
+        self.skipped_courses = []
         document_type = data.get('document_type')
         for course in data.get('courses'):
             if document_type is not None and course.campus_id != document_type.campus_id:
+                self.skipped_courses.append(course)
                 continue
+            defaults = {
+                'grade_levels': data.get('grade_levels') or [],
+                'description': data.get('description', ''),
+                'required': data.get('required'),
+                'status': data.get('status'),
+            }
+            # document_type is optional: only set it when a value was chosen.
+            # Including it unconditionally would write None on every update,
+            # silently clearing the FK off a requirement that was already
+            # linked -- an optional field must never unlink existing data
+            # just because this particular submission left it blank.
+            if document_type is not None:
+                defaults['document_type'] = document_type
             obj, created = CourseDocumentRequirement.objects.update_or_create(
                 course=course,
                 document=data.get('document'),
-                defaults={
-                    'grade_levels': data.get('grade_levels') or [],
-                    'description': data.get('description', ''),
-                    'required': data.get('required'),
-                    'status': data.get('status'),
-                }
+                defaults=defaults
             )
             records.append(obj)
         return records

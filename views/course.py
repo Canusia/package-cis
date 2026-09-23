@@ -442,7 +442,11 @@ def add_course_doc_requirement(request):
         form = AddCourseDocumentRequirementForm(data=data)
         if form.is_valid():
             created = form.save(request)
-            return JsonResponse({'outcome': 'call', 'fn': 'onBulkActionComplete', 'args': {'message': f'Successfully created {len(created)} record(s)', 'status': 'success'}})
+            message = f'Successfully created {len(created)} record(s).'
+            skipped = len(getattr(form, 'skipped_courses', []))
+            if skipped:
+                message += f' Skipped {skipped} outside your campus.'
+            return JsonResponse({'outcome': 'call', 'fn': 'onBulkActionComplete', 'args': {'message': message, 'status': 'success'}})
         return JsonResponse({'message': 'Please correct the errors and try again.', 'errors': form.errors.as_json()}, status=400)
 
     form = AddCourseDocumentRequirementForm()

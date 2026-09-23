@@ -440,3 +440,52 @@ class AddCourseDocumentRequirementFormScopeTests(TestCase):
         courses_saved = {r.course_id for r in records}
         self.assertIn(self.course_a.id, courses_saved)
         self.assertNotIn(self.course_b.id, courses_saved)
+        self.assertEqual(form.skipped_courses, [self.course_b])
+
+    def test_save_persists_the_chosen_document_type(self):
+        from cis.forms.course import AddCourseDocumentRequirementForm
+
+        form = AddCourseDocumentRequirementForm(data={
+            'courses': [self.course_a.id],
+            'document_type': str(self.type_a.id),
+            'document': 'transcript',
+            'required': '1',
+            'status': 'Active',
+            'action': 'add_course_doc_requirement',
+        })
+
+        self.assertTrue(form.is_valid(), form.errors)
+        records = form.save()
+
+        record = records[0]
+        record.refresh_from_db()
+        self.assertEqual(record.document_type, self.type_a)
+        # The dual-write save() override (Task 4) keeps the legacy string in
+        # sync with whatever FK was set.
+        self.assertEqual(record.document, 'transcript')
+
+    def test_save_with_no_document_type_does_not_clear_an_existing_fk(self):
+        """document_type is optional on this bulk form. Leaving it blank on
+        a later submission must not unlink a requirement that was already
+        tied to a DocumentType -- an optional field must never be
+        destructive just because it was left blank."""
+        from cis.forms.course import AddCourseDocumentRequirementForm
+
+        existing = CourseDocumentRequirement.objects.create(
+            course=self.course_a, document='transcript',
+            document_type=self.type_a, required='1', status='Active')
+
+        form = AddCourseDocumentRequirementForm(data={
+            'courses': [self.course_a.id],
+            'document_type': '',
+            'document': 'transcript',
+            'required': '1',
+            'status': 'Active',
+            'action': 'add_course_doc_requirement',
+        })
+
+        self.assertTrue(form.is_valid(), form.errors)
+        form.save()
+
+        existing.refresh_from_db()
+        self.assertEqual(existing.document_type, self.type_a)
