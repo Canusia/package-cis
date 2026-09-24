@@ -47,6 +47,31 @@ os.path.join(get_package_path("cis"), 'staticfiles')
 which resolves to `webapp/cis/staticfiles` in dev and `site-packages/cis/staticfiles` in
 production. `APP_DIRS=True` finds `cis/templates` in both layouts.
 
+### CSRF failure view (opt-in, v0.0.40+)
+
+`cis.views.csrf.csrf_failure` logs why a CSRF check failed (reason, path, method, whether
+the CSRF and session cookies were present, `Origin`, `Referer`, user agent) and shows a
+"your session has expired, reload and try again" page, still with status 403. With `DEBUG`
+off, Django's own `django.security.csrf` warning never reaches the pod logs, so without this
+a 403 gives no clue which failure mode users hit. Enable it with:
+
+```python
+CSRF_FAILURE_VIEW = 'cis.views.csrf.csrf_failure'
+
+# in the production LOGGING dict: the logger warns, so route it to a handler that
+# reaches stdout at WARNING or lower. A 'cis' logger that only feeds an ERROR-level
+# mail_admins handler would drop it.
+'loggers': {
+    'cis.views.csrf': {
+        'handlers': ['console'],
+        'level': 'WARNING',
+        'propagate': False,
+    },
+}
+```
+
+Then search the pod logs for `CSRF failure: reason=`.
+
 ## Host requirements
 
 This is a platform core, not a standalone library. A host must provide the `myce` Django

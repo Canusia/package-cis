@@ -1,0 +1,24 @@
+{% extends "cis/base.html" %}
+
+{% block title %}{{ MYCE_SETTINGS.site_name }} - Please try again{% endblock %}
+{% block body %}
+<main role="main" id="content">
+    <div class="py-3">
+        <div class="container">
+            <div class="bg-light p-4">
+                <h4>Your session has expired</h4>
+                <p>
+                    We couldn't verify your form submission. This usually happens when the page
+                    was open for a while, cookies were cleared, or your browser or network is
+                    blocking cookies for this site.
+                </p>
+                <p>
+                    Please <a href="{{ retry_url }}">reload the page</a> and submit the form again.
+                    If the problem continues, make sure cookies are enabled for this site, or try
+                    a different browser or network.
+                </p>
+            </div>
+        </div>
+    </div>
+</main>
+{% endblock %}
