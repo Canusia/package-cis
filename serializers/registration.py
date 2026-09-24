@@ -19,6 +19,15 @@ from .highschool_admin import CustomUserSerializer
 
 class RegistrationSummarySerializer(serializers.Serializer):
     status = serializers.CharField(allow_null=True)
+    status_label = serializers.SerializerMethodField()
+
+    class Meta:
+        # server-side tables request only their columns; keep the label the Status column renders
+        datatables_always_serialize = ('status_label',)
+
+    def get_status_label(self, obj):
+        status = obj.get('status')
+        return dict(StudentRegistration.STATUS_OPTIONS).get(status, status)
 
     created_on = serializers.CharField(source='created_on__date', allow_null=True)
     # student_count = serializers.CharField(allow_null=True)

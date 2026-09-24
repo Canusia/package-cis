@@ -129,6 +129,10 @@ class RegistrationSummaryViewSet(viewsets.ReadOnlyModelViewSet):
                 class_section__term__academic_year__id=academic_year_id
             )
 
+        statuses = [s for s in self.request.GET.getlist('status') if s]
+        if statuses:
+            records = records.filter(status__in=statuses)
+
         if records_type == 'by_registration_status':
             records = records.values(
                 'status'

@@ -32,7 +32,9 @@ def class_sections_tab(request, record):
 @academic_year_tabs.tab(slug='registrations_summary', title='Registrations By Course', order=40,
                         template='cis/term/tabs/academic_year/_registrations_summary.html')
 def registrations_summary_tab(request, record):
-    return {'registration_summary_api_url': _ay_reg_summary_url(record)}
+    from cis.models.section import StudentRegistration
+    return {'registration_summary_api_url': _ay_reg_summary_url(record),
+            'status_options': StudentRegistration.STATUS_OPTIONS}
 
 
 @academic_year_tabs.tab(slug='students_summary', title='Students By High School', order=50,
@@ -44,7 +46,9 @@ def students_summary_tab(request, record):
 @academic_year_tabs.tab(slug='registration_hs_summary', title='Registrations By High School', order=60,
                         template='cis/term/tabs/academic_year/_registration_hs_summary.html')
 def registration_hs_summary_tab(request, record):
-    return {'registration_summary_api_url': _ay_reg_summary_url(record)}
+    from cis.models.section import StudentRegistration
+    return {'registration_summary_api_url': _ay_reg_summary_url(record),
+            'status_options': StudentRegistration.STATUS_OPTIONS}
 
 
 @academic_year_tabs.tab(slug='visits', title='Visit(s)', order=70,

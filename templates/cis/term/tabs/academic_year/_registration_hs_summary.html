@@ -3,6 +3,7 @@
   <div class="col-xl-12 col-md-12 mb-4">
     <div class="card border-top-0">
       <div class="card-body">
+        {% include 'cis/includes/_registration_status_filter.html' with filter_id='reg_hs_status' %}
         <div class="row no-gutters align-items-center">
           <div class="col mr-2">
             <div class="mb-0 font-weight-bold text-gray-800">
@@ -69,6 +70,9 @@
                                   // 'searchable': false,
                                 },
                                 {
+                                  'render': function (data, type, row, meta) {
+                                      return row.status_label || data
+                                  }
                                   // 'orderable': false,
                                   // 'searchable': false,
                                 },
@@ -79,6 +83,12 @@
                             ]
                         }
                     ); //end registration_summary_by_create_date
+
+                    var regHsSummaryUrl = '{{ registration_summary_api_url|escapejs }}&records_type=by_highschool_registration_created';
+                    bindRegistrationStatusFilter('reg_hs_status', function () {
+                        tbl_registration_summary_by_create_date.ajax.url(
+                            regHsSummaryUrl + registrationStatusQuery('reg_hs_status')).load();
+                    });
                 });
               </script>
 

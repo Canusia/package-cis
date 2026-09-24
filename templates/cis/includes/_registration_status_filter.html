@@ -1,0 +1,44 @@
+{% comment %}
+Registration-status checkboxes for a registration-summary table; all checked by default.
+Include with filter_id (unique on the page) and status_options (StudentRegistration.STATUS_OPTIONS),
+then call bindRegistrationStatusFilter(filter_id, callback) and add
+registrationStatusQuery(filter_id) to the table's ajax URL inside the callback.
+{% endcomment %}
+<div class="card mb-3">
+  <div class="card-body bg-gray-200">
+    <label class="font-weight-bold mr-3 mb-0">Registration Status</label>
+    <div class="form-check form-check-inline">
+      <input class="form-check-input" type="checkbox" id="{{ filter_id }}_all" checked>
+      <label class="form-check-label" for="{{ filter_id }}_all">All</label>
+    </div>
+    {% for value, label in status_options %}
+    <div class="form-check form-check-inline">
+      <input class="form-check-input {{ filter_id }}_status" type="checkbox" id="{{ filter_id }}_{{ forloop.counter }}" value="{{ value }}" checked>
+      <label class="form-check-label" for="{{ filter_id }}_{{ forloop.counter }}">{{ label }}</label>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+<script>
+  // All boxes checked sends no filter, so rows with a blank or unlisted status still count.
+  function registrationStatusQuery(filterId) {
+      var boxes = $('.' + filterId + '_status'), checked = boxes.filter(':checked');
+      if (checked.length === boxes.length) return '';
+      if (!checked.length) return '&status=__none__';
+      return '&' + checked.map(function () {
+          return 'status=' + encodeURIComponent(this.value);
+      }).get().join('&');
+  }
+
+  function bindRegistrationStatusFilter(filterId, onChange) {
+      $('#' + filterId + '_all').on('change', function () {
+          $('.' + filterId + '_status').prop('checked', this.checked);
+          onChange();
+      });
+      $('.' + filterId + '_status').on('change', function () {
+          $('#' + filterId + '_all').prop(
+              'checked', $('.' + filterId + '_status:not(:checked)').length === 0);
+          onChange();
+      });
+  }
+</script>

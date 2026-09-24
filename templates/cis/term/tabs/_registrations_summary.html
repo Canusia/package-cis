@@ -2,10 +2,11 @@
     <div class="col-12 bg-gray-100">
         <div class="card mb-4 border-top-0">
             <div class="card-body ">
+                {% include 'cis/includes/_registration_status_filter.html' with filter_id='reg_sum_status' %}
                 <div class="table-responsive">
                     <script>
                         $(document).ready(function() {
-                            $('#tbl_registrations_summary').DataTable(
+                            var tbl_registrations_summary = $('#tbl_registrations_summary').DataTable(
                             {
                                 dom: 'B<"float-left mt-3 mb-3"l><"float-right mt-3"f><"row clear">rt<"row"<"col-6"i><"col-6 float-right"p>>',
                                 buttons: [
@@ -59,7 +60,7 @@
                                     {
                                         data: 'status',
                                         'render': function (data, type, row, meta) {
-                                            return row.status.toUpperCase()
+                                            return row.status_label || data
                                         }
                                     },
                                     {
@@ -68,6 +69,12 @@
                                 ]
                             }
                         );
+
+                        var regSummaryUrl = '{{ registration_summary_api_url|escapejs }}';
+                        bindRegistrationStatusFilter('reg_sum_status', function () {
+                            tbl_registrations_summary.ajax.url(
+                                regSummaryUrl + registrationStatusQuery('reg_sum_status')).load();
+                        });
                         })
                     </script>
                     <table id="tbl_registrations_summary" class="table table-striped responsive grouped_table_2"

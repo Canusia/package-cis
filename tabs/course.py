@@ -63,8 +63,10 @@ def visits_tab(request, record):
 @course_tabs.tab(slug='registrations_summary', title='Registrations Summary', order=50,
                  template='cis/course/tabs/_registrations_summary.html')
 def registrations_summary_tab(request, record):
+    from cis.models.section import StudentRegistration
     return {'registration_summary_api_url':
-            f'/ce/api/registration-summary/?course_id={record.id}&format=datatables'}
+            f'/ce/api/registration-summary/?course_id={record.id}&format=datatables',
+            'status_options': StudentRegistration.STATUS_OPTIONS}
 
 
 @course_tabs.tab(slug='notes', title='Notes', order=100,
