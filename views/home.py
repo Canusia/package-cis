@@ -384,6 +384,14 @@ def dashboard(request):
         form = cisForceSetPasswordForm(request.user, request.POST)
         if form.is_valid():
             form.save(request.user)
+            # set_password rotates the session auth hash -- keep the user
+            # logged in, then redirect so a refresh doesn't re-POST.
+            from django.contrib.auth import update_session_auth_hash
+            update_session_auth_hash(request, request.user)
+            # Shown as a popup by cis/logged-base.html.
+            messages.success(
+                request, 'Your password has been updated.', extra_tags='password_changed')
+            return redirect(request.path)
         else:
             messages.add_message(
                 request,

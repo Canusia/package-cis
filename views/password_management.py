@@ -199,8 +199,11 @@ class cisForceSetPasswordForm(cisSetPasswordForm, forms.Form):
         super().__init__(user, *args, **kwargs)
 
         self.helper = FormHelper()
-        if use_ajax:
-            self.helper.form_class = 'frm_ajax'
+        # Always a plain full-page POST; use_ajax is accepted but ignored. The
+        # portal dashboards save it and redirect. It must not be 'frm_ajax':
+        # ActionRegistry (logged-base) hijacks those and expects a JSON
+        # envelope, so the save succeeded but the page threw.
+        self.helper.form_class = 'frm_force_set_password'
         self.helper.disable_csrf = False
 
         self.helper.form_method = 'POST'
