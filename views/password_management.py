@@ -1,3 +1,5 @@
+import unicodedata
+
 from django.db.models import Q
 from django.contrib import messages
 from django.utils.encoding import force_str
@@ -78,7 +80,25 @@ class cisSetPasswordForm(SetPasswordForm):
             to_email
         )
 
+class InvisibleCharsStrippedEmailField(forms.EmailField):
+    """
+    Email field that drops invisible format characters (Unicode Cf: zero-width
+    spaces, BOMs, ...) that get pasted in from documents and emails.
+    """
+    def to_python(self, value):
+        if isinstance(value, str):
+            value = ''.join(
+                c for c in value if unicodedata.category(c) != 'Cf'
+            )
+        return super().to_python(value)
+
+
 class cisPasswordResetForm(PasswordResetForm):
+    email = InvisibleCharsStrippedEmailField(
+        label=_("Email"),
+        max_length=254,
+        widget=forms.EmailInput(attrs={"autocomplete": "email"}),
+    )
 
     def __init__(self, request, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -112,6 +132,10 @@ class cisPasswordResetForm(PasswordResetForm):
 
     def clean(self):
         cd = self.cleaned_data
+
+        # An invalid email already has a field error; don't add a lookup error on top.
+        if not cd.get('email'):
+            return cd
 
         try:
             users = self.get_users(self.cleaned_data['email'])
@@ -288,12 +312,6 @@ def forgot_password(request):
                 messages.SUCCESS,
                 'Please check your email for further instructions',
                 'list-group-item-success')
-        else:
-            messages.add_message(
-                request,
-                messages.SUCCESS,
-                'Unable to complete your request. Please contact our office for assistance',
-                'list-group-item-danger')
     else:
         form = password_reset_form(request)
 
