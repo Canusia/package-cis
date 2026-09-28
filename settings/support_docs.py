@@ -8,6 +8,8 @@ Stored in the Setting model under key ``cis.settings.support_docs`` as::
       'email_enabled': 'Yes'|'No',  # send email when a doc's status changes
       'status_change_email_subject': '...',
       'status_change_email': '...', # Django-template body, {{placeholders}}
+      'document_check_registration_statuses': [...],  # StudentRegistration
+                                    # statuses whose courses still need docs
     }
 
 Replaces the earlier split support_doc_types / support_doc_statuses settings;
@@ -24,6 +26,16 @@ from ..models.settings import Setting
 
 
 _OLD_KEYS = ['cis.settings.support_doc_types', 'cis.settings.support_doc_statuses']
+
+
+#: Registration statuses whose courses still need supporting documents, used
+#: until CE saves its own choice (#42). Closed states -- dropped, withdrawn,
+#: not_approved, denied_registration, duplicate -- are left out, as is the
+#: limbo state 'app not processed'.
+DEFAULT_DOCUMENT_CHECK_REGISTRATION_STATUSES = [
+    'applied', 'approved', 'missing_prereq', 'pending_registration',
+    'registered', 'enrolled',
+]
 
 
 def _lines_to_list(raw):
@@ -69,6 +81,24 @@ class SettingForm(forms.Form):
                    '{{document_type}}, {{status}}.'),
     )
 
+    # Named to avoid confusion with `statuses`, which are *document* statuses.
+    document_check_registration_statuses = forms.MultipleChoiceField(
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+        choices=[],
+        label='Registration Statuses Requiring Documents',
+        help_text=('Supporting-document requirements apply to courses whose '
+                   'registration is in one of these statuses.'),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Filled here, not at class level, so loading the setting module
+        # does not import the models.
+        from ..models.section import StudentRegistration
+        self.fields['document_check_registration_statuses'].choices = (
+            StudentRegistration.STATUS_OPTIONS)
+
     def _to_python(self):
         return {
             'types': _lines_to_list(self.cleaned_data.get('types')),
@@ -76,6 +106,8 @@ class SettingForm(forms.Form):
             'email_enabled': self.cleaned_data.get('email_enabled', 'No'),
             'status_change_email_subject': self.cleaned_data.get('status_change_email_subject', ''),
             'status_change_email': self.cleaned_data.get('status_change_email', ''),
+            'document_check_registration_statuses': list(
+                self.cleaned_data.get('document_check_registration_statuses') or []),
         }
 
 
@@ -98,13 +130,19 @@ class support_docs(SettingForm):
         try:
             v = Setting.objects.get(key=cls.key).value or {}
         except Setting.DoesNotExist:
-            return {}
+            return {
+                'document_check_registration_statuses':
+                    list(DEFAULT_DOCUMENT_CHECK_REGISTRATION_STATUSES),
+            }
         return {
             'types': '\n'.join(v.get('types', [])),
             'statuses': '\n'.join(v.get('statuses', [])),
             'email_enabled': v.get('email_enabled', 'No'),
             'status_change_email_subject': v.get('status_change_email_subject', ''),
             'status_change_email': v.get('status_change_email', ''),
+            'document_check_registration_statuses': v.get(
+                'document_check_registration_statuses',
+                list(DEFAULT_DOCUMENT_CHECK_REGISTRATION_STATUSES)),
         }
 
     @classmethod
@@ -122,6 +160,18 @@ class support_docs(SettingForm):
     @classmethod
     def get_statuses(cls):
         return cls.get_config().get('statuses', [])
+
+    @classmethod
+    def get_document_check_registration_statuses(cls):
+        """Registration statuses whose courses still need supporting documents.
+
+        The saved list when CE has saved one -- even an empty one -- else the
+        default.
+        """
+        config = cls.get_config()
+        if 'document_check_registration_statuses' in config:
+            return config['document_check_registration_statuses']
+        return list(DEFAULT_DOCUMENT_CHECK_REGISTRATION_STATUSES)
 
     def install(self):
         # Don't clobber an existing value on re-registration.
@@ -145,6 +195,8 @@ class support_docs(SettingForm):
                 'Hi {{student_first_name}},\n\n'
                 'The status of your document "{{document_type}}" is now {{status}}.'
             ),
+            'document_check_registration_statuses':
+                list(DEFAULT_DOCUMENT_CHECK_REGISTRATION_STATUSES),
         }
         setting.save()
 

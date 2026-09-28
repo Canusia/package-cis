@@ -10,7 +10,8 @@ from cis.models.customuser import CustomUser
 from cis.models.settings import Setting
 from cis.models.student import Student, StudentSupportingDocument
 from cis.models.term import AcademicYear, Term
-from cis.settings.support_docs import support_docs
+from cis.settings.support_docs import (
+    DEFAULT_DOCUMENT_CHECK_REGISTRATION_STATUSES, support_docs)
 
 try:
     from django_login_history.models import post_login as _login_history_post_login
@@ -64,6 +65,61 @@ class SupportDocsSettingTests(TestCase):
         self.assertEqual(support_docs.get_types(), [])
         self.assertEqual(support_docs.get_statuses(), [])
         self.assertEqual(support_docs.get_config(), {})
+
+
+class DocumentCheckRegistrationStatusesTests(TestCase):
+    """#42: which registration statuses still need supporting documents."""
+
+    def _request(self):
+        return RequestFactory().get('/?report_id=x')
+
+    def test_round_trip(self):
+        form = support_docs(self._request(), data={
+            'email_enabled': 'No',
+            'document_check_registration_statuses': ['applied', 'enrolled'],
+        })
+        self.assertTrue(form.is_valid(), form.errors.as_json())
+        form.run_record()
+        self.assertEqual(
+            support_docs.get_document_check_registration_statuses(),
+            ['applied', 'enrolled'])
+        self.assertEqual(
+            support_docs.from_db()['document_check_registration_statuses'],
+            ['applied', 'enrolled'])
+
+    def test_default_when_unset(self):
+        Setting.objects.filter(key=support_docs.key).delete()
+        self.assertEqual(
+            support_docs.get_document_check_registration_statuses(),
+            DEFAULT_DOCUMENT_CHECK_REGISTRATION_STATUSES)
+        self.assertEqual(
+            support_docs.from_db()['document_check_registration_statuses'],
+            DEFAULT_DOCUMENT_CHECK_REGISTRATION_STATUSES)
+
+    def test_default_when_key_missing_from_existing_setting(self):
+        _set_support_docs(types=['Transcript'])
+        self.assertEqual(
+            support_docs.get_document_check_registration_statuses(),
+            DEFAULT_DOCUMENT_CHECK_REGISTRATION_STATUSES)
+
+    def test_saved_empty_list_is_respected(self):
+        _set_support_docs(document_check_registration_statuses=[])
+        self.assertEqual(
+            support_docs.get_document_check_registration_statuses(), [])
+
+    def test_default_values_are_real_registration_statuses(self):
+        from cis.models.section import StudentRegistration
+        codes = {code for code, _ in StudentRegistration.STATUS_OPTIONS}
+        self.assertTrue(
+            set(DEFAULT_DOCUMENT_CHECK_REGISTRATION_STATUSES) <= codes)
+        self.assertIn('missing_prereq', DEFAULT_DOCUMENT_CHECK_REGISTRATION_STATUSES)
+
+    def test_choices_are_registration_statuses(self):
+        from cis.models.section import StudentRegistration
+        form = support_docs(self._request())
+        self.assertEqual(
+            list(form.fields['document_check_registration_statuses'].choices),
+            list(StudentRegistration.STATUS_OPTIONS))
 
 
 class UploadFormDocumentTypeTests(TestCase):
