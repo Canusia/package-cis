@@ -2985,12 +2985,25 @@ class StudentSupportingDocument(models.Model):
     def save(self, *args, **kwargs):
         # Dual-write, same contract as CourseDocumentRequirement: the FK wins
         # when set, the legacy label column is kept populated for readers that
-        # have not moved over yet.
+        # have not moved over yet. Without the FK, the free-text type is
+        # resolved against the row's own campus (term.academic_year.campus),
+        # so uploads made after seeding are linked too (#50). No lookup runs
+        # when the FK is already set.
         # NOTE: QuerySet.update() and bulk_create() bypass save() entirely --
         # any bulk path must set both `document_type_ref` and `document_type`
         # itself or the two columns can drift apart silently.
         if self.document_type_ref_id and not self.document_type:
             self.document_type = self.document_type_ref.label
+        elif not self.document_type_ref_id and (self.document_type or '').strip():
+            from cis.models.course import DocumentType
+            from cis.models.term import Term
+            campus_id = (Term.objects.filter(pk=self.term_id)
+                         .values_list('academic_year__campus', flat=True).first())
+            self.document_type_ref = DocumentType.resolve(
+                self.document_type, campus_id)
+            update_fields = kwargs.get('update_fields')
+            if self.document_type_ref_id and update_fields is not None:
+                kwargs['update_fields'] = set(update_fields) | {'document_type_ref'}
         super().save(*args, **kwargs)
 
     @property

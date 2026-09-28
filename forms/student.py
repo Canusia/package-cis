@@ -372,8 +372,8 @@ class StudentSupportingDocumentForm(forms.ModelForm):
         fields = '__all__'
 
         # `status` is set via the CE bulk action, not at upload time.
-        # `document_type_ref` is populated by the init_document_types command,
-        # not chosen at upload time -- without this exclude it would
+        # `document_type_ref` is resolved from `document_type` in the model's
+        # save() (#50), not chosen at upload time -- without this exclude it would
         # auto-render as a raw, unscoped FK dropdown next to the hand-declared
         # `document_type` ChoiceField above, on every tenant including ones
         # that never seeded DocumentType. #47 revisits this when the legacy

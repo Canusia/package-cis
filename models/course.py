@@ -196,6 +196,31 @@ class DocumentType(models.Model):
                 return row
         return None
 
+    @classmethod
+    def resolve(cls, value, campus_id):
+        """Resolve a free-text code/label to one DocumentType for a campus, or None.
+
+        Same rules as init_document_types' backfill: the campus's own
+        vocabulary first, then the unassigned (null-campus) one -- never
+        another campus's. A code beats a label; two different types matching
+        the same label is ambiguous and returns None rather than guessing.
+        """
+        folded = (value or '').strip().casefold()
+        if not folded:
+            return None
+        scopes = [campus_id, None] if campus_id else [None]
+        for scope in scopes:
+            rows = list(cls.objects.filter(campus_id=scope))
+            by_code = [r for r in rows if r.code.casefold() == folded]
+            if len(by_code) == 1:
+                return by_code[0]
+            by_label = [r for r in rows if r.label.casefold() == folded]
+            if len(by_label) == 1:
+                return by_label[0]
+            if by_label:
+                return None  # ambiguous within this scope
+        return None
+
 
 class College(models.Model):
     """
