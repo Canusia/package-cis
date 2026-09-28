@@ -602,6 +602,12 @@ class CourseAppRequirementForm(ModelForm):
         }
 
 
+_RECURRENCE_HELP = (
+    'How often the student must provide this document. An upload counts '
+    'toward every course that requires the same document type.'
+)
+
+
 class CourseDocumentRequirementForm(ModelForm):
 
     class Meta:
@@ -617,6 +623,11 @@ class CourseDocumentRequirementForm(ModelForm):
         self.fields['grade_levels'].help_text = (
             'Leave empty to apply this requirement to all grade levels.'
         )
+        self.fields['recurrence'].help_text = _RECURRENCE_HELP
+        # Optional on the form so a POST that predates #44 (no recurrence
+        # key) keeps the stored value instead of failing validation; see
+        # clean_recurrence.
+        self.fields['recurrence'].required = False
 
         # The course's campus decides which vocabulary is on offer. This has
         # to be the queryset, not a template filter: the only other campus
@@ -637,6 +648,10 @@ class CourseDocumentRequirementForm(ModelForm):
         if current_id:
             offered |= Q(pk=current_id)
         self.fields['document_type'].queryset = DocumentType.objects.filter(offered)
+
+    def clean_recurrence(self):
+        return (self.cleaned_data.get('recurrence')
+                or self.instance.recurrence or 'per_term')
 
     def clean(self):
         cleaned_data = super().clean()
@@ -806,6 +821,13 @@ class BulkCourseDocumentRequirementUpdateForm(forms.Form):
         choices=YES_NO_SELECT_OPTIONS
     )
 
+    new_recurrence = forms.ChoiceField(
+        required=False,
+        label='Recurrence',
+        choices=[('', 'Keep current')] + list(
+            CourseDocumentRequirement.RECURRENCE_OPTIONS),
+    )
+
     action = forms.CharField(
         widget=forms.HiddenInput,
         initial='update_course_doc_requirements'
@@ -831,7 +853,13 @@ class BulkCourseDocumentRequirementUpdateForm(forms.Form):
     def save(self, request=None):
         data = self.cleaned_data
         records = CourseDocumentRequirement.objects.filter(id__in=data.get('record_ids'))
-        records.update(status=data.get('new_status'), required=data.get('new_required'))
+        changes = {
+            'status': data.get('new_status'),
+            'required': data.get('new_required'),
+        }
+        if data.get('new_recurrence'):
+            changes['recurrence'] = data['new_recurrence']
+        records.update(**changes)
         return records
 
 
@@ -1079,6 +1107,16 @@ class AddCourseDocumentRequirementForm(forms.Form):
         choices=CourseDocumentRequirement.STATUS_OPTIONS
     )
 
+    # Optional so a POST that predates #44 still validates; save() defaults
+    # a missing value to per_term.
+    recurrence = forms.ChoiceField(
+        required=False,
+        label='Recurrence',
+        choices=CourseDocumentRequirement.RECURRENCE_OPTIONS,
+        initial='per_term',
+        help_text=_RECURRENCE_HELP,
+    )
+
     action = forms.CharField(
         widget=forms.HiddenInput,
         initial='add_course_doc_requirement'
@@ -1154,6 +1192,7 @@ class AddCourseDocumentRequirementForm(forms.Form):
                 'description': data.get('description', ''),
                 'required': data.get('required'),
                 'status': data.get('status'),
+                'recurrence': data.get('recurrence') or 'per_term',
             }
             # document_type is optional: only set it when a value was chosen.
             # Including it unconditionally would write None on every update,

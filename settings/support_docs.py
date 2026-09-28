@@ -10,6 +10,8 @@ Stored in the Setting model under key ``cis.settings.support_docs`` as::
       'status_change_email': '...', # Django-template body, {{placeholders}}
       'document_check_registration_statuses': [...],  # StudentRegistration
                                     # statuses whose courses still need docs
+      'satisfying_statuses': [...], # document statuses that satisfy a course
+                                    # requirement; [] = any status (#44)
     }
 
 Replaces the earlier split support_doc_types / support_doc_statuses settings;
@@ -81,6 +83,15 @@ class SettingForm(forms.Form):
                    '{{document_type}}, {{status}}.'),
     )
 
+    satisfying_statuses = forms.CharField(
+        required=False,
+        widget=forms.Textarea(attrs={'rows': 3}),
+        label='Document Statuses That Satisfy a Requirement',
+        help_text=('One document status per line. Only uploads in one of these '
+                   'statuses count toward a course document requirement. Leave '
+                   'blank to count uploads in any status.'),
+    )
+
     # Named to avoid confusion with `statuses`, which are *document* statuses.
     document_check_registration_statuses = forms.MultipleChoiceField(
         required=False,
@@ -123,6 +134,8 @@ class SettingForm(forms.Form):
             'types': (self._stored_types() if self.fields['types'].disabled
                       else _lines_to_list(self.cleaned_data.get('types'))),
             'statuses': _lines_to_list(self.cleaned_data.get('statuses')),
+            'satisfying_statuses': _lines_to_list(
+                self.cleaned_data.get('satisfying_statuses')),
             'email_enabled': self.cleaned_data.get('email_enabled', 'No'),
             'status_change_email_subject': self.cleaned_data.get('status_change_email_subject', ''),
             'status_change_email': self.cleaned_data.get('status_change_email', ''),
@@ -157,6 +170,7 @@ class support_docs(SettingForm):
         return {
             'types': '\n'.join(v.get('types', [])),
             'statuses': '\n'.join(v.get('statuses', [])),
+            'satisfying_statuses': '\n'.join(v.get('satisfying_statuses', [])),
             'email_enabled': v.get('email_enabled', 'No'),
             'status_change_email_subject': v.get('status_change_email_subject', ''),
             'status_change_email': v.get('status_change_email', ''),
@@ -180,6 +194,11 @@ class support_docs(SettingForm):
     @classmethod
     def get_statuses(cls):
         return cls.get_config().get('statuses', [])
+
+    @classmethod
+    def get_satisfying_statuses(cls):
+        """Document statuses that satisfy a course requirement, or None for any."""
+        return cls.get_config().get('satisfying_statuses') or None
 
     @classmethod
     def get_document_check_registration_statuses(cls):

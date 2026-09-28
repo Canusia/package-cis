@@ -818,6 +818,18 @@ class CourseDocumentRequirement(models.Model):
         default=1
     )
 
+    # How often the document is asked for (#44). A fixed enum, deliberately
+    # not tenant-overridable: satisfied_for() branches on it, and a
+    # tenant-added value would fall through silently. per_term is the default
+    # because it asks most often, so no existing requirement got less strict.
+    RECURRENCE_OPTIONS = (
+        ('per_term', 'Once per term'),
+        ('per_academic_year', 'Once per academic year'),
+        ('once', 'Once per student'),
+    )
+    recurrence = models.CharField(
+        max_length=20, choices=RECURRENCE_OPTIONS, default='per_term')
+
     class Meta:
         unique_together = [
             ('course', 'document')
@@ -872,6 +884,42 @@ class CourseDocumentRequirement(models.Model):
         if not self.grade_levels:
             return True
         return grade in self.grade_levels
+
+    def satisfied_for(self, student, term):
+        """True when `student` has already provided this document for `term`'s window.
+
+        The single place the recurrence semantics live (#44):
+          - per_term: an upload in `term`; per_academic_year: an upload in any
+            term of `term`'s academic year; once: an upload in any term.
+          - Student-scoped, not course-scoped: uploads carry no course, so one
+            upload satisfies every course's requirement for the same
+            DocumentType in the window. Deliberate.
+          - Uploads made before this requirement existed count.
+          - Only uploads whose status is in support_docs' satisfying statuses
+            count; a blank setting means any status.
+          - Needs the DocumentType link: a requirement without one cannot be
+            matched to uploads and reads as not satisfied.
+        """
+        if not self.document_type_id:
+            return False
+
+        from cis.models.student import StudentSupportingDocument
+        from cis.settings.support_docs import support_docs
+
+        uploads = StudentSupportingDocument.objects.filter(
+            student=student, document_type_ref_id=self.document_type_id)
+        if self.recurrence == 'per_term':
+            uploads = uploads.filter(term=term)
+        elif self.recurrence == 'per_academic_year':
+            uploads = uploads.filter(term__academic_year_id=term.academic_year_id)
+        elif self.recurrence != 'once':
+            # Unknown value: fail closed rather than read it as the loosest window.
+            return False
+
+        statuses = support_docs.get_satisfying_statuses()
+        if statuses is not None:
+            uploads = uploads.filter(status__in=statuses)
+        return uploads.exists()
 
 
 from django.db.models import Case, When, IntegerField

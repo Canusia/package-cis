@@ -120,6 +120,7 @@ class CourseDocumentRequirementSerializer(serializers.ModelSerializer):
     course = CourseSerializer()
     document_label = serializers.SerializerMethodField()
     grade_levels_display = serializers.SerializerMethodField()
+    recurrence_display = serializers.SerializerMethodField()
 
     class Meta:
         model = CourseDocumentRequirement
@@ -131,6 +132,9 @@ class CourseDocumentRequirementSerializer(serializers.ModelSerializer):
 
     def get_grade_levels_display(self, obj):
         return ', '.join(obj.grade_level_labels)
+
+    def get_recurrence_display(self, obj):
+        return obj.get_recurrence_display()
 
 
 class DocumentTypeSerializer(serializers.ModelSerializer):
