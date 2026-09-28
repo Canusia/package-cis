@@ -2205,12 +2205,13 @@ class Student(models.Model):
                 student=self
         )
 
-        skip_ids = []
-        for record in records:
-            if f'{record.student.grade_level}*' not in record.class_section.course.registration_eligibility:
-                skip_ids.append(record.id)
+        if recommendation_grade_gate_enabled():
+            skip_ids = []
+            for record in records:
+                if f'{record.student.grade_level}*' not in record.class_section.course.registration_eligibility:
+                    skip_ids.append(record.id)
 
-        records = records.exclude(id__in=skip_ids)
+            records = records.exclude(id__in=skip_ids)
 
         if len(records) > 0:
             return True
@@ -3012,6 +3013,20 @@ class StudentSupportingDocument(models.Model):
         return os.path.basename(self.media.name)
 
 
+def recommendation_grade_gate_enabled():
+    """Whether a recommendation depends on the student's grade level (#10).
+
+    The counselor_recommendation setting's `require_grade_level_match`. On (the
+    default, and what a missing key means), a recommendation is required only
+    where the course's registration_eligibility marks the student's grade with
+    `*`. Off, every applied registration needs one. The single switch both the
+    Python checks and recommendation_required_q() read, so they cannot drift.
+    """
+    from cis.settings.counselor_recommendation import counselor_recommendation
+    return bool(counselor_recommendation.from_db().get(
+        'require_grade_level_match', True))
+
+
 def recommendation_required_q(course_path='class_section__course',
                               grade_path='student__grade_level'):
     """Q matching rows whose course requires a recommendation for that grade.
@@ -3032,6 +3047,10 @@ def recommendation_required_q(course_path='class_section__course',
     grade levels out by construction.
     """
     from django.db.models import Q
+
+    # Gate off: every row requires one, whatever its grade (#10).
+    if not recommendation_grade_gate_enabled():
+        return Q()
 
     q = Q()
     for code, _label in Student.GRADE_LEVEL:

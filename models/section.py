@@ -2313,6 +2313,10 @@ class StudentRegistration(models.Model):
         if override is not None:
             return override(self)
 
+        from cis.models.student import recommendation_grade_gate_enabled
+        if not recommendation_grade_gate_enabled():
+            return True
+
         grade_level = self.student.grade_level
         eligibility = self.class_section.course.registration_eligibility
 
@@ -2394,13 +2398,15 @@ class StudentRegistration(models.Model):
             # both in the same query, so this is two queries regardless of row
             # count rather than one per row plus one.
             records = records.select_related('student', 'class_section__course')
-            skip_ids = [
-                record.id for record in records
-                if f'{record.student.grade_level}*' not in
-                (record.class_section.course.registration_eligibility or '')
-            ]
-            if skip_ids:
-                records = records.exclude(id__in=skip_ids)
+            from cis.models.student import recommendation_grade_gate_enabled
+            if recommendation_grade_gate_enabled():
+                skip_ids = [
+                    record.id for record in records
+                    if f'{record.student.grade_level}*' not in
+                    (record.class_section.course.registration_eligibility or '')
+                ]
+                if skip_ids:
+                    records = records.exclude(id__in=skip_ids)
 
         return records
 

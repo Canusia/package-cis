@@ -19,6 +19,15 @@ class SettingForm(forms.Form):
         help_text='Displayed before upload field',
         label="Pre-Upload Blurb")
 
+    require_grade_level_match = forms.BooleanField(
+        required=False,
+        initial=True,
+        label='Require grade-level match for recommendations',
+        help_text=("When on, a recommendation is required only for courses whose "
+                   "Registration Eligibility marks the student's grade with * "
+                   "(FR*, SO*, JR*, SR*). When off, every applied registration "
+                   "needs a recommendation regardless of grade level."))
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -27,7 +36,9 @@ class SettingForm(forms.Form):
         Return dict of form elements from $_POST
         """
         return {
-            'upload_label': self.cleaned_data['upload_label']
+            'upload_label': self.cleaned_data['upload_label'],
+            'require_grade_level_match': bool(
+                self.cleaned_data.get('require_grade_level_match')),
         }
 
 
@@ -54,7 +65,8 @@ class counselor_recommendation(SettingForm):
 
     def install(self):
         defaults = {
-            'upload_label': "Change this in Settings -> Student -> Counselor Rec. Form"
+            'upload_label': "Change this in Settings -> Student -> Counselor Rec. Form",
+            'require_grade_level_match': True,
         }
 
         Setting.install_defaults(self.key, defaults)

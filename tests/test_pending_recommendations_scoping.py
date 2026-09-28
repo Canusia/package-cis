@@ -191,4 +191,6 @@ class PendingRecommendationScopingTests(TestCase):
         large = self._query_count()
 
         self.assertEqual(small, large)
-        self.assertLessEqual(large, 2)
+        # 2 + the one constant read of the counselor_recommendation setting
+        # for the grade gate (#10); what matters is that it doesn't grow.
+        self.assertLessEqual(large, 3)
