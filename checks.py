@@ -57,3 +57,29 @@ def document_types_table_check(app_configs, **kwargs):
             id='cis.W002',
         )
     ]
+
+
+@register()
+def hs_uploads_table_check(app_configs, **kwargs):
+    """W003 (v0.0.43+): the High School Uploads tab's table config (#56)."""
+    app = getattr(settings, 'TABLE_CONFIGS_APP', 'myce_tenant_configs')
+    module = f'{app}.services.hs_uploads_table'
+    try:
+        found = importlib.util.find_spec(module) is not None
+    except ModuleNotFoundError:
+        found = False
+    if found:
+        return []
+    return [
+        CheckWarning(
+            f'{module} is missing.',
+            hint=(
+                'cis v0.0.43+ expects the tenant to ship hs_uploads_table.py, '
+                '_hs_uploads_table.html and js/hs_uploads_table.js for the High '
+                'School Uploads tab on /ce/students/support_docs/ (copy them from '
+                'Canusia/ewu). Without them the tab shows a plain list of the '
+                'latest uploads, with no filters or review actions.'
+            ),
+            id='cis.W003',
+        )
+    ]

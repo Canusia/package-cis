@@ -52,11 +52,34 @@ class HighSchoolSerializer(serializers.ModelSerializer):
             'city', 'state', 'postal_code'
         ]
 
+class _HighSchoolNameSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = HighSchool
+        fields = ['id', 'name']
+
+
+class _TermSlimSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    label = serializers.CharField()
+    code = serializers.CharField()
+
+
+class _ReviewerSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    first_name = serializers.CharField()
+    last_name = serializers.CharField()
+
+
 class HighSchoolTranscriptSerializer(serializers.ModelSerializer):
-    highschool = HighSchoolSerializer()
+    # Slim nested shapes: the CE High School Uploads tab lists every school's
+    # files, so a full HighSchoolSerializer per row would be wasted work.
+    highschool = _HighSchoolNameSerializer()
     uploaded_by = CustomUserSerializer()
+    term = _TermSlimSerializer(allow_null=True)
+    reviewed_by = _ReviewerSerializer(allow_null=True)
 
     uploaded_on = serializers.DateTimeField(format='%m/%d/%Y')
+    reviewed_on = serializers.DateTimeField(format='%m/%d/%Y', allow_null=True)
 
     class Meta:
         model = HighSchoolTranscript
@@ -64,13 +87,17 @@ class HighSchoolTranscriptSerializer(serializers.ModelSerializer):
             'uploaded_on',
             'uploaded_by',
             'highschool',
+            'term',
             'media',
             'description',
             'file_name',
+            'reviewed_on',
+            'reviewed_by',
             'id'
         ]
         datatables_always_serialize = [
-            'id', 'highschool', 'media', 'file_name', 'uploaded_by'
+            'id', 'highschool', 'media', 'file_name', 'uploaded_by',
+            'term', 'reviewed_on', 'reviewed_by',
         ]
 
 

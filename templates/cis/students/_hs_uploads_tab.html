@@ -1,0 +1,69 @@
+{% comment %}
+High School Uploads tab of /ce/students/support_docs/ (package-cis #56).
+Files high schools send the college, from every school. Context comes from
+cis.views.hs_uploads.tab_context. The table is the tenant's hs_uploads_table;
+without one (system check cis.W003) a plain list of the latest uploads shows.
+{% endcomment %}
+<div class="tab-pane" id="hs_uploads">
+    <div class="card border-top-0">
+        <div class="card-body">
+            <div class="card mb-3">
+                <div class="card-body bg-gray-200">
+                    <form id="hs_uploads_filter" class="form-inline filter" onsubmit="return false;">
+                        <select class="form-control mr-2 mt-2" name="term">
+                            <option value="">All Terms</option>
+                            {% for t in terms %}
+                            <option value="{{ t.id }}" {% if t.id == hs_uploads_active_term.id %}selected{% endif %}>{{ t.label }}</option>
+                            {% endfor %}
+                        </select>
+                        <select class="form-control mr-2 mt-2" name="highschool_id">
+                            <option value="">All High Schools</option>
+                            {% for hs in hs_uploads_highschools %}
+                            <option value="{{ hs.id }}">{{ hs.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <select class="form-control mt-2" name="reviewed">
+                            <option value="no" selected>Not Reviewed</option>
+                            <option value="yes">Reviewed</option>
+                            <option value="">All</option>
+                        </select>
+                    </form>
+                </div>
+            </div>
+
+            {% if hs_uploads_table %}
+                {% include hs_uploads_table.partial_template with config=hs_uploads_table %}
+            {% else %}
+                <p class="text-muted">Showing the latest uploads. Filtering and review actions need this site's high school uploads table.</p>
+                <table class="table table-striped">
+                    <thead>
+                        <tr><th>High School</th><th>Term</th><th>Uploaded On</th><th>Uploaded By</th><th>Description</th><th>File</th><th>Reviewed</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for r in hs_uploads_records %}
+                        <tr>
+                            <td>{{ r.highschool.name }}</td>
+                            <td>{{ r.term.label|default:"" }}</td>
+                            <td>{{ r.uploaded_on|date:"m/d/Y" }}</td>
+                            <td>{{ r.uploaded_by.last_name }}, {{ r.uploaded_by.first_name }}</td>
+                            <td>{{ r.description }}</td>
+                            <td><a href="{% url 'cis:download_transcript' r.id %}">{{ r.file_name }}</a></td>
+                            <td>{% if r.reviewed_on %}{{ r.reviewed_on|date:"m/d/Y" }}{% else %}No{% endif %}</td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="7">No uploads yet.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% endif %}
+        </div>
+    </div>
+</div>
+<script>
+    // Open this tab when the page is reached by #hs_uploads (the upload email links here).
+    jQuery(function ($) {
+        if (window.location.hash === '#hs_uploads') {
+            $('a[data-toggle="tab"][href="#hs_uploads"]').tab('show');
+        }
+    });
+</script>

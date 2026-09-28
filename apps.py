@@ -113,6 +113,14 @@ class CisConfig(AppConfig):
             ]
         },
         {
+            'name': 'hs_uploads',
+            'title': 'High School Uploads',
+            'description': 'File types, size limit and email for files high schools upload.',
+            'categories': [
+                '4'
+            ]
+        },
+        {
             'name': 'sms',
             'title': 'SMS',
             'description': '-',

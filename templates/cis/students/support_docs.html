@@ -24,6 +24,9 @@
                     <li class="nav-item d-none">
                         <a class="nav-link" data-toggle="tab" href="#archived">Archived</a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-toggle="tab" href="#hs_uploads">High School Uploads</a>
+                    </li>
                 </ul>
 
                 <div class="tab-content">
@@ -45,6 +48,8 @@
                         </div>
                     </div>
                     <!-- end tab # records_active -->
+
+                    {% include "cis/students/_hs_uploads_tab.html" %}
                 </div>
                 <!-- end tab-content -->
 

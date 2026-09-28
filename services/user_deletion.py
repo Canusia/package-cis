@@ -49,6 +49,7 @@ REGISTRY = {
     ('cis.HSAdministratorNote', 'createdby'): REASSIGN,
     ('cis.HighSchoolNote', 'createdby'): REASSIGN,
     ('cis.HighSchoolTranscript', 'uploaded_by'): REASSIGN,
+    ('cis.HighSchoolTranscript', 'reviewed_by'): REASSIGN,
     ('cis.StudentNote', 'createdby'): REASSIGN,
     ('cis.TeacherApplicationNote', 'createdby'): REASSIGN,
     ('cis.TeacherNote', 'createdby'): REASSIGN,

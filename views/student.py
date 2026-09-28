@@ -2271,6 +2271,7 @@ def recommendations(request):
     )
 
 def support_docs(request):
+    from cis.views.hs_uploads import tab_context as hs_uploads_tab_context
     menu = draw_menu(cis_menu, 'students', 'support_docs')
     template = 'cis/students/support_docs.html'
     
@@ -2290,6 +2291,8 @@ def support_docs(request):
                 bulk_actions_url=reverse('cis:support_docs_bulk_actions'),
                 filter_form_selector='#support_docs_filter',
             ),
+            # High School Uploads tab (#56).
+            **hs_uploads_tab_context(request),
         }
     )
 

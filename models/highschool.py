@@ -48,12 +48,38 @@ class HighSchoolTranscript(models.Model):
 
     highschool = models.ForeignKey('cis.HighSchool', on_delete=models.PROTECT)
 
-    uploaded_on = models.DateTimeField(auto_now=True)
+    # Optional: uploads usually belong to a term, but older rows have none.
+    term = models.ForeignKey(
+        'cis.Term', on_delete=models.PROTECT, null=True, blank=True)
+
+    # auto_now_add, not auto_now: marking a file reviewed saves the row, and
+    # must not move the date it was uploaded (#56).
+    uploaded_on = models.DateTimeField(auto_now_add=True)
     uploaded_by = models.ForeignKey('cis.CustomUser', on_delete=models.PROTECT)
+
+    reviewed_on = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.ForeignKey(
+        'cis.CustomUser', on_delete=models.PROTECT, null=True, blank=True,
+        related_name='+')
 
     @property
     def file_name(self):
         return os.path.basename(self.media.name)
+
+    @property
+    def is_reviewed(self):
+        return self.reviewed_on is not None
+
+    def mark_reviewed(self, user):
+        from django.utils import timezone
+        self.reviewed_on = timezone.now()
+        self.reviewed_by = user
+        self.save(update_fields=['reviewed_on', 'reviewed_by'])
+
+    def mark_not_reviewed(self):
+        self.reviewed_on = None
+        self.reviewed_by = None
+        self.save(update_fields=['reviewed_on', 'reviewed_by'])
     
 class HighSchoolCollegeAdvisor(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

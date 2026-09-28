@@ -128,14 +128,33 @@ class HighSchoolTranscriptViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [CIS_user_only]
 
     def get_queryset(self):
-        highschool_id = self.request.GET.get('highschool_id', '').strip()
+        """Uploads from one school, or every school (#56).
 
-        try:
-            return HighSchoolTranscript.objects.filter(
-                highschool__id=highschool_id
-            ).order_by('-uploaded_on')
-        except:
-            return HighSchoolTranscript.objects.none()
+        Optional filters: highschool_id, term (UUIDs) and reviewed=yes|no. A
+        malformed UUID matches nothing rather than 500ing (the PT-1 idiom).
+        HighSchool carries no campus, so there is no campus scope to apply.
+        """
+        import uuid as _uuid
+        params = self.request.GET
+        records = HighSchoolTranscript.objects.select_related(
+            'highschool', 'uploaded_by', 'term', 'reviewed_by'
+        ).order_by('-uploaded_on')
+
+        for param, lookup in (('highschool_id', 'highschool_id'), ('term', 'term_id')):
+            value = params.get(param, '').strip()
+            if not value:
+                continue
+            try:
+                records = records.filter(**{lookup: _uuid.UUID(value)})
+            except ValueError:
+                return HighSchoolTranscript.objects.none()
+
+        reviewed = params.get('reviewed', '').strip().lower()
+        if reviewed == 'yes':
+            records = records.filter(reviewed_on__isnull=False)
+        elif reviewed == 'no':
+            records = records.filter(reviewed_on__isnull=True)
+        return records
         
 @eager_queryset(with_teacher_highschool_related)
 class HighSchoolTeacherViewSet(viewsets.ReadOnlyModelViewSet):

@@ -105,6 +105,8 @@ from cis.views.hs_administrator import (
     DanglingHSAdminViewSet
 )
 
+from cis.views.hs_uploads import do_bulk_action as hs_uploads_bulk_action
+
 from cis.views.document_type import (
     index as document_types, detail as document_type,
     add_new as document_type_add_new,
@@ -986,6 +988,10 @@ urlpatterns = [
         'students/support_docs/',
         user_passes_test(user_has_cis_role, login_url='/')(support_docs),
         name='support_docs'),
+    path(
+        'students/support_docs/hs_uploads/bulk_actions',
+        user_passes_test(user_has_cis_role, login_url='/')(hs_uploads_bulk_action),
+        name='hs_uploads_bulk_action'),
     path(
         'students/support_docs/bulk_actions',
         user_passes_test(user_has_cis_role, login_url='/')(support_docs_bulk_actions),

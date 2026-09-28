@@ -1,3 +1,5 @@
+import os
+
 from django import forms
 from django.forms import ModelForm
 from django.core.exceptions import ValidationError
@@ -241,18 +243,70 @@ class BulkPasswordChangeForm(forms.Form):
 
         return records
 
+def upload_terms():
+    """Terms a high-school upload may belong to: the active and registration terms."""
+    from cis.models.term import Term
+    from cis import utils
+    ids = set()
+    active = utils.active_term()
+    if active is not None:
+        ids.add(active.pk)
+    ids.update(t.pk for t in (utils.registration_terms() or []))
+    return Term.objects.filter(pk__in=ids).order_by('-code')
+
+
 class HSTranscriptUploadForm(forms.ModelForm):
+    """A file a high school sends the college (#56).
+
+    Shared by the CE high-school Transcripts tab and the HS-admin Transcripts
+    page, so the term choices and the type/size rules live in one place.
+    """
     class Meta:
         model = HighSchoolTranscript
-        fields = ['description', 'media']
+        fields = ['term', 'description', 'media']
 
         labels = {
+            'term': _('Term'),
             'description': _("Description"),
             'media': _('File')
+        }
+        widgets = {
+            'description': forms.Textarea(attrs={'rows': 3}),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        from cis.settings.hs_uploads import hs_uploads
+        self.fields['term'].queryset = upload_terms()
+        self.fields['description'].required = True
+        self.fields['description'].help_text = (
+            'What the file contains, e.g. "Auburn HS transcripts, all Fall '
+            'dual credit students".')
+        extensions = hs_uploads.allowed_extensions()
+        self.fields['media'].help_text = (
+            f"Allowed: {', '.join(extensions)}. "
+            f"Up to {hs_uploads.max_upload_bytes() // (1024 * 1024)} MB.")
+        self.fields['media'].widget.attrs['accept'] = ','.join(
+            f'.{ext}' for ext in extensions)
+
+    def clean_media(self):
+        from cis.settings.hs_uploads import hs_uploads
+        media = self.cleaned_data.get('media')
+        if not media:
+            return media
+
+        extension = os.path.splitext(media.name)[1].lower().lstrip('.')
+        allowed = hs_uploads.allowed_extensions()
+        if extension not in allowed:
+            raise forms.ValidationError(
+                f"Files of type .{extension or '?'} are not accepted. "
+                f"Allowed: {', '.join(allowed)}.")
+
+        limit = hs_uploads.max_upload_bytes()
+        if media.size > limit:
+            raise forms.ValidationError(
+                f'This file is larger than the {limit // (1024 * 1024)} MB limit.')
+        return media
 
 class HSAdminAccessRequestModelForm(ModelForm):
     captcha = ReCaptchaField(

@@ -10,10 +10,12 @@
                             <tr>
                                 <th data-data="uploaded_on" data-name="uploaded_on">Added On
                                 </th>
+                                <th data-data="term.label" data-name="term.label" data-searchable="false">Term</th>
                                 <th data-data="uploaded_by.last_name" data-name="uploaded_by.last_name">Uploaded By</th>
                                 <th data-data="description" data-name="description">Note
                                 </th>
-                                <th data-data="file_name" data-name="file_name">File</th>
+                                <th data-data="file_name" data-name="media" data-searchable="false">File</th>
+                                <th data-data="reviewed_on" data-name="reviewed_on" data-searchable="false">Reviewed</th>
                             </tr>
                         </thead>
                     </table>
@@ -53,6 +55,11 @@
                     null,
                     {
                         'render': function (data, type, row, meta) {
+                            return row.term ? $('<div/>').text(row.term.label).html() : '';
+                        }
+                    },
+                    {
+                        'render': function (data, type, row, meta) {
                             return row.uploaded_by.last_name + ", " +
                                 row.uploaded_by.first_name
                         }
@@ -60,7 +67,12 @@
                     null,
                     {
                         'render': function (data, type, row, meta) {
-                            return "<a href='/ce/highschool/transcript/" + row.id + "'>" + row.file_name + "</a>"
+                            return "<a href='/ce/highschool/transcript/" + row.id + "'>" + $('<div/>').text(row.file_name).html() + "</a>"
+                        }
+                    },
+                    {
+                        'render': function (data, type, row, meta) {
+                            return row.reviewed_on ? 'Reviewed ' + row.reviewed_on : 'Not reviewed';
                         }
                     }
                 ]
