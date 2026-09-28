@@ -17,9 +17,13 @@ class EmailAuthBackend(ModelBackend):
             return None
 
         # PT-40: a locked account never authenticates (even with the right
-        # password) until staff unlock it.
+        # password) until staff unlock it, or until the lock times out when
+        # settings.ACCOUNT_LOCKOUT_MINUTES is set.
         if user.account_locked:
-            return None
+            if user.is_lock_active:
+                return None
+            # The lock has timed out: start over with a clean counter.
+            user.unlock()
 
         if user.check_password(password):
             user.reset_failed_login()

@@ -64,6 +64,13 @@ class MyCELoginForm(forms.Form):
                     'Your account is locked after too many failed sign-in '
                     'attempts. Please reset your password or contact support.'
                 )
+                minutes = CustomUser.lockout_minutes()
+                if minutes:
+                    message = (
+                        'Your account is locked after too many failed sign-in '
+                        f'attempts. Please try again in {minutes} minutes, '
+                        'reset your password or contact support.'
+                    )
             else:
                 message = 'Invalid email/password combination, please try again.'
             messages.add_message(

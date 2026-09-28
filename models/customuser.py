@@ -1,7 +1,11 @@
 # users/models.py
 import logging
+from datetime import timedelta
+
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.db.models import Q
+from django.utils import timezone
 
 from django.core.validators import validate_email
 
@@ -62,6 +66,7 @@ class CustomUser(AbstractUser):
     # PT-40: brute-force lockout on the email/password login.
     failed_login_attempts = models.PositiveIntegerField(default=0)
     account_locked = models.BooleanField(default=False)
+    account_locked_at = models.DateTimeField(blank=True, null=True)
 
     created_at = models.DateTimeField(auto_now_add=True, null=True)
 
@@ -76,25 +81,62 @@ class CustomUser(AbstractUser):
 
     MAX_FAILED_LOGINS = 3
 
+    @staticmethod
+    def lockout_minutes():
+        """Minutes before a lock releases itself (settings.ACCOUNT_LOCKOUT_MINUTES).
+
+        Opt-in: None/unset means a lock holds until staff unlock the account.
+        """
+        return getattr(settings, 'ACCOUNT_LOCKOUT_MINUTES', None)
+
+    @classmethod
+    def active_lock_q(cls):
+        """Q for accounts whose lock has not yet timed out."""
+        q = Q(account_locked=True)
+        minutes = cls.lockout_minutes()
+        if minutes:
+            q &= Q(account_locked_at__isnull=True) | Q(
+                account_locked_at__gt=timezone.now() - timedelta(minutes=minutes))
+        return q
+
+    @property
+    def is_lock_active(self):
+        """True while the account is locked and the lock has not timed out.
+
+        A lock with no timestamp never times out.
+        """
+        if not self.account_locked:
+            return False
+        minutes = self.lockout_minutes()
+        if not minutes or self.account_locked_at is None:
+            return True
+        return timezone.now() < self.account_locked_at + timedelta(minutes=minutes)
+
     def register_failed_login(self):
         """Count a failed email/password attempt; lock at MAX_FAILED_LOGINS."""
         self.failed_login_attempts = (self.failed_login_attempts or 0) + 1
         if self.failed_login_attempts >= self.MAX_FAILED_LOGINS:
             self.account_locked = True
-        self.save(update_fields=['failed_login_attempts', 'account_locked'])
+            self.account_locked_at = timezone.now()
+        self.save(update_fields=[
+            'failed_login_attempts', 'account_locked', 'account_locked_at'])
 
     def reset_failed_login(self):
         """Clear the failure counter after a successful login."""
         if self.failed_login_attempts or self.account_locked:
             self.failed_login_attempts = 0
             self.account_locked = False
-            self.save(update_fields=['failed_login_attempts', 'account_locked'])
+            self.account_locked_at = None
+            self.save(update_fields=[
+                'failed_login_attempts', 'account_locked', 'account_locked_at'])
 
     def unlock(self):
-        """Staff-initiated unlock: clear lock and counter."""
+        """Clear lock and counter (staff unlock, or a timed-out lock)."""
         self.failed_login_attempts = 0
         self.account_locked = False
-        self.save(update_fields=['failed_login_attempts', 'account_locked'])
+        self.account_locked_at = None
+        self.save(update_fields=[
+            'failed_login_attempts', 'account_locked', 'account_locked_at'])
 
     @property
     def ssn_sexy(self):

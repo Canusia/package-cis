@@ -101,8 +101,10 @@ class LockedUserViewSet(viewsets.ReadOnlyModelViewSet):
         if not self.request.user.can_edit_users:
             return CustomUser.objects.none()
 
+        # active_lock_q drops locks that have timed out but not yet been
+        # cleared (that happens lazily, on the account's next sign-in).
         return CustomUser.objects.filter(
-            account_locked=True
+            CustomUser.active_lock_q()
         ).prefetch_related('groups').order_by('last_name', 'first_name')
 
 
@@ -129,6 +131,7 @@ def locked_index(request):
             'page_title': 'Locked Accounts',
             'menu': menu,
             'max_failed_logins': CustomUser.MAX_FAILED_LOGINS,
+            'lockout_minutes': CustomUser.lockout_minutes(),
             'locked_users_table': build_locked_users_table_config(
                 variant='locked_users_index',
                 api_url='/ce/api/locked-user?format=datatables',

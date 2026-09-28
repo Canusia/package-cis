@@ -19,12 +19,14 @@ Three defect classes are pinned here:
    myce_tenant_configs/services/locked_users_table.py is exercised here.
 """
 import json
+from datetime import timedelta
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.contrib.auth.signals import user_logged_in
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 try:
@@ -143,6 +145,24 @@ class LockedAccountsTests(TestCase):
             emails, {self.locked_staff.email, self.locked_student.email})
         self.assertNotIn(self.unlocked_student.email, emails)
         self.assertEqual(payload['recordsTotal'], 2)
+
+    def test_feed_omits_locks_that_have_timed_out(self):
+        User.objects.filter(pk=self.locked_student.pk).update(
+            account_locked_at=timezone.now() - timedelta(minutes=21))
+        User.objects.filter(pk=self.locked_staff.pk).update(
+            account_locked_at=timezone.now())
+        self.client.force_login(self.manager)
+
+        with override_settings(ACCOUNT_LOCKOUT_MINUTES=20):
+            payload = self.get_rows(datatables_query())
+        self.assertEqual(
+            {row['email'] for row in payload['data']}, {self.locked_staff.email})
+
+        with override_settings(ACCOUNT_LOCKOUT_MINUTES=None):
+            payload = self.get_rows(datatables_query())
+        self.assertEqual(
+            {row['email'] for row in payload['data']},
+            {self.locked_staff.email, self.locked_student.email})
 
     def test_roles_serialized_per_row(self):
         self.client.force_login(self.manager)
