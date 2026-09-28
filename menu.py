@@ -243,11 +243,6 @@ cis_menu = [
                 'url': 'cis:students_notes'
             },
             {
-                'label': 'SIS Messages',
-                'name': 'sis_messages',
-                'url': 'cis:sis_messages'
-            },
-            {
                 'label': 'SIS Logs',
                 'name': 'sis_logs',
                 'url': 'cis:sis_logs'

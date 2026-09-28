@@ -56,6 +56,5 @@ from .crontab import CronTab
 #     HighSchoolApplication,
 #     HighSchoolInterestedCourse
 # )
-from .sis import SIS_Subscription
 from .student_import import StudentImportBatch, StudentImportRow
 from .bulk_enroll import BulkEnrollBatch, BulkEnrollRow
