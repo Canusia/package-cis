@@ -99,7 +99,7 @@ from cis.utils import CIS_user_only, FACULTY_user_only, INSTRUCTOR_user_only, ST
 
 from ..serializers.note import StudentNoteSerializer
 from ..serializers.history import HistorySerializer
-from cis.models.customuser import CustomUser
+from cis.models.customuser import CustomUser, no_login_password_q
 
 from cis.views.eager import (
     eager_queryset,
@@ -2136,7 +2136,11 @@ def send_id_assigned_email(request):
 def mark_as_unverified(request):
     ids = request.POST.getlist('ids[]')
     students = Student.objects.filter(id__in=ids, account_verified=True)
+    # No SIS id *and* no password ever stored: an abandoned signup. A missing
+    # psid alone also matches CSV-imported students, who have a real password
+    # and are only waiting on an SIS id (#20).
     students = students.filter(Q(user__psid__isnull=True) | Q(user__psid='-'))
+    students = students.filter(no_login_password_q('user'))
 
     recipient_list = []
     for student in students:
@@ -2149,7 +2153,7 @@ def mark_as_unverified(request):
     status = 'success'
     message = 'Successfully set account as \'unverified\' <br>' + '<br>'.join(recipient_list)
     if len(recipient_list) == 0:
-        message = 'No students pending account verification found. Only students whose account has not been sent to SIS can be marked as unverified.'
+        message = 'No students pending account verification found. Only students who have no SIS ID and never set a password can be marked as unverified.'
         status = 'warning'
 
     return JsonResponse({'outcome': 'alert', 'status': status, 'title': 'Mark as UnVerified', 'message': message})

@@ -2,6 +2,7 @@
 import logging
 from datetime import timedelta
 
+from django.contrib.auth.hashers import UNUSABLE_PASSWORD_PREFIX
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.db.models import Q
@@ -137,6 +138,20 @@ class CustomUser(AbstractUser):
         self.account_locked_at = None
         self.save(update_fields=[
             'failed_login_attempts', 'account_locked', 'account_locked_at'])
+
+    def has_login_password(self):
+        """True when this account has a password someone can log in with.
+
+        Django's has_usable_password() answers True for an *empty* password --
+        only a leading '!' marks one unusable -- and a student created by
+        StudentVerifyEmailForm.save() who never reached complete_signup has
+        exactly that: no password was ever stored. Anything deciding "can this
+        person get in?" must ask here rather than has_usable_password(), and
+        must not infer it from psid: the CSV importer
+        (cis/services/importers/student_importer.py) stores a real password
+        while leaving psid NULL until the SIS assigns an id.
+        """
+        return bool(self.password) and self.has_usable_password()
 
     @property
     def ssn_sexy(self):
@@ -345,3 +360,18 @@ class CustomUser(AbstractUser):
         }
 
         return export_to_excel(file_name, records, fields)
+
+
+def no_login_password_q(prefix='user'):
+    """Queryset form of ``not CustomUser.has_login_password()``.
+
+    ``prefix`` is the lookup path from the queried model to the user -- 'user'
+    from Student, '' when querying CustomUser itself. Defined beside the method
+    so the two statements of "cannot log in" cannot drift apart.
+    """
+    field = f'{prefix}__password' if prefix else 'password'
+    return (
+        Q(**{field: ''})
+        | Q(**{f'{field}__isnull': True})
+        | Q(**{f'{field}__startswith': UNUSABLE_PASSWORD_PREFIX})
+    )
