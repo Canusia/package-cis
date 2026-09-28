@@ -7,6 +7,7 @@ from ..models.course import (
     CourseUpload,
     CourseAppRequirement,
     CourseDocumentRequirement,
+    DocumentType,
 )
 from ..models.tech_center_staff import TechCenterStaff
 
@@ -130,6 +131,23 @@ class CourseDocumentRequirementSerializer(serializers.ModelSerializer):
 
     def get_grade_levels_display(self, obj):
         return ', '.join(obj.grade_level_labels)
+
+
+class DocumentTypeSerializer(serializers.ModelSerializer):
+    """DocumentType rows for the /ce/document_types/ DataTable."""
+    campus = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DocumentType
+        fields = ['id', 'code', 'label', 'status', 'campus']
+        datatables_always_serialize = ('id',)
+
+    def get_campus(self, obj):
+        # Flat {id, name} (None for a legacy unassigned type) -- the same
+        # shape CampusSlimSerializer gives AcademicYear rows.
+        if obj.campus_id is None:
+            return None
+        return {'id': str(obj.campus_id), 'name': obj.campus.name}
 
 
 class CourseUploadSerializer(serializers.ModelSerializer):

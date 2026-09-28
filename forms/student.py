@@ -399,18 +399,48 @@ class StudentSupportingDocumentForm(forms.ModelForm):
         self.fields['action'].initial = 'upload_support_doc'
         self.fields['student'].initial = student.id
 
-        from cis.settings.support_docs import support_docs
-        self.fields['document_type'].choices = (
-            [('', 'Select type')] + [(t, t) for t in support_docs.get_types()]
-        )
-
         from cis.utils import active_term
         if not term:
             term = active_term()
 
+        self.fields['document_type'].choices = (
+            [('', 'Select type')]
+            + [(t, t) for t in self._document_type_labels(term)]
+        )
+
         if term:
             self.fields['term'].initial = term
             self.fields['term'].widget = forms.HiddenInput()
+
+    @staticmethod
+    def _document_type_labels(term):
+        """Labels for the upload dropdown.
+
+        The active DocumentTypes for the term's campus plus the legacy
+        unassigned ones (#45). The label is what's stored in `document_type`;
+        the model's save() then links `document_type_ref` (#50). A tenant that
+        has never seeded DocumentType keeps the support_docs `types` list.
+        """
+        from cis.models.course import DocumentType
+        from cis.settings.support_docs import support_docs
+        if not DocumentType.objects.exists():
+            return support_docs.get_types()
+
+        campus_id = None
+        if term is not None:
+            campus_id = (type(term).objects.filter(pk=term.pk)
+                         .values_list('academic_year__campus', flat=True).first())
+        scope = Q(campus__isnull=True)
+        if campus_id:
+            scope |= Q(campus_id=campus_id)
+        # One entry per label, case-insensitively; the campus's own wording
+        # wins over an unassigned type's.
+        rows = (DocumentType.objects.filter(scope, status='Active')
+                .values_list('label', 'campus_id'))
+        by_folded = {}
+        for label, row_campus in sorted(rows, key=lambda r: r[1] is None):
+            by_folded.setdefault(label.casefold(), label)
+        return sorted(by_folded.values(), key=str.casefold)
 
 
 class MarkSupportDocStatusForm(forms.Form):

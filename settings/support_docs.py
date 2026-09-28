@@ -99,9 +99,29 @@ class SettingForm(forms.Form):
         self.fields['document_check_registration_statuses'].choices = (
             StudentRegistration.STATUS_OPTIONS)
 
+        # Once DocumentType is seeded, the upload dropdown reads it instead
+        # (#45), so this list is kept only for reference until release 2
+        # (#47) removes it.
+        from ..models.course import DocumentType
+        if DocumentType.objects.exists():
+            self.fields['types'].disabled = True
+            self.fields['types'].help_text = (
+                'Read-only: document types are now managed on the Document '
+                'Types page (Classes > Document Types).')
+
+    def _stored_types(self):
+        try:
+            value = Setting.objects.get(key=support_docs.key).value or {}
+        except Setting.DoesNotExist:
+            return []
+        return value.get('types', [])
+
     def _to_python(self):
         return {
-            'types': _lines_to_list(self.cleaned_data.get('types')),
+            # A disabled field cleans to its `initial`, which the settings
+            # app doesn't pass on save -- keep the stored list, not a blank.
+            'types': (self._stored_types() if self.fields['types'].disabled
+                      else _lines_to_list(self.cleaned_data.get('types'))),
             'statuses': _lines_to_list(self.cleaned_data.get('statuses')),
             'email_enabled': self.cleaned_data.get('email_enabled', 'No'),
             'status_change_email_subject': self.cleaned_data.get('status_change_email_subject', ''),

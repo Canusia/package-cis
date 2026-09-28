@@ -160,6 +160,27 @@ class menu(SettingForm):
                     break
             defaults["ce_menu"] = json.dumps(items)
 
+        # "Document Types" goes in the "Classes" nav-item right after
+        # "Subjects" (#45). Same injection pattern as Locked Accounts; data
+        # migration 0084 patches menus that already exist.
+        _document_types_entry = {
+            "label": "Document Types",
+            "name": "document_types",
+            "url": "cis:document_types",
+        }
+        if "ce_menu" in defaults:
+            items = json.loads(defaults["ce_menu"])
+            for item in items:
+                if item.get("name") == "classes":
+                    sub_menu = item.setdefault("sub_menu", [])
+                    if not any(s.get("name") == "document_types" for s in sub_menu):
+                        names = [s.get("name") for s in sub_menu]
+                        insert_at = (names.index("cohorts") + 1
+                                     if "cohorts" in names else len(sub_menu))
+                        sub_menu.insert(insert_at, _document_types_entry)
+                    break
+            defaults["ce_menu"] = json.dumps(items)
+
         Setting.install_defaults(self.key, defaults)
 
     @classmethod

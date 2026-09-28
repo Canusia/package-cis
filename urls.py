@@ -105,6 +105,12 @@ from cis.views.hs_administrator import (
     DanglingHSAdminViewSet
 )
 
+from cis.views.document_type import (
+    index as document_types, detail as document_type,
+    add_new as document_type_add_new,
+    DocumentTypeViewSet,
+)
+
 from cis.views.academic_year import (
     index as academic_years, detail as academic_year,
     add_new as academic_year_add_new,
@@ -387,6 +393,7 @@ router_viewsets = {
 
     'term': TermViewSet,
     'academic-year': AcademicYearViewSet,
+    'document-type': DocumentTypeViewSet,
 
     'class_section': ClassSectionViewSet,
     'class-section-history': ClassSectionHistoryViewSet,
@@ -685,6 +692,10 @@ urlpatterns = [
     path('academic_year/add_new', user_passes_test(user_has_cis_role, login_url='/')(academic_year_add_new), name='academic_year_add_new'),
     path('academic_year/download_template', user_passes_test(user_has_cis_role, login_url='/')(download_academic_year_template), name='academic_year_download_template'),
     path('academic_year/bulk_actions', user_passes_test(user_has_cis_role, login_url='/')(academic_year_bulk_actions), name='academic_year_bulk_actions'),
+
+    path('document_types/', user_passes_test(user_has_cis_role, login_url='/')(document_types), name='document_types'),
+    path('document_type/<uuid:record_id>', user_passes_test(user_has_cis_role, login_url='/')(document_type), name='document_type'),
+    path('document_type/add_new', user_passes_test(user_has_cis_role, login_url='/')(document_type_add_new), name='document_type_add_new'),
 
     path('terms/', user_passes_test(user_has_cis_role, login_url='/')(terms), name='terms'),
     path('term/<uuid:record_id>', user_passes_test(user_has_cis_role, login_url='/')(term), name='term'),

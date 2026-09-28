@@ -111,6 +111,21 @@ first use:
 `verify_email_form.py` is **new in v0.0.3** — a tenant upgrading from v0.0.2 must add it
 before deploying, or `/student/start_request/` fails to resolve the form.
 
+### Tenant table-config modules
+
+CE index pages get their DataTable columns from `<TABLE_CONFIGS_APP>.services.<name>_table`
+(`cis/services/table_configs.py`; `TABLE_CONFIGS_APP` defaults to `myce_tenant_configs`).
+Most views resolve theirs at import time, so a missing module is an `ImportError` for the
+whole cis URLconf. Modules added from v0.0.42 on are resolved lazily instead, and the page
+falls back to a plain list.
+
+| Module | New in | Also ship | Without it |
+|---|---|---|---|
+| `document_types_table.py` (`build_config(*, variant, api_url, details_prefix='')`, profile `document_types_index`) | v0.0.42 | `templates/myce_tenant_configs/_document_types_table.html`, `staticfiles/js/document_types_table.js` | `/ce/document_types/` shows a plain, unsortable list; system check `cis.W002` warns |
+
+Copy all three files from `Canusia/ewu` (`webapp/myce_tenant_configs/`) when adopting
+v0.0.42.
+
 ## Tests
 
 The test modules ship **inside the wheel**, as `cis.tests`. A tenant that adopts this

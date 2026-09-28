@@ -370,6 +370,52 @@ class CohortForm(ModelForm):
         fields = '__all__'
         exclude = ['temp_id']
 
+class DocumentTypeForm(ModelForm):
+    """Add/edit a DocumentType from the CE Document Types page.
+
+    Campus is required here even though the column is nullable: null is a
+    legacy state to migrate away from (#45), so nothing new is created
+    without one. `code` is the stable key both FKs' readers rely on, so it
+    is fixed once the type exists; `label` is the editable wording.
+    """
+    class Meta:
+        model = DocumentType
+        fields = ['label', 'code', 'campus', 'status']
+        help_texts = {
+            'code': ('A short, stable key (letters, numbers, dashes and '
+                     'underscores). It cannot be changed later.'),
+            'status': 'Retire a type by making it Inactive; types are never deleted.',
+        }
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['campus'].required = True
+        if user is not None:
+            from cis.campus_gate import get_accessible_campuses
+            self.fields['campus'].queryset = get_accessible_campuses(user)
+        # Not `instance.pk`: the UUID pk is assigned on instantiation, so a
+        # brand-new type already has one.
+        if not self.instance._state.adding:
+            self.fields['code'].disabled = True
+
+    def clean(self):
+        cleaned = super().clean()
+        code = cleaned.get('code')
+        campus = cleaned.get('campus')
+        if code and campus:
+            others = DocumentType.objects.exclude(pk=self.instance.pk)
+            if others.filter(campus=campus, code__iexact=code).exists():
+                self.add_error(
+                    'code', 'This campus already has a document type with this code.')
+            elif others.filter(campus__isnull=True, code__iexact=code).exists():
+                # The partial unique constraints can't express this one: a
+                # campus-scoped type must not shadow a legacy unassigned type
+                # with the same code (#45).
+                self.add_error(
+                    'code', 'An unassigned document type already uses this code. '
+                            'Assign that type to a campus instead of adding a new one.')
+        return cleaned
+
 class CategoryForm(ModelForm):
     class Meta:
         model = Category

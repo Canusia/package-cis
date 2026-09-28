@@ -1,0 +1,29 @@
+{% extends "cis/logged-base.html" %}
+{%block title %}{{page_title}}{% endblock %}
+
+{% load crispy_forms_tags %}
+
+{% block body %}
+
+<main>
+    <div class="">
+        <div class="row">
+            <div class="col-sm-6 col-xs-12">
+                <h1 class="h3 mb-4 text-gray-800">{{ page_title }}</h1>
+            </div>
+        </div>
+
+        {% include "cis/messages.html" with messages=messages %}
+        <div class="card border-top-0">
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    {{ form|crispy }}
+                    <a href="{% url 'cis:document_types' %}" class="btn btn-secondary">Cancel</a>
+                    <input type="submit" class="btn btn-primary" value="Add Document Type">
+                </form>
+            </div>
+        </div>
+    </div>
+</main>
+{% endblock %}
