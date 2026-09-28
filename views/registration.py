@@ -128,9 +128,9 @@ class RegistrationViewSet(viewsets.ReadOnlyModelViewSet):
             
         if record_type:
             if record_type == 'with_prereq':
-                
-                records = records.filter(
-                    Q(class_section__course__prereq=None) |
+                # A non-empty Course.prereq means the course has one (#18).
+                records = records.exclude(
+                    Q(class_section__course__prereq__isnull=True) |
                     Q(class_section__course__prereq='')
                 )
 
@@ -554,6 +554,11 @@ def index(request):
     menu = draw_menu(cis_menu, 'students', 'registrations')
     template = 'cis/registrations/index.html'
 
+    # Parent consent is a tenant-level onboarding step; the filter only means
+    # something where the step is enabled (#21).
+    from student_onboarding.step_registry import get as get_step
+    parent_consent_enabled = get_step('parent_consent') is not None
+
     return render(
         request,
         template, {
@@ -572,7 +577,8 @@ def index(request):
             'default_campus': get_default_campus(request.user),
             'terms': Term.objects.all().order_by('-academic_year__name'),
             'registration_status': StudentRegistration.STATUS_OPTIONS,
-            'yes_no': YES_NO_OPTIONS
+            'yes_no': YES_NO_OPTIONS,
+            'parent_consent_enabled': parent_consent_enabled,
         }
     )
 

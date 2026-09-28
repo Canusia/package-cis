@@ -38,15 +38,15 @@
                                                     <div class="form-row">
                                                         <div class="col">
                                                             <div class="float-right">
-                                                                <select class="form-control mt-2 d-none"
+                                                                {% if parent_consent_enabled %}
+                                                                <select class="form-control mt-2"
                                                                     name="signed_parent_consent">
                                                                     <option value="">By Parent Consent</option>
                                                                     {% for c, c_label in yes_no %}
-                                                                    <option value="{{c}}" {% if c == active_term.id %}
-                                                                        selected {% endif %}>{{c_label}}</option>
+                                                                    <option value="{{c}}">{{c_label}}</option>
                                                                     {% endfor %}
                                                                 </select>
-                                                                &nbsp;<select class="form-control mt-2"
+                                                                &nbsp;{% endif %}<select class="form-control mt-2"
                                                                     name="signed_student_agreement">
                                                                     <option value="">By Student Agreement</option>
                                                                     {% for c, c_label in yes_no %}
