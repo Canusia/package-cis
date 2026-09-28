@@ -1054,11 +1054,19 @@ def index(request):
     '''
     menu = draw_menu(cis_menu, 'classes', 'courses')
     template = 'cis/course/courses.html'
-    
+
+    # Which tabs this tenant shows (#41); panes absent here are not rendered.
+    from cis.tabs.course_index import course_index_tabs
+    index_tabs = course_index_tabs.for_record(request, None, lambda slug: '')
+
     return render(
         request,
         template, {
             'page_title': 'Courses',
+            'index_tabs': index_tabs,
+            # Read by the instructor_app include, which owns both panes.
+            'show_course_requirements': 'course_requirements' in index_tabs,
+            'show_course_administrators': 'course_administrators' in index_tabs,
             'urls': {
                 'add_new': 'cis:course_add_new',
                 'details_prefix': '/ce/course/'

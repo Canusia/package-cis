@@ -71,7 +71,7 @@
         <div class="col-md-8 col-sm-12">
             <ul class="nav nav-tabs">
                 {% for slug, tab in detail_tabs.items %}
-                <li class="nav-item">
+                <li class="nav-item{% if tab.hidden %} d-none{% endif %}">
                     <a class="nav-link {% if tab.active %}active{% endif %}" data-toggle="tab" href="#{{ tab.slug }}">
                         {% if tab.icon %}<i class="{{ tab.icon }}"></i> {% endif %}{{ tab.title }}
                         {% if tab.badge %}<span class="badge badge-pill badge-secondary">{{ tab.badge }}</span>{% endif %}

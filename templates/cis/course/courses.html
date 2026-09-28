@@ -29,21 +29,11 @@
         <div class="table-responsive">
             <div class="">
                 <ul class="nav nav-tabs">
-                    <li class="nav-item">
-                        <a class="nav-link active" data-toggle="tab" href="#all">All Courses</a>
+                    {% for slug, tab in index_tabs.items %}
+                    <li class="nav-item{% if tab.hidden %} d-none{% endif %}">
+                        <a class="nav-link{% if tab.active %} active{% endif %}" data-toggle="tab" href="#{{ slug }}">{{ tab.title }}</a>
                     </li>
-                    <li class="nav-item d-none">
-                        <a class="nav-link" data-toggle="tab" href="#course_requirements">Course Requirements</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" data-toggle="tab" href="#course_administrators">By Course Administrator</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" data-toggle="tab" href="#app_requirements">Teacher App Requirements</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" data-toggle="tab" href="#document_requirements">Course Document Requirements</a>
-                    </li>
+                    {% endfor %}
                 </ul>
 
                 <div class="tab-content">
@@ -57,7 +47,8 @@
                     {% endcomment %}
                     {% include "instructor_app/ce/course_requirements_tab.html" %}
 
-                    <div class="tab-pane active " id="all">
+                    {% if index_tabs.all %}
+                    <div class="tab-pane{% if index_tabs.all.active %} active{% endif %}" id="all">
                         <div class="bg-white border border-top-0">
                             <div class="col-12 pt-3 mb-3">
                                 <form id="courses_campus_filter" class="form-inline filter mb-3">
@@ -73,9 +64,11 @@
                             </div>
                         </div>
                     </div>
+                    {% endif %}
                     <!-- end tab # all -->
 
-                    <div class="tab-pane" id="app_requirements">
+                    {% if index_tabs.app_requirements %}
+                    <div class="tab-pane{% if index_tabs.app_requirements.active %} active{% endif %}" id="app_requirements">
                         <div class="bg-white border border-top-0">
                             <div class="card border-top-0">
                                 <div class="card-body">
@@ -85,7 +78,10 @@
                         </div>
                     </div>
 
-                    <div class="tab-pane" id="document_requirements">
+                    {% endif %}
+
+                    {% if index_tabs.document_requirements %}
+                    <div class="tab-pane{% if index_tabs.document_requirements.active %} active{% endif %}" id="document_requirements">
                         <div class="bg-white border border-top-0">
                             <div class="card border-top-0">
                                 <div class="card-body">
@@ -94,6 +90,7 @@
                             </div>
                         </div>
                     </div>
+                    {% endif %}
 
                 </div>
                 <!-- end tab-content -->
