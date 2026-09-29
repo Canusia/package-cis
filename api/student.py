@@ -96,6 +96,17 @@ class StudentSISSerializer(serializers.ModelSerializer):
     ssn = serializers.CharField(source='user.ssn', allow_blank=True, allow_null=True)
     cell_phone = serializers.CharField(source='user.primary_phone', allow_blank=True, allow_null=True)
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # MC-14: no SSN in the response without cis.view_ssn.
+        from cis.ssn import NONE, VIEW, ssn_access
+        request = self.context.get('request')
+        access = ssn_access(getattr(request, 'user', None))
+        if access == NONE:
+            self.fields.pop('ssn', None)
+        elif access == VIEW:
+            self.fields['ssn'].read_only = True
+
     # race = serializers.SerializerMethodField('get_race_for_student')
     # ethnicity = serializers.SerializerMethodField('get_ethnicity_for_student')
 

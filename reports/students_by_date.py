@@ -137,6 +137,11 @@ class students_by_date(forms.Form):
             'start_term': 'Start Term',
         }
 
+        # MC-14: no SSN column unless whoever scheduled the export may view it.
+        from cis.ssn import NONE, ssn_access
+        if ssn_access(getattr(task, 'created_by', None)) == NONE:
+            fields.pop('user.ssn', None)
+
         stream = io.StringIO()
         writer = csv.writer(stream, delimiter=',')
 

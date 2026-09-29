@@ -265,6 +265,13 @@ class CISProfileMixin(forms.Form):
         if 'email' in self.fields:
             self.fields['email'].disabled = False
 
+        # SSN: removed without cis.view_ssn, read-only without cis.change_ssn
+        # (MC-14). A form built with no request (an importer) is left alone.
+        request = getattr(self, 'request', None)
+        if request is not None:
+            from cis.ssn import restrict_form
+            restrict_form(self, getattr(request, 'user', None))
+
         # Populate admin fields
         if self.student:
             user = self.student.user

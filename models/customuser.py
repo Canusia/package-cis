@@ -161,7 +161,10 @@ class CustomUser(AbstractUser):
     
     class Meta:
         permissions = [
-            ('create_user', 'Can create new user')
+            ('create_user', 'Can create new user'),
+            # MC-14 (#38): read through cis.ssn.ssn_access().
+            ('view_ssn', 'Can view SSN'),
+            ('change_ssn', 'Can change SSN'),
         ]
         ordering = ['last_name']
 
