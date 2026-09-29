@@ -364,6 +364,17 @@ class CampusForm(ModelForm):
         model = Campus
         fields = '__all__'
 
+    # Only multi-campus deployments route hosts (MC-02) and IdPs (MC-15) to a
+    # campus; everyone else keeps the form they had.
+    MULTI_CAMPUS_FIELDS = ('site', 'saml_idps')
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from cis.campus_context import is_multi_campus
+        if not is_multi_campus():
+            for name in self.MULTI_CAMPUS_FIELDS:
+                self.fields.pop(name, None)
+
 class CohortForm(ModelForm):
     class Meta:
         model = Cohort

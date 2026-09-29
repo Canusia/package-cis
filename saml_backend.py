@@ -5,6 +5,8 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.backends import ModelBackend
 from django.core.exceptions import FieldDoesNotExist
 
+from cis.campus_context import current_campus_or_none, is_multi_campus
+
 UserModel = get_user_model()
 
 logger = logging.getLogger(__name__)
@@ -36,10 +38,34 @@ class MyCE_SAMLAuthenticationBackend(ModelBackend):
             if not idp.auth_case_sensitive:
                 username_field += "__iexact"
             user = UserModel._default_manager.get(**{username_field: username})
-            return user
         except Exception as e:
             logger.error(e)
             logger.error(username)
             return None
 
-        return None
+        if is_multi_campus():
+            return self._campus_checked(request, idp, user)
+        return user
+
+    def _campus_checked(self, request, idp, user):
+        """Multi-campus sign-in through an IdP (MC-15, #39).
+
+        An IdP signs users in only on the hosts of the campuses it is mapped
+        to, and a user with no campus yet gets those campuses, so nobody
+        signed in through SAML is left without one. Existing campus
+        assignments are never overwritten.
+        """
+        campuses = list(idp.campuses.order_by('name'))
+        serving = getattr(request, 'campus', None) or current_campus_or_none()
+        if not campuses or serving not in campuses:
+            logger.warning(
+                'SAML IdP %s is not mapped to campus %s; login refused', idp, serving)
+            return None
+
+        perms = user.campus or {}
+        if not perms.get('process_campus'):
+            perms['process_campus'] = [str(c.id) for c in campuses]
+            perms['default_campus'] = str(serving.id)
+            user.campus = perms
+            user.save(update_fields=['campus'])
+        return user

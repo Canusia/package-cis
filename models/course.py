@@ -101,6 +101,12 @@ class Campus(models.Model):
         'sites.Site', null=True, blank=True, on_delete=models.PROTECT,
         related_name='campus')
 
+    # The SAML IdPs whose users belong to this campus (MC-15, #39). Only read
+    # in multi-campus mode, where an IdP signs users in only on its own
+    # campuses' hosts and gives a user with no campus its campuses.
+    saml_idps = models.ManyToManyField(
+        'sp.IdP', blank=True, related_name='campuses')
+
     def __str__(self):
         return self.name
 
