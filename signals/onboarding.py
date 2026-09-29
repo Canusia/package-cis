@@ -26,7 +26,8 @@ from student_onboarding.step_registry import register, all_steps, get as get_ste
 
 from cis.models.student import Student
 from cis.services.tenant_services import get_tenant_service
-from cis.utils import active_term
+from cis.campus_context import NoCampusContext, is_multi_campus
+from cis.utils import TermNotConfigured, active_term
 
 logger = logging.getLogger(__name__)
 
@@ -83,8 +84,22 @@ def _seed_default_steps(student, term=None):
         )
 
 
+def _event_term(kwargs):
+    """The term an onboarding event belongs to (MC-12).
+
+    An emitter may pass term=. Otherwise, in multi-campus mode, it is the
+    active term of the campus being served -- the signup host, or --campus for
+    an import -- so an applicant is onboarded for the college they applied
+    to. Single-campus mode leaves it to student_onboarding, as before.
+    """
+    term = kwargs.get('term')
+    if term is None and is_multi_campus():
+        term = active_term()
+    return term
+
+
 def on_application_started(student, **kwargs):
-    _seed_default_steps(student)
+    _seed_default_steps(student, term=_event_term(kwargs))
 
 
 def on_email_verified(student, **kwargs):
@@ -96,7 +111,7 @@ def on_email_verified(student, **kwargs):
     same dispatch. Seeding is idempotent (`add_step` is unique on
     (onboarding, key)), so this is safe to run for an already-seeded student.
     """
-    _seed_default_steps(student)
+    _seed_default_steps(student, term=_event_term(kwargs))
 
 
 def _make_completion_handler(step_key):
@@ -162,7 +177,12 @@ def seed_on_student_created(sender, instance, created, **kwargs):
         return
     if not created:
         return
-    term = active_term()
+    try:
+        term = active_term()
+    except (NoCampusContext, TermNotConfigured):
+        # Multi-campus mode with no campus or no term to seed for: leave it
+        # to the login re-seed, as when no term exists at all.
+        return
     if term is None:
         return
     try:
@@ -199,10 +219,35 @@ def reseed_on_term_rollover(sender, request, user, **kwargs):
     student = Student.objects.filter(user=user).first()
     if student is None:
         return
+    if is_multi_campus():
+        # Roll over only the campuses the student is already onboarding with,
+        # each to its own active term -- never the campus of the host they
+        # happened to log in on (MC-12).
+        for term in _rollover_terms(student):
+            _reseed(student, term)
+        return
     term = active_term()
     if term is None:
         return
+    _reseed(student, term)
+
+
+def _reseed(student, term):
     get_or_create_for_current_term(student, term=term)
     _seed_default_steps(student, term=term)
     if student.account_verified:
         complete_step(student, key='verify_email', term=term)
+
+
+def _rollover_terms(student):
+    """Each campus the student has onboarding on -> that campus's active term."""
+    from cis.models.course import Campus
+    campuses = Campus.objects.filter(
+        academic_years__term__studentonboarding__student=student).distinct()
+    terms = []
+    for campus in campuses:
+        try:
+            terms.append(active_term(campus))
+        except TermNotConfigured:
+            logger.warning('No active term for %s; onboarding not rolled over', campus)
+    return terms
