@@ -643,6 +643,7 @@ class CisConfig(AppConfig):
         import cis.signals.notes
         import cis.signals.highschool_admin
         import cis.signals.teacher_applications
+        import cis.signals.campus
         import cis.signals.sections
         import cis.signals.support_docs
 

@@ -6,6 +6,11 @@ list, resolving the campuses to show in a dropdown, the object-level
 permission check, a queryset-scoping helper, and the ``campus_gate`` view
 decorator. Records with no campus (``campus is None``) are visible/editable to
 every ce user. Superusers bypass all scoping.
+
+"No campus means shared" is only right for data that really is shared by
+every campus. On a multi-campus deployment, campus-owned records (Course,
+ClassSection, AcademicYear) must carry a campus -- cis.signals.campus refuses
+to save them without one (MC-09) -- or they would show on every college's host.
 """
 import uuid
 from functools import wraps
