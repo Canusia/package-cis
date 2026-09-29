@@ -117,3 +117,38 @@ class MultiCampusTests(TestCase):
     def test_only_a_superuser_may_import(self):
         admin = SettingAdmin(Setting, AdminSite())
         self.assertFalse(admin.has_import_permission(self._admin_request(_user(self.c1))))
+
+
+class SettingAdminCampusTests(TestCase):
+    """v0.1.1a: the Setting admin shows each row's campus; only a superuser
+    may change it, and a superuser's "shared" choice is kept."""
+
+    def _request(self, user):
+        request = RequestFactory().get('/')
+        request.user = user
+        return request
+
+    def test_campus_is_shown_and_superuser_only(self):
+        admin = SettingAdmin(Setting, AdminSite())
+        self.assertIn('campus_label', admin.list_display)
+        self.assertIn('campus', admin.get_readonly_fields(self._request(_user())))
+        self.assertNotIn('campus', admin.get_readonly_fields(self._request(_superuser())))
+
+    def test_label_names_shared_rows(self):
+        c1 = _campus('C1')
+        admin = SettingAdmin(Setting, AdminSite())
+        self.assertEqual(admin.campus_label(Setting(key=GLOBAL, value={})),
+                         'Shared (all campuses)')
+        self.assertEqual(admin.campus_label(Setting(key=SCOPED, value={}, campus=c1)), c1.name)
+
+    @override_settings(MULTI_CAMPUS=True)
+    def test_superuser_choosing_shared_is_kept(self):
+        from types import SimpleNamespace
+        c1 = _campus('C1')
+        admin = SettingAdmin(Setting, AdminSite())
+        obj = Setting(key=SCOPED, value={}, campus=None)
+        with campus_context(c1):
+            admin.save_model(self._request(_superuser()), obj,
+                             SimpleNamespace(cleaned_data={'campus': None}), False)
+        obj.refresh_from_db()
+        self.assertIsNone(obj.campus)
