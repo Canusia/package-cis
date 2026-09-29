@@ -15,9 +15,14 @@ behaviour is unchanged. Only in multi-campus mode does a missing context raise
 ``NoCampusContext``, because guessing a campus there would leak one college's
 data or settings into the other's.
 
-Multi-campus mode is ``settings.MULTI_CAMPUS`` when that is set, and otherwise
-derived from the data: more than one campus whose code carries
-``CAMPUS_CODE_PREFIX`` (the same "prefixed campuses" campus_gate scopes to).
+Multi-campus mode is on only when ``settings.MULTI_CAMPUS`` is True. It is not
+derived from the data: a second campus carrying ``CAMPUS_CODE_PREFIX`` is
+common (tests build them routinely, and a tenant can add one by hand), and
+deriving the mode from it would switch a running deployment into host-based
+routing -- and 400 every request -- the moment one was saved.
+
+A single-campus deployment's campus is its first prefixed campus by name
+(``deployment_campus()``), the same rule the settings migration uses.
 """
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -37,14 +42,11 @@ def _prefixed_campuses():
 
 
 def is_multi_campus():
-    explicit = getattr(settings, 'MULTI_CAMPUS', None)
-    if explicit is not None:
-        return bool(explicit)
-    return _prefixed_campuses().count() > 1
+    return bool(getattr(settings, 'MULTI_CAMPUS', False))
 
 
-def _default_campus():
-    """The deployment's campus when it runs as a single campus, else None."""
+def deployment_campus():
+    """A single-campus deployment's campus: its first prefixed campus by name."""
     return _prefixed_campuses().order_by('name').first()
 
 
@@ -55,7 +57,7 @@ def current_campus_or_none():
         return campus
     if is_multi_campus():
         return None
-    return _default_campus()
+    return deployment_campus()
 
 
 def current_campus():
@@ -71,7 +73,7 @@ def current_campus():
     if is_multi_campus():
         raise NoCampusContext(
             'No campus is set. Wrap this code in cis.campus_context.campus_context(campus).')
-    return _default_campus()
+    return deployment_campus()
 
 
 @contextmanager

@@ -1,10 +1,10 @@
 """MC-01 (#25): the campus a request, signal, command or cron job is serving.
 
 current_campus() answers from campus_context() when one is active. Without one,
-a single-campus deployment gets its only campus -- so the ~50 existing tenants
+a single-campus deployment gets its campus -- so the ~50 existing tenants
 behave as today -- and a multi-campus deployment raises NoCampusContext rather
-than guessing. Multi-campus mode comes from settings.MULTI_CAMPUS when set,
-otherwise from the data (more than one prefixed campus).
+than guessing. Multi-campus mode is settings.MULTI_CAMPUS only; it is never
+derived from how many prefixed campuses exist.
 """
 import uuid
 
@@ -51,13 +51,23 @@ class SingleCampusTests(TestCase):
         self.assertEqual(current_campus(), self.only)
 
 
+class NotDerivedFromDataTests(TestCase):
+    def test_two_prefixed_campuses_do_not_switch_modes(self):
+        Campus.objects.all().delete()
+        first = _campus('A')
+        _campus('B')
+        self.assertFalse(is_multi_campus())
+        self.assertEqual(current_campus(), first)
+
+
+@override_settings(MULTI_CAMPUS=True)
 class MultiCampusTests(TestCase):
     def setUp(self):
         Campus.objects.all().delete()
         self.c1 = _campus('C1')
         self.c2 = _campus('C2')
 
-    def test_derived_from_the_data(self):
+    def test_enabled_by_the_setting(self):
         self.assertTrue(is_multi_campus())
 
     def test_unset_raises(self):
