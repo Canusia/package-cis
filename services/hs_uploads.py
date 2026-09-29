@@ -5,17 +5,14 @@ notify_hs_upload() after saving. CE uploads from the high school record do
 not, since the person who would be emailed is the one uploading.
 """
 from django.conf import settings
-from django.contrib.sites.models import Site
 from django.template import Context, Template
 
 from mailer import send_mail
 
 
-def uploads_review_url():
-    domain = Site.objects.get_current().domain
-    if not domain.startswith('http'):
-        domain = f'https://{domain}'
-    return f'{domain}/ce/students/support_docs/#hs_uploads'
+def uploads_review_url(campus=None):
+    from cis.campus_context import campus_url, current_campus_or_none
+    return campus_url(campus or current_campus_or_none(), '/ce/students/support_docs/#hs_uploads')
 
 
 def notify_hs_upload(transcript):
@@ -35,6 +32,7 @@ def notify_hs_upload(transcript):
                        or uploader.email,
         'description': transcript.description,
         'file_name': transcript.file_name,
+        # The uploading school's college: the upload happened on its host.
         'link': uploads_review_url(),
     })
     subject = ' '.join(Template(config.get('notify_subject') or '')

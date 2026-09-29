@@ -84,3 +84,28 @@ def campus_context(campus):
         yield campus
     finally:
         _current.reset(token)
+
+
+def campus_url(campus, path=''):
+    """Absolute https URL for ``path`` on ``campus``'s host (MC-10, #34).
+
+    The domain is campus.site.domain. Without one -- a single-campus
+    deployment, where Campus.site is usually null -- it is the current Site,
+    exactly as cis has always built links. In multi-campus mode a campus with
+    no Site raises rather than borrowing another college's host for a link
+    that goes out in an email.
+    """
+    from django.contrib.sites.models import Site
+    from django.core.exceptions import ImproperlyConfigured
+
+    if campus is not None and getattr(campus, 'site_id', None):
+        domain = campus.site.domain
+    elif is_multi_campus():
+        raise ImproperlyConfigured(
+            f'Campus {campus} has no Site; set Campus.site to build its links.')
+    else:
+        domain = Site.objects.get_current().domain
+
+    if not domain.startswith(('http://', 'https://')):
+        domain = f'https://{domain}'
+    return domain.rstrip('/') + path

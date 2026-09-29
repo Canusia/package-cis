@@ -329,12 +329,11 @@ class CustomUser(AbstractUser):
         from django.utils.encoding import force_bytes
         from django.contrib.auth.tokens import default_token_generator as token_generator
 
-        current_site = Site.objects.get_current()
-        domain = current_site.domain
+        # The campus the code is serving (MC-10): on a multi-campus deployment
+        # the link must point at the host the user signs in on.
+        from cis.campus_context import campus_url, current_campus_or_none
+        domain = campus_url(current_campus_or_none())
 
-        if not domain.startswith('https://'):
-            domain = 'https://' + str(domain)
-            
         passwd_reset = {
             'uid': urlsafe_base64_encode(force_bytes(self.pk)),
             'user': self,
