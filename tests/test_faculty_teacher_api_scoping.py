@@ -109,8 +109,8 @@ class FacultyTeacherScopingFixture:
         self.faculty_user = _user('faculty')
         self.other_faculty_user = _user('faculty')
         self.ce_user = _user('ce')
-        self.ce_user.campus = {'process_campus': [str(self.campus.id)]}
         self.ce_user.save()
+        self.ce_user.set_process_campuses([str(self.campus.id)])
 
         self.assigned_course = self._course('Assigned')
         self.open_course = self._course('Open')

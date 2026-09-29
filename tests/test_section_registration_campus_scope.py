@@ -60,8 +60,8 @@ class SectionCampusScopeTests(_NoLoginSignal):
         self.user = User.objects.create_user(
             username=f'ce_{_sfx()}', email=f'ce_{_sfx()}@x.com', password='x')
         self.user.groups.add(Group.objects.get_or_create(name='ce')[0])
-        self.user.campus = {'process_campus': [str(self.campus_a.id)]}
         self.user.save()
+        self.user.set_process_campuses([str(self.campus_a.id)])
         self.client = self.client_class(REMOTE_ADDR='127.0.0.1')
         self.client.force_login(self.user)
 
@@ -134,8 +134,8 @@ class RegistrationCampusScopeTests(_NoLoginSignal):
         self.user = User.objects.create_user(
             username=f'ce_{_sfx()}', email=f'ce_{_sfx()}@x.com', password='x')
         self.user.groups.add(Group.objects.get_or_create(name='ce')[0])
-        self.user.campus = {'process_campus': [str(self.campus_a.id)]}
         self.user.save()
+        self.user.set_process_campuses([str(self.campus_a.id)])
         self.client = self.client_class(REMOTE_ADDR='127.0.0.1')
         self.client.force_login(self.user)
 

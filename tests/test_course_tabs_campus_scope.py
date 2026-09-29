@@ -35,8 +35,8 @@ def _make_ce_user(campus_a):
     user = User.objects.create_user(
         username=f'ce_{_sfx()}', email=f'ce_{_sfx()}@x.com', password='x')
     user.groups.add(Group.objects.get_or_create(name='ce')[0])
-    user.campus = {'process_campus': [str(campus_a.id)]}
     user.save()
+    user.set_process_campuses([str(campus_a.id)])
     return user
 
 

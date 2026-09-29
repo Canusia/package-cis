@@ -170,8 +170,8 @@ class CourseBulkRegistrationEligibilityCampusScopeTests(TestCase):
         cls.admin = CustomUser.objects.create(
             username='ce2@x.com', email='ce2@x.com', is_active=True)
         cls.admin.set_password('pw')
-        cls.admin.campus = {'process_campus': [str(cls.mine.id)]}
         cls.admin.save()
+        cls.admin.set_process_campuses([str(cls.mine.id)])
         cls.admin.groups.add(ce)
 
         cls.cohort = Cohort.objects.create(name='Co', designator='CO')

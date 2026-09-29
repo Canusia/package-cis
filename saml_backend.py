@@ -62,10 +62,8 @@ class MyCE_SAMLAuthenticationBackend(ModelBackend):
                 'SAML IdP %s is not mapped to campus %s; login refused', idp, serving)
             return None
 
-        perms = user.campus or {}
-        if not perms.get('process_campus'):
-            perms['process_campus'] = [str(c.id) for c in campuses]
-            perms['default_campus'] = str(serving.id)
-            user.campus = perms
+        if not user.process_campuses.exists():
+            user.set_process_campuses(campuses)
+            user.campus = dict(user.campus or {}, default_campus=str(serving.id))
             user.save(update_fields=['campus'])
         return user

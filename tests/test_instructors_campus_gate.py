@@ -63,8 +63,8 @@ class InstructorsCampusGateTests(TestCase):
         self.ce = User.objects.create_user(
             username=f'ce_{_sfx()}', email=f'ce_{_sfx()}@x.com', password='x')
         self.ce.groups.add(Group.objects.get_or_create(name='ce')[0])
-        self.ce.campus = {'process_campus': [str(self.campus_a.id)]}
         self.ce.save()
+        self.ce.set_process_campuses([str(self.campus_a.id)])
         self.superuser = User.objects.create_superuser(
             username=f'su_{_sfx()}', email=f'su_{_sfx()}@x.com', password='x')
 
@@ -103,9 +103,9 @@ class InstructorsCampusGateTests(TestCase):
         both = User.objects.create_user(
             username=f'ce2_{_sfx()}', email=f'ce2_{_sfx()}@x.com', password='x')
         both.groups.add(Group.objects.get_or_create(name='ce')[0])
-        both.campus = {'process_campus': [str(self.campus_a.id),
-                                          str(self.campus_b.id)]}
         both.save()
+        both.set_process_campuses([str(self.campus_a.id),
+                                          str(self.campus_b.id)])
         qs = self._teacher_qs(both)
         self.assertIn(self.teacher_a, qs)
         self.assertIn(self.teacher_b, qs)

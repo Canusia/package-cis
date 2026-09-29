@@ -49,8 +49,8 @@ class OnboardingCampusScopeTests(TestCase):
             username=f'ce{uuid.uuid4().hex[:6]}', email=f'{uuid.uuid4().hex[:6]}@x.com',
             password='x')
         user.groups.add(Group.objects.get_or_create(name='ce')[0])
-        user.campus = {'process_campus': [str(campus.id)]}
         user.save()
+        user.set_process_campuses([str(campus.id)])
         return user
 
     def test_scope_includes_the_applicant_for_their_campus_only(self):

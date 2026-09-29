@@ -91,9 +91,9 @@ class MultiCampusTests(_Base):
         self.assertIsNone(self.sign_in('c1.link.edu'))
 
     def test_existing_campuses_are_kept(self):
-        self.user.campus = {'process_campus': [str(self.c1.id), str(self.c2.id)],
-                            'default_campus': str(self.c2.id)}
+        self.user.campus = {'default_campus': str(self.c2.id)}
         self.user.save()
+        self.user.set_process_campuses([str(self.c1.id), str(self.c2.id)])
         self.sign_in('c1.link.edu')
         self.user.refresh_from_db()
         self.assertEqual(self.user.campus['default_campus'], str(self.c2.id))

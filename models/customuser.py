@@ -72,10 +72,9 @@ class CustomUser(AbstractUser):
     created_at = models.DateTimeField(auto_now_add=True, null=True)
 
     campus = JSONField(blank=True, null=True)
-    # The campuses in campus['process_campus'], as rows (MC-16, #40): kept in
-    # step with the JSON on save (cis.signals.staff_campus) so lookups by
-    # campus use a real join and deleting a campus leaves no stale id. The
-    # JSON stays the read/write interface of campus_gate and the staff forms.
+    # The campuses a CE staff member may work on (MC-16 #40, #59): the only
+    # source. campus['process_campus'] is a read-only mirror kept for one
+    # release (cis.signals.staff_campus); change this, not the JSON.
     process_campuses = models.ManyToManyField(
         'cis.Campus', blank=True, related_name='staff_users')
     education_background = JSONField(blank=True, null=True)
@@ -215,13 +214,13 @@ class CustomUser(AbstractUser):
         if data.get('password'):
             user.set_password(data.get('password'))
 
-        user.campus['process_campus'] = form.cleaned_data['process_campus']
         user.campus['default_campus'] = form.cleaned_data['default_campus']
 
         user.campus['manage_settings'] = form.cleaned_data['manage_settings']
         user.campus['manage_staff_accounts'] = form.cleaned_data['manage_staff_accounts']
 
         user.save()
+        user.set_process_campuses(form.cleaned_data['process_campus'])
         user.groups.add(staff_group)
         return user
 
@@ -243,12 +242,18 @@ class CustomUser(AbstractUser):
         if data.get('password'):
             self.set_password(data.get('password'))
 
-        self.campus['process_campus'] = form.cleaned_data['process_campus']
         self.campus['default_campus'] = form.cleaned_data['default_campus']
         self.campus['manage_settings'] = form.cleaned_data['manage_settings']
         self.campus['manage_staff_accounts'] = form.cleaned_data['manage_staff_accounts']
 
         self.save()
+        self.set_process_campuses(form.cleaned_data['process_campus'])
+
+    def set_process_campuses(self, campuses):
+        """Replace the campuses this staff member may work on (Campus
+        objects or ids). Use this, not campus['process_campus'] (#59)."""
+        from cis.signals.staff_campus import set_process_campuses
+        set_process_campuses(self, campuses)
 
     @property
     def can_edit_users(self):

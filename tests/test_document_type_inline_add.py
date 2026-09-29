@@ -40,8 +40,8 @@ class InlineNewTypeTests(TestCase):
         self.ce = CustomUser.objects.create_user(
             username=f'ce{_sfx()}', email=f'ce{_sfx()}@x.com', password='x')
         self.ce.groups.add(Group.objects.get_or_create(name='ce')[0])
-        self.ce.campus = {'process_campus': [str(self.campus_a.id)]}
         self.ce.save()
+        self.ce.set_process_campuses([str(self.campus_a.id)])
 
     def _form(self, **overrides):
         data = {

@@ -340,7 +340,7 @@ def detail(request, record_id):
             'email':record.email,
             'username':record.username,
             'is_active':'Yes' if record.is_active else 'No',
-            'process_campus': campus.get('process_campus', ''),
+            'process_campus': [str(pk) for pk in record.process_campuses.values_list('pk', flat=True)],
             'manage_settings': campus.get('manage_settings'),
             'manage_staff_accounts': campus.get('manage_staff_accounts'),
             'default_campus': campus.get('default_campus', ''),

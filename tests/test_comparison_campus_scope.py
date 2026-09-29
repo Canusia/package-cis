@@ -49,8 +49,8 @@ class CompareCampusScopeTests(TestCase):
         self.ce = User.objects.create_user(
             username=f'ce_{_sfx()}', email=f'ce_{_sfx()}@x.com', password='x')
         self.ce.groups.add(Group.objects.get_or_create(name='ce')[0])
-        self.ce.campus = {'process_campus': [str(self.campus_a.id)]}
         self.ce.save()
+        self.ce.set_process_campuses([str(self.campus_a.id)])
 
     def _ctx(self, user):
         req = RequestFactory().get('/')

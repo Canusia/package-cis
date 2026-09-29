@@ -94,8 +94,8 @@ class CampusMiddleware:
     Campus linked by Campus.site. request.site and request.campus are set and
     the request runs inside campus_context(). An unknown host is a 400 -- a
     default campus would show one college's data on the other's host. A CE
-    staff member whose process_campus list lacks the host's campus is refused
-    with a 403; superusers pass. Other roles carry no process_campus and are
+    staff member whose process_campuses lacks the host's campus is refused
+    with a 403; superusers pass. Other roles have no process_campuses and are
     scoped by their records instead, so they are not checked here.
 
     Single-campus mode: request.campus is the deployment's campus and nothing

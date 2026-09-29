@@ -51,8 +51,8 @@ class _Base(TestCase):
             username=f'ce{uuid.uuid4().hex[:6]}', email=f'{uuid.uuid4().hex[:6]}@x.com',
             password='x')
         user.groups.add(Group.objects.get_or_create(name='ce')[0])
-        user.campus = {'process_campus': [str(c.id) for c in campuses]}
         user.save()
+        user.set_process_campuses([str(c.id) for c in campuses])
         return user
 
 

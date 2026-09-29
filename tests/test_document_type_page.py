@@ -65,8 +65,8 @@ class _CEUserMixin:
             username=f'ce_{_sfx()}', email=f'ce_{_sfx()}@example.com',
             password='x', is_staff=True)
         user.groups.add(Group.objects.get_or_create(name='ce')[0])
-        user.campus = {'process_campus': [str(c.id) for c in campuses]}
         user.save()
+        user.set_process_campuses([str(c.id) for c in campuses])
         return user
 
 

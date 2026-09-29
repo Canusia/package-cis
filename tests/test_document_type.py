@@ -726,8 +726,8 @@ class AddCourseDocumentRequirementFormCampusScopedDropdownTests(TestCase):
         user = User.objects.create_user(
             username=f'ce_{_sfx()}', email=f'ce_{_sfx()}@x.com', password='x')
         user.groups.add(Group.objects.get_or_create(name='ce')[0])
-        user.campus = {'process_campus': [str(campus.id)]}
         user.save()
+        user.set_process_campuses([str(campus.id)])
         return user
 
     def test_dropdown_excludes_types_outside_the_users_campuses(self):

@@ -72,9 +72,9 @@ def _make_ce_user(campus=None):
     user = User.objects.create_user(
         username=f'ce_{_sfx()}', email=f'ce_{_sfx()}@x.com', password='x')
     user.groups.add(Group.objects.get_or_create(name='ce')[0])
-    if campus is not None:
-        user.campus = {'process_campus': [str(campus.id)]}
     user.save()
+    if campus is not None:
+        user.set_process_campuses([campus])
     return user
 
 
@@ -509,9 +509,8 @@ class AddCourseDocumentRequirementViewSkipReasonTests(_NoLoginHistoryMixin, Test
         # campus_a -- course_b is skipped by the form's own campus check,
         # a different reason than "outside your campus".
         user = _make_ce_user(self.campus_a)
-        user.campus = {
-            'process_campus': [str(self.campus_a.id), str(self.campus_b.id)]}
         user.save()
+        user.set_process_campuses([str(self.campus_a.id), str(self.campus_b.id)])
 
         resp = self._post([self.course_a, self.course_b], self.type_a.id, user)
 

@@ -1,7 +1,7 @@
 """CE-staff campus gate.
 
-CE ('ce') staff are scoped to the campuses listed in
-``CustomUser.campus['process_campus']``. This module centralises reading that
+CE ('ce') staff are scoped to their ``CustomUser.process_campuses``
+(package-cis #59; ``campus['process_campus']`` is a read-only mirror). This module centralises reading that
 list, resolving the campuses to show in a dropdown, the object-level
 permission check, a queryset-scoping helper, and the ``campus_gate`` view
 decorator. Records with no campus (``campus is None``) are visible/editable to
@@ -32,7 +32,7 @@ def get_process_campus_ids(user):
     """Campus-id strings this user may process.
 
     Superuser -> all prefixed campus ids. ce user -> their
-    ``process_campus`` list (strings). Anyone else / no data -> [].
+    ``process_campuses`` (strings). Anyone else / no data -> [].
     """
     if getattr(user, 'is_superuser', False):
         return [str(pk) for pk in _prefixed_campuses().values_list('id', flat=True)]
@@ -40,10 +40,8 @@ def get_process_campus_ids(user):
     if not user_has_cis_role(user):
         return []
 
-    campus = getattr(user, 'campus', None)
-    if campus:
-        return [str(c) for c in (campus.get('process_campus') or [])]
-    return []
+    from cis.signals.staff_campus import process_campus_ids
+    return process_campus_ids(user)
 
 
 def get_accessible_campuses(user):

@@ -36,11 +36,9 @@ def _ce_user(process_campus=None, default_campus=None):
         username=f'ce_{sfx}', email=f'ce_{sfx}@x.com', password='x',
     )
     user.groups.add(Group.objects.get_or_create(name='ce')[0])
-    user.campus = {
-        'process_campus': process_campus or [],
-        'default_campus': default_campus or '',
-    }
+    user.campus = {'default_campus': default_campus or ''}
     user.save()
+    user.set_process_campuses(process_campus or [])
     return user
 
 

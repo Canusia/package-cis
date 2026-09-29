@@ -212,8 +212,8 @@ class DanglingStudentCampusScopeTests(TestCase):
         self.ce_user = CustomUser.objects.create_user(
             username='sdangle_ce', email='sdangle_ce@example.com', password='x')
         self.ce_user.groups.add(ce_group)
-        self.ce_user.campus = {'process_campus': ['00000000-0000-0000-0000-000000000000']}
         self.ce_user.save()
+        self.ce_user.set_process_campuses(['00000000-0000-0000-0000-000000000000'])
         self.client.force_login(self.ce_user)
 
         self.dangling = CustomUser.objects.create_user(

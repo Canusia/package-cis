@@ -36,9 +36,9 @@ def _user(*campuses, manage_settings='Yes', group='ce'):
         username=f'u{uuid.uuid4().hex[:6]}', email=f'{uuid.uuid4().hex[:6]}@x.com',
         password='x')
     user.groups.add(Group.objects.get_or_create(name=group)[0])
-    user.campus = {'process_campus': [str(c.id) for c in campuses],
-                   'manage_settings': manage_settings}
+    user.campus = {'manage_settings': manage_settings}
     user.save()
+    user.set_process_campuses([str(c.id) for c in campuses])
     return user
 
 

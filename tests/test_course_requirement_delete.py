@@ -38,8 +38,8 @@ class _Base(TestCase):
         self.user = User.objects.create_user(
             username=f'ce{sfx}', email=f'ce{sfx}@example.com', password='x')
         self.user.groups.add(Group.objects.get(name='ce'))
-        self.user.campus = {'process_campus': [str(self.campus_a.id)]}
         self.user.save()
+        self.user.set_process_campuses([str(self.campus_a.id)])
 
     def _post(self, ids):
         request = self.factory.post('/ce/courses/bulk/', {'ids[]': ids})
