@@ -234,19 +234,35 @@ class College(models.Model):
     College model
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    name = models.CharField(max_length=500, unique=True)
+    name = models.CharField(max_length=500)
     campus = models.ForeignKey('cis.Campus', blank=True, on_delete=models.PROTECT, null=True)
 
     temp_id = models.SmallIntegerField(blank=True, null=True)
     def __str__(self):
         return self.name
 
+    class Meta:
+        # MC-08 (#32): unique per campus, so two colleges on one deployment
+        # can share a name. Two partial constraints rather than
+        # unique_together: Postgres treats NULLs as distinct, so rows with no
+        # campus would otherwise stop being unique at all.
+        constraints = [
+            models.UniqueConstraint(
+                fields=['name'], condition=Q(campus__isnull=True),
+                name='college_unique_name_unassigned'),
+            models.UniqueConstraint(
+                fields=['campus', 'name'], condition=Q(campus__isnull=False),
+                name='college_unique_name_per_campus'),
+        ]
+
 class Department(models.Model):
     """
     Department model
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    name = models.CharField(max_length=500, unique=True)
+    # Unique within its college only (MC-08): colleges on different campuses
+    # can each have an "English" department.
+    name = models.CharField(max_length=500)
     college = models.ForeignKey('cis.College', on_delete=models.PROTECT)
     
     temp_id = models.SmallIntegerField(blank=True, null=True)
@@ -264,6 +280,10 @@ class Cohort(MyCEBaseModel):
     name = models.CharField(max_length=500)
     designator = models.CharField(max_length=10)
     department = models.ForeignKey('cis.Department', on_delete=models.PROTECT, null=True, blank=True)
+    # MC-08 (#32). Null means shared by every campus, as elsewhere in cis.
+    campus = models.ForeignKey(
+        'cis.Campus', null=True, blank=True, on_delete=models.PROTECT,
+        related_name='cohorts')
 
     STATUS_OPTIONS = (
         ('', '---'),
@@ -277,7 +297,18 @@ class Cohort(MyCEBaseModel):
         return self.name
 
     class Meta:
-        unique_together = ['name', 'designator']
+        # MC-08 (#32): unique per campus, so two colleges on one deployment
+        # can share a name. Two partial constraints rather than
+        # unique_together: Postgres treats NULLs as distinct, so rows with no
+        # campus would otherwise stop being unique at all.
+        constraints = [
+            models.UniqueConstraint(
+                fields=['name', 'designator'], condition=Q(campus__isnull=True),
+                name='cohort_unique_name_designator_unassigned'),
+            models.UniqueConstraint(
+                fields=['campus', 'name', 'designator'], condition=Q(campus__isnull=False),
+                name='cohort_unique_name_designator_per_campus'),
+        ]
 
     @staticmethod
     def get_instructor_certificates(cohort_ids, return_type="queryset"):

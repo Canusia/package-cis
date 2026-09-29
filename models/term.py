@@ -10,7 +10,7 @@ class AcademicYear(models.Model):
     Academic Year model
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    name = models.CharField(max_length=50, unique=True)
+    name = models.CharField(max_length=50)
     code = models.CharField(max_length=10, blank=True, null=True)
     cost_per_credit = models.FloatField(default=0.0)
 
@@ -40,11 +40,13 @@ class AcademicYear(models.Model):
 
     @classmethod
     def get_or_add(cls, name, **kwargs):
-        try:
-            record = AcademicYear.objects.get(
-                name=name
-            )
-        except AcademicYear.DoesNotExist:
+        # Names are unique per campus (MC-08), so match on the campus too when
+        # the caller gives one.
+        lookup = {'name': name}
+        if 'campus' in kwargs:
+            lookup['campus'] = kwargs['campus']
+        record = AcademicYear.objects.filter(**lookup).first()
+        if record is None:
             record = AcademicYear(name=name)
         
         try:
@@ -66,7 +68,18 @@ class AcademicYear(models.Model):
         return importer.process_csv(dictReader)
 
     class Meta:
-        unique_together = ['name']
+        # MC-08 (#32): unique per campus, so two colleges on one deployment
+        # can share a name. Two partial constraints rather than
+        # unique_together: Postgres treats NULLs as distinct, so rows with no
+        # campus would otherwise stop being unique at all.
+        constraints = [
+            models.UniqueConstraint(
+                fields=['name'], condition=models.Q(campus__isnull=True),
+                name='academicyear_unique_name_unassigned'),
+            models.UniqueConstraint(
+                fields=['campus', 'name'], condition=models.Q(campus__isnull=False),
+                name='academicyear_unique_name_per_campus'),
+        ]
 
 class Term(models.Model):
     """
