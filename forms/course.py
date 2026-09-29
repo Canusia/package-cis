@@ -1072,7 +1072,7 @@ class AddCourseDocumentRequirementForm(forms.Form):
     )
 
     document = forms.ChoiceField(
-        required=True,
+        required=False,
         label='Document',
         choices=[]
     )
@@ -1117,6 +1117,20 @@ class AddCourseDocumentRequirementForm(forms.Form):
         help_text=_RECURRENCE_HELP,
     )
 
+    # Add a type inline instead of leaving the modal for the Document Types
+    # page (#45). All three or none; validated by DocumentTypeForm.
+    new_type_label = forms.CharField(
+        required=False, max_length=255,
+        label='Or add a new document type: Label')
+    new_type_code = forms.SlugField(
+        required=False, max_length=100,
+        label='New type: Code',
+        help_text='A short, stable key (letters, numbers, dashes and underscores).')
+    new_type_campus = forms.ModelChoiceField(
+        required=False, queryset=Campus.objects.none(),
+        label='New type: Campus',
+        help_text='The requirement is added only to selected courses on this campus.')
+
     action = forms.CharField(
         widget=forms.HiddenInput,
         initial='add_course_doc_requirement'
@@ -1124,8 +1138,16 @@ class AddCourseDocumentRequirementForm(forms.Form):
 
     def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
+        self.user = user
+        self._new_type_form = None
         # Resolve the tenant vocabularies per-request rather than at import time.
-        self.fields['document'].choices = course_document_choices()
+        self.fields['document'].choices = [('', '---------')] + list(
+            course_document_choices())
+        campuses = Campus.objects.all()
+        if user is not None:
+            from cis.campus_gate import get_accessible_campuses
+            campuses = get_accessible_campuses(user)
+        self.fields['new_type_campus'].queryset = campuses
 
         # Scope the offered types to the campuses this user may process --
         # otherwise a ce admin can pick another campus's identically-labelled
@@ -1162,10 +1184,33 @@ class AddCourseDocumentRequirementForm(forms.Form):
             'Leave empty to apply this requirement to all grade levels.'
         )
 
+    NEW_TYPE_FIELDS = ('new_type_label', 'new_type_code', 'new_type_campus')
+
     def clean(self):
         cleaned_data = super().clean()
         document = cleaned_data.get('document')
         document_type = cleaned_data.get('document_type')
+
+        # Raw input, not cleaned_data: a campus the user may not pick fails
+        # the queryset and would otherwise look like "left blank".
+        new_type_given = any(
+            str(self.data.get(name) or '').strip() for name in self.NEW_TYPE_FIELDS)
+        if new_type_given:
+            if document_type is not None:
+                self.add_error(
+                    'document_type',
+                    'Choose an existing document type or add a new one, not both.')
+                return cleaned_data
+            self._clean_new_type(cleaned_data)
+            return cleaned_data
+
+        if not document and document_type is None:
+            self.add_error(
+                'document',
+                'Choose a document, choose a document type, or add a new type.')
+            return cleaned_data
+        if document_type is not None and not document:
+            cleaned_data['document'] = document = document_type.code
 
         # Same hazard as CourseDocumentRequirementForm.clean(): `document` and
         # `document_type` are independent inputs here too, and nothing else
@@ -1178,11 +1223,51 @@ class AddCourseDocumentRequirementForm(forms.Form):
                 'Document Type blank.')
         return cleaned_data
 
+    def _clean_new_type(self, cleaned_data):
+        """Validate the inline type with DocumentTypeForm's rules."""
+        for name in self.NEW_TYPE_FIELDS:
+            if not str(self.data.get(name) or '').strip() and name not in self.errors:
+                self.add_error(name, 'Required when adding a new document type.')
+        if any(name in self.errors for name in self.NEW_TYPE_FIELDS):
+            return
+
+        type_form = DocumentTypeForm({
+            'label': cleaned_data['new_type_label'],
+            'code': cleaned_data['new_type_code'],
+            'campus': cleaned_data['new_type_campus'].pk,
+            'status': 'Active',
+        }, user=self.user)
+        if not type_form.is_valid():
+            for field, name in (('label', 'new_type_label'), ('code', 'new_type_code'),
+                                ('campus', 'new_type_campus')):
+                for error in type_form.errors.get(field, []):
+                    self.add_error(name, error)
+            for error in type_form.non_field_errors():
+                self.add_error(None, error)
+            return
+
+        document = cleaned_data.get('document')
+        if document and document != cleaned_data['new_type_code']:
+            self.add_error(
+                'document',
+                'Leave Document blank when adding a new document type.')
+            return
+        cleaned_data['document'] = cleaned_data['new_type_code']
+        self._new_type_form = type_form
+
     def save(self, request=None):
+        # One transaction: a new type is never left behind by a failed add.
+        from django.db import transaction
+        with transaction.atomic():
+            return self._save(request)
+
+    def _save(self, request=None):
         data = self.cleaned_data
         records = []
         self.skipped_courses = []
         document_type = data.get('document_type')
+        if self._new_type_form is not None:
+            document_type = self._new_type_form.save()
         for course in data.get('courses'):
             if document_type is not None and course.campus_id != document_type.campus_id:
                 self.skipped_courses.append(course)

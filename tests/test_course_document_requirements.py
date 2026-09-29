@@ -439,8 +439,11 @@ class AddCourseDocumentRequirementFormTests(TestCase):
 
         form = AddCourseDocumentRequirementForm()
 
-        self.assertEqual(list(form.fields['document'].choices),
-                         course_document_choices())
+        # A blank first option lets a type or a new type stand in for the
+        # legacy code (#45); the rest is the tenant vocabulary, in order.
+        choices = list(form.fields['document'].choices)
+        self.assertEqual(choices[0][0], '')
+        self.assertEqual(choices[1:], list(course_document_choices()))
         self.assertEqual(list(form.fields['grade_levels'].choices),
                          student_grade_choices())
 
