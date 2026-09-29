@@ -337,3 +337,46 @@ class TeacherApplicationEmailSettingTests(TestCase):
                 submitter={'name': 'Ray Referee',
                            'email': 'ray@example.com'})
         send.assert_called_once()
+
+
+from types import SimpleNamespace
+from unittest import mock
+
+from cis.models.note import ClassSectionNote, TeacherApplicationNote
+from cis.settings.notes_email import notes_email
+from cis.signals.notes import created_new_class_section_note
+
+
+class InstructorNoteEmailTemplateTests(TestCase):
+    """ewu#74 follow-up: with notifications on but a template missing from the
+    setting, the to_instructor note receiver skips the email instead of raising
+    KeyError out of the note's save()."""
+
+    def _instance(self):
+        user = SimpleNamespace(email='teacher@example.com', first_name='T', last_name='Eacher')
+        return SimpleNamespace(
+            meta={'type': 'to_instructor'}, note='Hello',
+            class_section=SimpleNamespace(teacher=SimpleNamespace(user=user)),
+            teacher_application=SimpleNamespace(user=user),
+            teacher_reply_url='https://example.com/reply')
+
+    def _settings(self, **value):
+        Setting.objects.update_or_create(
+            key=notes_email.key, defaults={'value': {'is_active': 'Yes', **value}})
+
+    @mock.patch('cis.signals.notes.send_html_mail')
+    def test_missing_templates_skip_the_email(self, send):
+        self._settings()
+        for sender in (ClassSectionNote, TeacherApplicationNote):
+            with self.subTest(sender=sender.__name__):
+                created_new_class_section_note(
+                    sender=sender, instance=self._instance(), created=True)
+        send.assert_not_called()
+
+    @mock.patch('cis.signals.notes.send_html_mail')
+    def test_configured_template_still_sends(self, send):
+        self._settings(class_section_note_to_instructor_email='Note: {{note}}',
+                       class_section_note_to_instructor_subject='New note')
+        created_new_class_section_note(
+            sender=ClassSectionNote, instance=self._instance(), created=True)
+        send.assert_called_once()

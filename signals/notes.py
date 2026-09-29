@@ -19,6 +19,10 @@ from cis.settings.notes_email import notes_email
 
 from alerts.models import Alert
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 @receiver(post_save, sender=StudentNote)
 def student_note_added(sender, instance, created, **kwargs):
     # meta is a JSONField(default=dict), but a caller can still hand it None,
@@ -99,6 +103,17 @@ def created_new_class_section_note(sender, instance, created, **kwargs):
         email_settings = notes_email.from_db()
 
         if email_settings.get('is_active', 'No') == 'No':
+            return
+
+        # A setting saved before a template existed, or partly filled in, has
+        # no value here; skip the email rather than raise KeyError out of the
+        # note's save() (ewu#74 follow-up).
+        template_key = (
+            'class_section_note_to_instructor_email' if sender == ClassSectionNote
+            else 'teacherapplication_note_to_instructor_email')
+        if not email_settings.get(template_key):
+            logger.warning(
+                'notes_email.%s is not configured; skipping the note email', template_key)
             return
 
         if sender == ClassSectionNote:
