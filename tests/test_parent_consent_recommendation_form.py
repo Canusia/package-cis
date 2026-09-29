@@ -64,11 +64,9 @@ class StudentRecommendationFormConstructionTests(TestCase):
             },
         )
         self.assertIsNotNone(form)
-        # __init__ seeds the grade-level field from student.get_grade_level().
-        self.assertEqual(
-            form.fields['student_grade_level'].initial,
-            self.student.get_grade_level(),
-        )
+        # Whether the form seeds a grade-level field is the tenant form's
+        # choice (sccc deliberately doesn't), so that check lives in ewu's
+        # myce_tenant_configs/tests/test_recommendation_form_service.py (ewu#42).
 
 
 from django.test import Client

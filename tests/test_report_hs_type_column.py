@@ -4,7 +4,7 @@ get_field() swallows a bad attribute path and returns '' rather than raising,
 so a typo in one of these dotted keys would ship a permanently blank column.
 These tests resolve each report's exact key against real objects.
 """
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from cis.models.course import Campus, Cohort, Course
 from cis.models.highschool import HighSchool
@@ -51,10 +51,13 @@ class ReportFieldMapTests(TestCase):
                 self.assertIn(f"'{path}': '{SCHOOL_TYPE_LABEL}'", source)
 
 
+# The labels come from the tenant's School Type vocabulary; pin the fake one so
+# these hold on every tenant (ewu#42).
+@override_settings(TENANT_SERVICES_APP='cis.tests.fake_tenant')
 class ReportFieldResolutionTests(TestCase):
     def setUp(self):
         self.hs = HighSchool.objects.create(
-            name='Zoned HS', code='ZON01', hs_type=['zone_a', 'zone_b'])
+            name='Typed HS', code='TYP01', hs_type=['type_a', 'type_b'])
 
     def test_highschool_rooted_path_resolves(self):
         """teacher_password_reset / highschool_admin_* / started_future_classes
@@ -63,7 +66,7 @@ class ReportFieldResolutionTests(TestCase):
             highschool = self.hs
 
         self.assertEqual(get_field(Row(), 'highschool.hs_type_display'),
-                         'Zone A, Zone B')
+                         'Type A, Type B')
 
     def test_class_section_rooted_path_resolves(self):
         """class_roster reaches it as `class_section.highschool.…`."""
@@ -82,7 +85,7 @@ class ReportFieldResolutionTests(TestCase):
 
         self.assertEqual(
             get_field(Row(), 'class_section.highschool.hs_type_display'),
-            'Zone A, Zone B')
+            'Type A, Type B')
 
     def test_teacher_course_rooted_path_resolves(self):
         """future_classes walks FutureSection -> teacher_course ->
@@ -96,7 +99,7 @@ class ReportFieldResolutionTests(TestCase):
             get_field(
                 Row(),
                 'teacher_course.teacher_highschool.highschool.hs_type_display'),
-            'Zone A, Zone B')
+            'Type A, Type B')
 
     def test_teacher_highschool_rooted_path_resolves(self):
         """pending_future_classes_courses starts one level lower, at the
@@ -106,7 +109,7 @@ class ReportFieldResolutionTests(TestCase):
 
         self.assertEqual(
             get_field(Row(), 'teacher_highschool.highschool.hs_type_display'),
-            'Zone A, Zone B')
+            'Type A, Type B')
 
     def test_untyped_school_yields_blank_not_an_error(self):
         plain = HighSchool.objects.create(name='Plain HS', code='PLN01')

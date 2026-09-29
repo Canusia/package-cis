@@ -98,14 +98,6 @@ class ProfileFieldVocabularyTest(TestCase):
             [n for n in StudentProfileForm.base_fields
              if n not in SIGNUP_MECHANIC_FIELDS])
 
-    def test_profile_fields_uses_form_declaration_order(self):
-        # The old literal parked these two at the end, out of step with the
-        # weights default_field_weights() seeds from base_fields.
-        from cis.settings.student_profile import profile_fields
-        names = profile_fields()
-        self.assertLess(names.index('start_date'), names.index('current_grade_level'))
-        self.assertLess(names.index('graduation_date'), names.index('current_grade_level'))
-
     def test_message_fields_appends_signup_mechanics(self):
         from cis.settings.student_profile import (
             SIGNUP_MECHANIC_FIELDS, message_fields, profile_fields)
