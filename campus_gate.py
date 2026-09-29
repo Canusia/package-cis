@@ -123,13 +123,31 @@ def processable_ids(model, ids, user, campus_path='campus'):
 # universally visible/editable/actionable — the student analogue of a
 # null-campus record.
 _STUDENT_CAMPUS_PATH = 'studentregistration__class_section__course__campus'
+# Second path (MC-13, #37): a verified applicant who has not picked a class
+# yet has no registration, but is onboarding for a term, and that term's
+# academic year carries the campus they applied to.
+_STUDENT_ONBOARDING_CAMPUS_PATH = 'onboardings__term__academic_year__campus'
+
+
+def _has_onboarding_relation():
+    from cis.models.student import Student
+    return any(f.name == 'onboardings' for f in Student._meta.get_fields())
+
+
+def _student_campus_q(campus_ids):
+    """Students tied to one of ``campus_ids`` by a registration or an onboarding."""
+    q = Q(**{f'{_STUDENT_CAMPUS_PATH}__id__in': campus_ids})
+    if _has_onboarding_relation():
+        q |= Q(**{f'{_STUDENT_ONBOARDING_CAMPUS_PATH}__id__in': campus_ids})
+    return q
 
 
 def scope_students_by_campus(students, user, selected_campus=None):
     """Narrow a Student queryset for a ce user.
 
-    ce user sees students who applied at one of their processable campuses OR
-    whose account is not verified. ``selected_campus`` (a campus-id string from
+    ce user sees students who applied at one of their processable campuses --
+    by a class registration there, or by onboarding for one of its terms
+    (MC-13) -- OR whose account is not verified. ``selected_campus`` (a campus-id string from
     the dropdown) narrows the applied-at set to that one campus, but only if the
     user may process it — it can never widen the scope. Superusers and non-ce
     roles are returned unchanged (their upstream role scoping governs).
@@ -144,7 +162,7 @@ def scope_students_by_campus(students, user, selected_campus=None):
     else:
         campus_ids = ids
     return students.filter(
-        Q(**{f'{_STUDENT_CAMPUS_PATH}__id__in': campus_ids})
+        _student_campus_q(campus_ids)
         | Q(account_verified=False)
     ).distinct()
 
@@ -190,9 +208,13 @@ def can_access_student(user, student):
     if not student.account_verified:
         return True
     ids = get_process_campus_ids(user)
-    return student.studentregistration_set.filter(
-        class_section__course__campus__id__in=ids
-    ).exists()
+    if student.studentregistration_set.filter(
+            class_section__course__campus__id__in=ids).exists():
+        return True
+    # An applicant with no class picked yet is tied to a campus through their
+    # onboarding term (MC-13).
+    return _has_onboarding_relation() and student.onboardings.filter(
+        term__academic_year__campus__id__in=ids).exists()
 
 
 def processable_student_ids(ids, user):
