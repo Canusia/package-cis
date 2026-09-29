@@ -72,6 +72,12 @@ class CustomUser(AbstractUser):
     created_at = models.DateTimeField(auto_now_add=True, null=True)
 
     campus = JSONField(blank=True, null=True)
+    # The campuses in campus['process_campus'], as rows (MC-16, #40): kept in
+    # step with the JSON on save (cis.signals.staff_campus) so lookups by
+    # campus use a real join and deleting a campus leaves no stale id. The
+    # JSON stays the read/write interface of campus_gate and the staff forms.
+    process_campuses = models.ManyToManyField(
+        'cis.Campus', blank=True, related_name='staff_users')
     education_background = JSONField(blank=True, null=True)
     previous_names = models.CharField(max_length=500, blank=True, null=True)
     
@@ -176,7 +182,7 @@ class CustomUser(AbstractUser):
     def active_staff_at_campus(cls, campus_id):
         return cls.objects.filter(
             is_active=True,
-            campus__process_campus__contains=str(campus_id)
+            process_campuses=campus_id
         )
 
     def get_courses_overseeing(self):
