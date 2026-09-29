@@ -5,11 +5,7 @@ from django.shortcuts import render
 
 from cis.menu import draw_menu, cis_menu
 from cis.services.settings_overview import build_overview
-from cis.utils import user_has_cis_role
-
-
-def _can_manage_settings(user):
-    return user_has_cis_role(user) or getattr(user, 'is_superuser', False)
+from cis.campus_gate import can_manage_settings as _can_manage_settings
 
 
 @login_required

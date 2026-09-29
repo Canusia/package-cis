@@ -65,6 +65,54 @@ def can_process_campus(user, campus):
     return str(campus.id) in get_process_campus_ids(user)
 
 
+def can_manage_settings(user):
+    """May ``user`` open the settings pages? (MC-06, #30)
+
+    Single-campus: any CE staff member or superuser, exactly as before.
+    Multi-campus: CE staff also need their ``manage_settings`` flag and must
+    be on the campus being served. CampusMiddleware refuses staff on another
+    campus's host already; this is the same check for callers that run
+    outside it.
+    """
+    from cis.campus_context import current_campus_or_none, is_multi_campus
+    if getattr(user, 'is_superuser', False):
+        return True
+    if not user_has_cis_role(user):
+        return False
+    if not is_multi_campus():
+        return True
+    if not getattr(user, 'can_edit_settings', False):
+        return False
+    campus = current_campus_or_none()
+    return campus is not None and can_process_campus(user, campus)
+
+
+def can_edit_setting_key(user, key):
+    """May ``user`` change the Setting stored under ``key``?
+
+    A campus-scoped key belongs to the campus being served, so its settings
+    admins may change it. In multi-campus mode any other key is shared by
+    every campus, so only a superuser may change it -- one campus's admins
+    must not be able to change another's behaviour.
+    """
+    from cis.campus_context import is_multi_campus
+    from cis.models.settings import is_campus_scoped
+    if not can_manage_settings(user):
+        return False
+    if not is_multi_campus() or is_campus_scoped(key):
+        return True
+    return getattr(user, 'is_superuser', False)
+
+
+def can_edit_setting_descriptions(user):
+    """Titles and descriptions of settings are shared by every campus, so in
+    multi-campus mode only a superuser may edit them."""
+    from cis.campus_context import is_multi_campus
+    if not can_manage_settings(user):
+        return False
+    return not is_multi_campus() or getattr(user, 'is_superuser', False)
+
+
 def scope_queryset_by_campus(records, user, campus_path='campus',
                              selected_campus=None):
     """Narrow ``records`` to the user's processable campuses OR null campus.
