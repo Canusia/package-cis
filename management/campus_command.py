@@ -3,9 +3,9 @@
 Not a command module: it lives beside commands/ so Django never tries to run it.
 
 ``CampusCommand`` is a BaseCommand that takes ``--campus <code>`` and runs
-``handle()`` inside ``campus_context()``. The option is required in
-multi-campus mode and optional otherwise, where the deployment's campus is
-used, so existing single-campus invocations keep working unchanged.
+``handle()`` inside ``campus_context()``. Without the option it uses the
+campus already active (the cron fan-out sets one), then, in single-campus
+mode, the deployment's campus; multi-campus mode with neither is an error.
 
 ``run_for_each_campus(name, work)`` is for cron: it calls ``work()`` once per
 campus, each inside its own campus context, its own try/except (one campus
@@ -19,7 +19,8 @@ import logging
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connection
 
-from cis.campus_context import campus_context, deployment_campus, is_multi_campus
+from cis.campus_context import (
+    active_campus, campus_context, deployment_campus, is_multi_campus)
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,9 @@ class CampusCommand(BaseCommand):
         code = options.get('campus')
         if code:
             campus = _campus_by_code(code)
+        elif active_campus() is not None:
+            # Already running for a campus, e.g. inside run_for_each_campus.
+            campus = active_campus()
         elif is_multi_campus():
             raise CommandError('--campus is required when MULTI_CAMPUS is on.')
         else:

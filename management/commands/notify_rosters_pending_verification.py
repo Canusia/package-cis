@@ -1,4 +1,6 @@
 from django.core.management.base import BaseCommand
+
+from cis.management.campus_command import CampusCommand
 import os, csv, logging, json
 
 from django.utils.safestring import mark_safe
@@ -14,13 +16,14 @@ logger = logging.getLogger(__name__)
 
 from cis.models.section import ClassSection
 
-class Command(BaseCommand):
+class Command(CampusCommand):
     '''
     Notify teachers who have sections marked pending verification
     '''
     help = 'Notify teachers who have sections marked pending verification'
 
     def add_arguments(self, parser):
+        super().add_arguments(parser)  # --campus (MC-11)
         parser.add_argument('-t', '--time', type=str, help='Time of run')
 
     def handle(self, *args, **kwargs):        

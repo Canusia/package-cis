@@ -2,6 +2,8 @@ import datetime
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
+
+from cis.management.campus_command import CampusCommand
 from django.utils import timezone
 
 from django.template import Context, Template
@@ -15,10 +17,11 @@ from cis.models.note import TeacherNote
 from cis.settings.teacher_certificate_renewal import teacher_certificate_renewal
 
 
-class Command(BaseCommand):
+class Command(CampusCommand):
     help = 'Email instructors whose course certificates are due for renewal.'
 
     def add_arguments(self, parser):
+        super().add_arguments(parser)  # --campus (MC-11)
         parser.add_argument('-t', '--time', type=str, help='Time of run')
 
     def handle(self, *args, **kwargs):
@@ -43,6 +46,9 @@ class Command(BaseCommand):
         ).filter(
             teacher_highschool__teacher__status__iexact='active',
         )
+        # One campus per pass in multi-campus mode (MC-11).
+        from cis.campus_context import scope_to_current_campus
+        candidates = scope_to_current_campus(candidates, 'course__campus')
 
         emails_sent = 0
         for cert in candidates.iterator():

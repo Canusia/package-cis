@@ -19,6 +19,8 @@ from importlib import import_module
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
+
+from cis.management.campus_command import CampusCommand
 from django.core.mail import EmailMessage, EmailMultiAlternatives
 
 from django.contrib.auth.models import Group
@@ -65,11 +67,12 @@ def _load_instructor_app_command():
     return None
 
 
-class _LegacyCommand(BaseCommand):
+class _LegacyCommand(CampusCommand):
 
     help = 'Register reports in DB'
 
     def add_arguments(self, parser):
+        super().add_arguments(parser)  # --campus (MC-11)
         parser.add_argument('-t', '--time', type=str, help='Time of run')
 
     def handle(self, *args, **kwargs):
@@ -94,6 +97,13 @@ class _LegacyCommand(BaseCommand):
         in_progress_apps = TeacherApplication.objects.filter(
             status__iexact='in progress'
         )
+        # One campus per pass in multi-campus mode, by the campus of the courses
+        # applied for (MC-11). An applicant with courses on both campuses is
+        # reminded once per campus. (Tenants with instructor_app run its command
+        # instead; it needs the same change.)
+        from cis.campus_context import scope_to_current_campus
+        in_progress_apps = scope_to_current_campus(
+            in_progress_apps, 'applicantschoolcourse__course__campus', distinct=True)
 
         emails_sent = 0
         for app in in_progress_apps:

@@ -1335,10 +1335,14 @@ class Student(models.Model):
         email_settings = student_notes_email.from_db()
 
         date_from = datetime.now() - timedelta(days=1)
-        student_notes = StudentNote.objects.filter(
+        # One campus per pass in multi-campus mode, by the student's
+        # registrations (MC-11).
+        from cis.campus_context import scope_to_current_campus
+        student_notes = scope_to_current_campus(StudentNote.objects.filter(
             meta__type__contains='to_counselor',
             createdon__gte=date_from
-        ).order_by('-createdon')
+        ), 'student__studentregistration__class_section__course__campus',
+            distinct=True).order_by('-createdon')
 
         notes_summary = {}
         for note in student_notes:

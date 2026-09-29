@@ -7,11 +7,14 @@ student_onboarding submodule.
 from django.core.management import call_command
 from django.core.management.base import BaseCommand
 
+from cis.management.campus_command import CampusCommand
 
-class Command(BaseCommand):
+
+class Command(CampusCommand):
     help = 'Deprecated name — forwards to notify_pending_onboarding.'
 
     def add_arguments(self, parser):
+        super().add_arguments(parser)  # --campus (MC-11)
         parser.add_argument('-t', '--time', type=str, help='Scheduled run time')
         parser.add_argument('--dry-run', action='store_true')
         parser.add_argument('--student', type=str, default=None)

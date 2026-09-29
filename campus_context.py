@@ -109,3 +109,23 @@ def campus_url(campus, path=''):
     if not domain.startswith(('http://', 'https://')):
         domain = f'https://{domain}'
     return domain.rstrip('/') + path
+
+
+def active_campus():
+    """The campus set by an enclosing campus_context(), or None -- no fallback."""
+    return _current.get()
+
+
+def scope_to_current_campus(queryset, path, distinct=False):
+    """Narrow ``queryset`` to the current campus in multi-campus mode (MC-11, #35).
+
+    ``path`` is the lookup from the model to its Campus (``course__campus``,
+    ``student__studentregistration__class_section__course__campus``). Pass
+    ``distinct=True`` when the path crosses a to-many relation. Single-campus
+    mode returns the queryset unchanged; multi-campus mode with no campus
+    raises NoCampusContext rather than processing every college's records.
+    """
+    if not is_multi_campus():
+        return queryset
+    scoped = queryset.filter(**{path: current_campus()})
+    return scoped.distinct() if distinct else scoped

@@ -814,9 +814,11 @@ class ClassSection(MyCEBaseModel):
         )
         notif_settings = roster_verification_settings.from_db()
 
-        pending_verification = ClassSection.objects.filter(
+        # One campus per pass in multi-campus mode (MC-11).
+        from cis.campus_context import scope_to_current_campus
+        pending_verification = scope_to_current_campus(ClassSection.objects.filter(
             roster_status__iexact='pending verification'
-        )
+        ), 'course__campus')
 
         summary += 'Found ' + str(pending_verification.count()) + ' sections marked as pending verification'
 

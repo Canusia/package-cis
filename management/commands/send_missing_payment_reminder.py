@@ -4,6 +4,8 @@ from django.conf import settings
 from django.db.utils import IntegrityError
 from django.core.management.base import BaseCommand
 
+from cis.management.campus_command import CampusCommand
+
 from cis.utils import upload_to_s3
 from cis.models.student import Student
 from cis.models.section import StudentRegistration
@@ -13,13 +15,14 @@ from cis.signals.crontab import cron_task_done, cron_task_started
 from cis.settings.registration_status_email import registration_status_email
 logger = logging.getLogger(__name__)
 
-class Command(BaseCommand):
+class Command(CampusCommand):
     '''
     Sending Missing Payment Reminders
     '''
     help = 'Sending Missing Payment Reminders'
 
     def add_arguments(self, parser):
+        super().add_arguments(parser)  # --campus (MC-11)
         parser.add_argument('-t', '--time', type=str, help='Time of run')
 
     def handle(self, *args, **kwargs):

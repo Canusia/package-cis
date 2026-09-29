@@ -1,6 +1,8 @@
 from datetime import date
 import email, json
 from django.core.management.base import BaseCommand
+
+from cis.management.campus_command import CampusCommand
 from django.core.validators import validate_email
 
 from django.conf import settings
@@ -18,10 +20,11 @@ from cis.models.section import ClassSection, ClassSectionSyllabi
 from cis.models.term import Term
 from cis.models.course import CourseAdministrator
 
-class Command(BaseCommand):
+class Command(CampusCommand):
     help = 'Syllabus Review Emails'
 
     def add_arguments(self, parser):
+        super().add_arguments(parser)  # --campus (MC-11)
         parser.add_argument('-t', '--time', type=str, help='Time of run')
 
     def handle(self, *args, **kwargs):
