@@ -5,6 +5,7 @@ from django.conf import settings
 
 from cron_validator import CronValidator
 
+from cis.management.campus_command import run_for_each_campus
 from cis.models.crontab import CronTab
 
 logger = logging.getLogger(__name__)
@@ -48,15 +49,22 @@ class Command(BaseCommand):
                 for executor in executors:
                     job_queue[job.command] = str(executor)
 
-        for job in sorted(job_queue):   
-            scheduled_time = job_queue[job]
+        # Scheduled commands run once per campus, each in its own campus
+        # context, error handling and lock (MC-04); a single-campus deployment
+        # runs them once, as before. The housekeeping around this block is
+        # deployment-wide and runs once.
+        def run_scheduled_jobs():
+            for job in sorted(job_queue):
+                scheduled_time = job_queue[job]
 
-            try:
-                call_command(job, time=str(scheduled_time))
-            except Exception as e:
-                print('failed for ' + str(job))
-                logger.error(job)
-                logger.error(e)
+                try:
+                    call_command(job, time=str(scheduled_time))
+                except Exception as e:
+                    print('failed for ' + str(job))
+                    logger.error(job)
+                    logger.error(e)
+
+        run_for_each_campus(__name__.rsplit('.', 1)[-1], run_scheduled_jobs)
         
         from ses_tracking.models import DailyEmailStats
         if DailyEmailStats.is_bounce_rate_acceptable():
