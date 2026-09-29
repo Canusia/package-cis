@@ -8,6 +8,7 @@ import uuid
 
 from django.conf import settings
 from django.contrib.auth.models import Group
+from django.db import transaction
 from django.test import TestCase
 
 from cis.campus_gate import can_process_campus, get_process_campus_ids
@@ -69,3 +70,36 @@ class StaffCampusRowsTests(TestCase):
         CustomUser.objects.filter(pk=self.user.pk).update(campus={'process_campus': []})
         self.user.save(update_fields=['last_login'])
         self.assertEqual(list(self.user.process_campuses.all()), [self.c1])
+
+
+class DirectEditGuardTests(TestCase):
+    """v0.1.1a: the JSON is the only way to change a user's campuses."""
+
+    def setUp(self):
+        self.c1 = _campus('C1')
+        self.user = CustomUser.objects.create_user(
+            username=f'ce{uuid.uuid4().hex[:6]}', email=f'{uuid.uuid4().hex[:6]}@x.com',
+            password='x')
+
+    def test_direct_edits_are_refused_from_both_sides(self):
+        from cis.signals.staff_campus import DirectProcessCampusEdit
+        for edit in (lambda: self.user.process_campuses.add(self.c1),
+                     lambda: self.user.process_campuses.set([self.c1]),
+                     lambda: self.user.process_campuses.clear(),
+                     lambda: self.c1.staff_users.add(self.user),
+                     lambda: self.c1.staff_users.remove(self.user)):
+            with self.assertRaises(DirectProcessCampusEdit):
+                with transaction.atomic():
+                    edit()
+        self.assertFalse(self.user.process_campuses.exists())
+
+    def test_saving_the_json_still_syncs(self):
+        self.user.campus = {'process_campus': [str(self.c1.id)]}
+        self.user.save()
+        self.assertEqual(list(self.user.process_campuses.all()), [self.c1])
+
+    def test_deleting_the_user_or_campus_still_works(self):
+        self.user.campus = {'process_campus': [str(self.c1.id)]}
+        self.user.save()
+        self.c1.delete()
+        self.user.delete()
