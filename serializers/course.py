@@ -52,7 +52,10 @@ class CampusSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Campus
-        fields = '__all__'
+        # The multi-campus routing fields (MC-02 site, MC-15 saml_idps) stay
+        # out of the API: saml_idps would cost a query per row in every feed
+        # that nests a campus.
+        exclude = ['site', 'saml_idps']
 
 class CohortSerializer(serializers.ModelSerializer):
     class Meta:
