@@ -1308,29 +1308,62 @@ def active_academic_year():
     except:
         return None
 
-def active_term():
+class TermNotConfigured(Exception):
+    """Multi-campus mode: the campus has no usable active or registration term (MC-07)."""
+
+
+def _campus_term_check(terms):
+    """Multi-campus mode: every configured term must belong to the current campus."""
+    from cis.campus_context import current_campus, is_multi_campus
+    if not is_multi_campus():
+        return
+    campus = current_campus()
+    for term in terms:
+        if term.academic_year.campus_id != campus.pk:
+            raise TermNotConfigured(
+                f'Term {term} is configured for {campus} but belongs to another campus.')
+
+
+def active_term(campus=None):
     """
-    Return a Term queryset for active term, if active term is not set then 
-    return the first term
+    The active Term for ``campus`` (default: the current campus).
+
+    Single-campus mode falls back to the first term when none is set, as it
+    always has. Multi-campus mode raises TermNotConfigured instead -- the
+    first term is as likely to be the other college's -- and refuses a
+    configured term from another campus (MC-07).
     """
+    from cis.campus_context import campus_context, is_multi_campus
+    if campus is not None:
+        with campus_context(campus):
+            return active_term()
+
     from cis.models.term import Term
+    multi = is_multi_campus()
+    key = getattr(settings, 'CAMPUS_CODE_PREFIX')+"_cis_registrations"
     try:
-        key = getattr(settings, 'CAMPUS_CODE_PREFIX')+"_cis_registrations"
         setting = Setting.objects.get(key=key)
-
-        term = setting.value.get('active_term')
-        try:
-            return Term.objects.get(pk=term)
-        except Term.DoesNotExist:
-            return Term.objects.first()
-
-    except Setting.DoesNotExist:
+        term = Term.objects.select_related('academic_year').get(
+            pk=setting.value.get('active_term'))
+    except (Setting.DoesNotExist, Term.DoesNotExist):
+        if multi:
+            raise TermNotConfigured('No active term is set for this campus.')
         return Term.objects.first()
 
-def registration_terms():
+    _campus_term_check([term])
+    return term
+
+def registration_terms(campus=None):
     """
-    Return a Term queryset for which registration is currently set
+    Terms open for registration for ``campus`` (default: the current campus),
+    or None when none are configured. Multi-campus mode refuses a term that
+    belongs to another campus (MC-07).
     """
+    from cis.campus_context import campus_context
+    if campus is not None:
+        with campus_context(campus):
+            return registration_terms()
+
     from cis.models.term import Term
     try:
         key = getattr(settings, 'CAMPUS_CODE_PREFIX')+"_cis_registrations"
@@ -1338,11 +1371,14 @@ def registration_terms():
 
         terms = setting.value.get('registration_terms')
         try:
-            return Term.objects.filter(pk__in=terms).all()
+            records = Term.objects.filter(pk__in=terms).select_related('academic_year')
         except Term.DoesNotExist:
             return None
     except Setting.DoesNotExist:
         return None
+
+    _campus_term_check(records)
+    return records
 
 def registration_terms_state():
     """Return ``(state, terms)`` for the configured registration terms.
