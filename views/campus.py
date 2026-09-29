@@ -49,12 +49,8 @@ def detail(request, record_id):
         form = CampusForm(request.POST, instance=record)
 
         if form.is_valid():
-            record = form.save(commit=False)
-            record.locations.clear()
-            if form.cleaned_data['locations']:
-                for location in form.cleaned_data['locations']:
-                    record.locations.add(location)
-            record.save()
+            # save() also saves every M2M: locations and saml_idps.
+            record = form.save()
 
             messages.add_message(
                 request,
@@ -98,8 +94,9 @@ def add_new(request):
         ajax = request.POST.get('ajax', None)
 
         if form.is_valid():
-            record = form.save(commit=False)
-            record.save()
+            # save(), not save(commit=False): the latter silently dropped
+            # the chosen locations (and saml_idps) of a new campus.
+            record = form.save()
 
             if ajax == '1':
                 data = {

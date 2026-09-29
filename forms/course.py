@@ -360,20 +360,17 @@ class LocationForm(ModelForm):
         fields = '__all__'
 
 class CampusForm(ModelForm):
+    """Site (MC-02) and SAML IdPs (MC-15) are always editable so a campus's
+    host and IdP can be set up before MULTI_CAMPUS is switched on; with it
+    off, nothing reads them."""
     class Meta:
         model = Campus
         fields = '__all__'
-
-    # Only multi-campus deployments route hosts (MC-02) and IdPs (MC-15) to a
-    # campus; everyone else keeps the form they had.
-    MULTI_CAMPUS_FIELDS = ('site', 'saml_idps')
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        from cis.campus_context import is_multi_campus
-        if not is_multi_campus():
-            for name in self.MULTI_CAMPUS_FIELDS:
-                self.fields.pop(name, None)
+        help_texts = {
+            'site': 'The host this campus is served on. Used only when MULTI_CAMPUS is on.',
+            'saml_idps': 'SAML identity providers whose users belong to this campus. '
+                         'Used only when MULTI_CAMPUS is on.',
+        }
 
 class CohortForm(ModelForm):
     class Meta:

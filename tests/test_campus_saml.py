@@ -113,13 +113,61 @@ class MultiCampusTests(_Base):
 
 
 class CampusFormFieldsTests(TestCase):
-    def test_single_campus_form_is_unchanged(self):
+    def test_single_campus_form_shows_routing_fields(self):
         from cis.forms.course import CampusForm
-        self.assertNotIn('site', CampusForm().fields)
-        self.assertNotIn('saml_idps', CampusForm().fields)
+        self.assertIn('site', CampusForm().fields)
+        self.assertIn('saml_idps', CampusForm().fields)
 
     @override_settings(MULTI_CAMPUS=True)
     def test_multi_campus_form_maps_host_and_idps(self):
         from cis.forms.course import CampusForm
         self.assertIn('site', CampusForm().fields)
         self.assertIn('saml_idps', CampusForm().fields)
+
+
+class CampusFormSavesTests(TestCase):
+    """v0.1.1a: site and saml_idps are always on the form, and saved."""
+
+    @classmethod
+    def setUpClass(cls):
+        # force_login's bare request crashes django_login_history's receiver.
+        from django.contrib.auth.signals import user_logged_in
+        try:
+            from django_login_history.models import post_login
+        except Exception:  # pragma: no cover
+            post_login = None
+        cls._post_login = post_login
+        if post_login is not None:
+            user_logged_in.disconnect(post_login)
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        from django.contrib.auth.signals import user_logged_in
+        if cls._post_login is not None:
+            user_logged_in.connect(cls._post_login)
+
+    def test_add_saves_site_idps_and_locations(self):
+        from django.test import Client
+        from cis.models.course import Location
+        su = CustomUser.objects.create_superuser(
+            username=f'su{uuid.uuid4().hex[:6]}', email=f'{uuid.uuid4().hex[:6]}@x.com',
+            password='x')
+        su.groups.add(Group.objects.get_or_create(name='ce')[0])
+        client = Client(REMOTE_ADDR='127.0.0.1')
+        client.force_login(su)
+        site = Site.objects.create(domain='new.link.edu', name='new')
+        idp = IdP.objects.create(name='idp', contact_name='x', contact_email='x@x.com')
+        code = f'{settings.CAMPUS_CODE_PREFIX}-{uuid.uuid4().hex[:6]}'
+        data = {'name': f'N-{code}', 'code': code, 'site': site.id, 'saml_idps': [idp.id]}
+        location = Location.objects.first()
+        if location:
+            data['locations'] = [location.id]
+        from django.urls import reverse
+        client.post(reverse('cis:campus_add_new'), data)
+        campus = Campus.objects.get(code=code)
+        self.assertEqual(campus.site, site)
+        self.assertEqual(list(campus.saml_idps.all()), [idp])
+        if location:
+            self.assertEqual(list(campus.locations.all()), [location])
