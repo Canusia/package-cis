@@ -94,6 +94,13 @@ class Campus(models.Model):
 
     locations = models.ManyToManyField('cis.Location', blank=True)
 
+    # The host this campus is served on (MC-02, #26): the domain lives on the
+    # django.contrib.sites Site, which cis already uses to build links. Null on
+    # single-campus deployments, which resolve no host.
+    site = models.OneToOneField(
+        'sites.Site', null=True, blank=True, on_delete=models.PROTECT,
+        related_name='campus')
+
     def __str__(self):
         return self.name
 
