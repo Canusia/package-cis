@@ -130,3 +130,65 @@ class UserViewsPassTheEditorTests(TestCase):
         colleague = _staff([self.b])
         form = self._form(detail, colleague.id)
         self.assertEqual(_ids(form.fields['process_campus'].choices), {str(self.b.id)})
+
+
+class AddNewExistingUsernameTests(TestCase):
+    """Add-new with a username that already exists must not overwrite that
+    account (name, email, password, permissions, default campus) -- it only
+    adds the submitted campuses to the ones the account already has."""
+
+    def setUp(self):
+        self.a, self.b = _campus('A'), _campus('B')
+        self.editor = _staff([self.b], default=self.b)
+
+    def _post(self, data):
+        from cis.views import users as user_views
+        request = RequestFactory().post('/', data)
+        request.user = self.editor
+        with mock.patch.object(user_views, 'render', return_value=HttpResponse()) as render, \
+                mock.patch.object(user_views, 'draw_menu', return_value=''), \
+                mock.patch.object(user_views.messages, 'add_message'):
+            response = user_views.add_new(request)
+        return response, render
+
+    def test_existing_staff_only_gains_the_new_campus(self):
+        existing = _staff([self.a], default=self.a, first_name='Orig', last_name='Name')
+        existing.set_password('original-pw')
+        existing.save()
+        before = User.objects.count()
+
+        response, _ = self._post(_post(
+            [self.b], default=self.b, username=existing.username.upper(),
+            first_name='Hijack', email='hijack@example.com',
+            password='new-pw', manage_staff_accounts='Yes', manage_settings='Yes'))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(User.objects.count(), before)
+        existing.refresh_from_db()
+        self.assertEqual(set(existing.process_campuses.all()), {self.a, self.b})
+        self.assertEqual(existing.first_name, 'Orig')
+        self.assertNotEqual(existing.email, 'hijack@example.com')
+        self.assertTrue(existing.check_password('original-pw'))
+        self.assertEqual(existing.campus.get('default_campus'), str(self.a.id))
+        self.assertEqual(existing.campus.get('manage_staff_accounts'), 'Yes')  # from _staff, unchanged
+        self.assertNotEqual(existing.campus.get('manage_settings'), 'Yes')
+
+    def test_existing_non_staff_account_is_refused(self):
+        student = User.objects.create(
+            username=f'stu-{uuid.uuid4().hex[:6]}', email=f'{uuid.uuid4().hex[:6]}@example.com')
+
+        response, render = self._post(_post([self.b], default=self.b, username=student.username))
+
+        self.assertEqual(response.status_code, 200)  # form re-rendered with an error
+        self.assertIn('username', render.call_args.args[2]['form'].errors)
+        student.refresh_from_db()
+        self.assertEqual(list(student.process_campuses.all()), [])
+        self.assertFalse(student.groups.filter(name='ce').exists())
+
+    def test_new_username_still_creates_the_account(self):
+        data = _post([self.b], default=self.b)
+        response, _ = self._post(data)
+        self.assertEqual(response.status_code, 302)
+        created = User.objects.get(username=data['username'])
+        self.assertEqual(list(created.process_campuses.all()), [self.b])
+        self.assertTrue(created.groups.filter(name='ce').exists())

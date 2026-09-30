@@ -259,7 +259,26 @@ def add_new(request):
     if request.method == 'POST':
         form = UserForm(request.POST, user=request.user)
 
-        if form.is_valid():
+        existing = form.is_valid() and CustomUser.existing_by_username(
+            form.cleaned_data['username'])
+
+        if existing:
+            # Never overwrite an account from here: an existing staff member
+            # only gains the campuses ticked; anyone else is refused.
+            if 'ce' not in existing.get_roles():
+                form.add_error(
+                    'username',
+                    'This username belongs to an account that is not a staff account.')
+            else:
+                existing.add_process_campuses(form.cleaned_data['process_campus'])
+                messages.add_message(
+                    request,
+                    messages.SUCCESS,
+                    'This user already exists. The selected campus(es) were added to '
+                    'their account; nothing else was changed.',
+                    'list-group-item-success')
+                return redirect('cis:user', record_id=existing.id)
+        elif form.is_valid():
             try:
                 user = CustomUser.add_new_staff(form)
 

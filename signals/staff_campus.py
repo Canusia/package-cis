@@ -68,6 +68,12 @@ def set_process_campuses(user, campuses):
     user.process_campuses.set(Campus.objects.filter(pk__in=_valid_uuids(campuses)))
 
 
+def add_process_campuses(user, campuses):
+    """Add to the user's campuses, keeping the ones they have. Same
+    ``campuses`` shape and rules as set_process_campuses()."""
+    user.process_campuses.add(*Campus.objects.filter(pk__in=_valid_uuids(campuses)))
+
+
 def _mirror(user_pk, instance=None):
     ids = _stored_ids(user_pk)
     perms = CustomUser.objects.filter(pk=user_pk).values_list('campus', flat=True).first()

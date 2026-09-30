@@ -191,13 +191,18 @@ class CustomUser(AbstractUser):
         ).values_list('course__id', flat=True)
     
     @classmethod
+    def existing_by_username(cls, username):
+        """The account already holding ``username`` (case-insensitive -- new
+        staff usernames are saved lowercased), or None."""
+        return cls.objects.filter(username__iexact=username).first()
+
+    @classmethod
     def add_new_staff(cls, form):
+        """Create a new staff account. Never updates an existing one: callers
+        check existing_by_username() first and use add_process_campuses()."""
         staff_group = Group.objects.get(name='ce')
 
-        if CustomUser.objects.filter(username=form.cleaned_data['username']).exists():
-            user = CustomUser.objects.get(username=form.cleaned_data['username'])
-        else:
-            user = CustomUser()
+        user = CustomUser()
 
         data = form.cleaned_data
 
@@ -254,6 +259,12 @@ class CustomUser(AbstractUser):
         objects or ids). Use this, not campus['process_campus'] (#59)."""
         from cis.signals.staff_campus import set_process_campuses
         set_process_campuses(self, campuses)
+
+    def add_process_campuses(self, campuses):
+        """Add campuses (Campus objects or ids) to the ones this staff member
+        already has; nothing else about the account changes."""
+        from cis.signals.staff_campus import add_process_campuses
+        add_process_campuses(self, campuses)
 
     @property
     def can_edit_users(self):
