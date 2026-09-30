@@ -69,16 +69,40 @@ class UserForm(forms.Form):
         required=False
     )
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, user=None, record=None, **kwargs):
+        """``user`` is the staff member filling in the form: they may only
+        grant the campuses they can edit themselves (superusers, and callers
+        passing no user, see every campus). ``record`` is the staff member
+        being edited, whose campuses outside that set are kept, not dropped."""
         super().__init__(*args, **kwargs)
 
-        campus = Campus.objects.filter(
-            code__startswith=settings.CAMPUS_CODE_PREFIX).all()
-    
+        from cis.campus_gate import get_accessible_campuses
+        if user is not None:
+            campus = get_accessible_campuses(user)
+        else:
+            campus = Campus.objects.filter(
+                code__startswith=settings.CAMPUS_CODE_PREFIX).all()
+        editable = {str(obj.id) for obj in campus}
+
         self.fields['process_campus'].choices = [
             (obj.id, obj.name) for obj in campus
         ]
 
-        self.fields['default_campus'].choices = [
-            (obj.id, obj.name) for obj in campus
-        ]
+        # Campuses the record has that the editor can't grant or revoke.
+        self._kept_campuses = []
+        default_choices = [(obj.id, obj.name) for obj in campus]
+        if record is not None:
+            from cis.signals.staff_campus import process_campus_ids
+            self._kept_campuses = [
+                pk for pk in process_campus_ids(record) if pk not in editable]
+
+            default = (record.campus or {}).get('default_campus')
+            if default and default not in editable:
+                current = Campus.objects.filter(pk=default).first()
+                if current:
+                    default_choices.append((current.id, current.name))
+
+        self.fields['default_campus'].choices = default_choices
+
+    def clean_process_campus(self):
+        return list(self.cleaned_data['process_campus']) + self._kept_campuses

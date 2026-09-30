@@ -257,8 +257,8 @@ def add_new(request):
     template = 'cis/users/add_new.html'
 
     if request.method == 'POST':
-        form = UserForm(request.POST)
-        
+        form = UserForm(request.POST, user=request.user)
+
         if form.is_valid():
             try:
                 user = CustomUser.add_new_staff(form)
@@ -280,7 +280,7 @@ def add_new(request):
                 }
                 return JsonResponse(data)
     else:
-        form = UserForm()
+        form = UserForm(user=request.user)
 
     return render(
         request,
@@ -318,7 +318,7 @@ def detail(request, record_id):
     record = get_object_or_404(CustomUser, pk=record_id)
 
     if request.method == 'POST':
-        form = UserForm(request.POST)
+        form = UserForm(request.POST, user=request.user, record=record)
 
         if form.is_valid():
             record.update(form)
@@ -334,7 +334,7 @@ def detail(request, record_id):
         if record.campus:
             campus = record.campus
 
-        form = UserForm(initial={
+        form = UserForm(user=request.user, record=record, initial={
             'first_name':record.first_name,
             'last_name':record.last_name,
             'email':record.email,
