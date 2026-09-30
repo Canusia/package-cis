@@ -220,6 +220,12 @@ class HighSchool(models.Model):
         default='Student Pay'
     )
 
+    is_cte = models.BooleanField(
+        default=False,
+        verbose_name='Is CTE',
+        help_text='Career & Technical Education school',
+    )
+
     access_approver = models.ForeignKey(
         'HSAdministrator',
         on_delete=models.PROTECT,

@@ -1,0 +1,37 @@
+{# Bulk "Set CTE" modal body. Rendered into #bulk_modal_content by        #}
+{# ActionRegistry; the form posts back to the same bulk-actions endpoint with #}
+{# apply=1.                                                                  #}
+<div class="card">
+    <div class="card-body">
+        <h3 class="card-title">{{ title }}</h3>
+        <div class="card-text">
+            <form action="{{ form_action|safe }}" method="post" class="frm_ajax">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="set_is_cte">
+                <input type="hidden" name="apply" value="1">
+                {% for id in ids %}
+                <input type="hidden" name="ids[]" value="{{ id }}">
+                {% endfor %}
+
+                <p class="alert alert-info">
+                    Applies to {{ count }} selected high school{{ count|pluralize }}.
+                </p>
+
+                <div class="form-group">
+                    <label class="d-block">Is CTE?</label>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="is_cte" id="id_is_cte_1" value="1" required>
+                        <label class="form-check-label" for="id_is_cte_1">Yes</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="is_cte" id="id_is_cte_0" value="0">
+                        <label class="form-check-label" for="id_is_cte_0">No</label>
+                    </div>
+                </div>
+
+                <input type="submit" class="btn btn-primary btn-sm" value="Set CTE">
+                <input type="button" class="btn btn-sm" onclick="window.closeBulkActionModal()" value="Cancel &amp; Close">
+            </form>
+        </div>
+    </div>
+</div>

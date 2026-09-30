@@ -770,7 +770,8 @@ class HSModelForm(ModelForm):
             'postal_code': 'Zip/Postal Code',
             'hs_type': 'School Type',
             'code': 'CEEB Code',
-            'sau': 'Bldg Code'
+            'sau': 'Bldg Code',
+            'is_cte': 'Is CTE',
             # 'access_approver': 'Access Approver',
             # 'oncampus_sections': 'On-Campus Sections # (comma separated)'
         }

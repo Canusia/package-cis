@@ -35,6 +35,12 @@ HIGHSCHOOL_BULK_ACTIONS = {
         'btn_class': 'btn-primary',
         'confirm': None,
     },
+    'set_is_cte': {
+        'label': 'Set CTE',
+        'icon': 'fas fa-industry',
+        'btn_class': 'btn-primary',
+        'confirm': None,
+    },
 }
 
 from myce.component_registry.highschool import highschool_tabs, highschool_actions
@@ -688,6 +694,9 @@ def do_bulk_action(request):
     if action == 'set_hs_type':
         return set_hs_type(request)
 
+    if action == 'set_is_cte':
+        return set_is_cte(request)
+
     data = {
         'status': 'success',
         'message': 'invalid action passed'
@@ -748,6 +757,53 @@ def set_hs_type(request):
         'args': {
             'title': 'School Type updated',
             'message': 'Set %s on %d high school(s).' % (label, updated),
+        },
+    })
+
+
+def set_is_cte(request):
+    """Mark or unmark every selected high school as CTE.
+
+    Same two-step shape as set_hs_type: the first POST returns the modal, the
+    modal's form posts back with apply=1.
+    """
+    ids = request.POST.getlist('ids[]')
+    if not ids:
+        return JsonResponse({
+            'status': 'error',
+            'message': 'No high schools were selected.',
+        }, status=400)
+
+    if request.POST.get('apply') != '1':
+        html = render_to_string('cis/highschools/set_is_cte.html', {
+            'title': 'Set CTE',
+            'ids': ids,
+            'count': len(ids),
+            'form_action': str(reverse('cis:highschool_bulk_actions')),
+        }, request=request)
+        return JsonResponse({'outcome': 'modal', 'html': html})
+
+    value = request.POST.get('is_cte')
+    if value not in ('1', '0'):
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Choose Yes or No.',
+        }, status=400)
+    is_cte = value == '1'
+
+    updated = 0
+    for record in HighSchool.objects.filter(pk__in=ids):
+        record.is_cte = is_cte
+        record.save()
+        updated += 1
+
+    return JsonResponse({
+        'outcome': 'call',
+        'fn': 'reloadHighschoolTables',
+        'args': {
+            'title': 'CTE updated',
+            'message': 'Marked %d high school(s) as %s.' % (
+                updated, 'CTE' if is_cte else 'not CTE'),
         },
     })
 
