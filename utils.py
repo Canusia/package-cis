@@ -1345,7 +1345,8 @@ def active_term(campus=None):
         setting = Setting.objects.get(key=key)
         term = Term.objects.select_related('academic_year').get(
             pk=setting.value.get('active_term'))
-    except (Setting.DoesNotExist, Term.DoesNotExist):
+    except (Setting.DoesNotExist, Term.DoesNotExist, ValidationError, ValueError):
+        # A blank or malformed stored id ('' after clearing the field) is "not set".
         if multi:
             raise TermNotConfigured('No active term is set for this campus.')
         return Term.objects.first()

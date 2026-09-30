@@ -71,3 +71,78 @@ class MultiCampusTermTests(TestCase):
             active_term(self.c1)
         with self.assertRaises(TermNotConfigured):
             registration_terms(self.c1)
+
+
+class BlankActiveTermTests(TestCase):
+    """A registrations setting saved with an empty active_term is 'not set',
+    not a 500 from Term.objects.get(pk='')."""
+
+    @override_settings(MULTI_CAMPUS=False)
+    def test_single_campus_blank_falls_back_to_the_first_term(self):
+        Setting.objects.filter(key=KEY).delete()
+        _term(None, 'F1')
+        Setting.objects.create(key=KEY, value={'active_term': ''})
+        self.assertEqual(active_term(), Term.objects.first())
+
+    @override_settings(MULTI_CAMPUS=True)
+    def test_multi_campus_blank_raises_term_not_configured(self):
+        c1 = _campus('C1')
+        Setting.objects.create(key=KEY, campus=c1, value={'active_term': ''})
+        with self.assertRaises(TermNotConfigured):
+            active_term(c1)
+
+
+@override_settings(MULTI_CAMPUS=True)
+class RegistrationFormCampusChoicesTests(TestCase):
+    """The registrations setting form offers only the current campus's terms
+    and academic years, so a campus cannot save another campus's term."""
+
+    def test_choices_are_the_current_campus_only(self):
+        from cis.settings.registrations import RegistrationForm
+        c1, c2 = _campus('C1'), _campus('C2')
+        t1, t2 = _term(c1, 'C1-FA'), _term(c2, 'C2-FA')
+        with campus_context(c2):
+            form = RegistrationForm()
+        for field in ('active_term', 'registration_terms'):
+            ids = {value for value, _ in form.fields[field].choices}
+            self.assertIn(str(t2.id), ids)
+            self.assertNotIn(str(t1.id), ids)
+        years = {value for value, _ in form.fields['academic_year'].choices}
+        self.assertEqual(years, {str(t2.academic_year_id)})
+
+
+@override_settings(MULTI_CAMPUS=True)
+class CampusDetailTermTests(TestCase):
+    """The campus detail page shows the viewed campus's terms, whichever
+    campus's host it is opened from."""
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        self.c1, self.c2 = _campus('C1'), _campus('C2')
+        self.t1, self.t2 = _term(self.c1, 'C1-FA'), _term(self.c2, 'C2-FA')
+        Setting.objects.create(key=KEY, campus=self.c1, value={'active_term': str(self.t1.id)})
+        self.user = get_user_model().objects.create(
+            username=f'ce-{uuid.uuid4().hex[:6]}', email=f'{uuid.uuid4().hex[:6]}@example.com')
+
+    def _context(self, record, host_campus):
+        from unittest import mock
+        from django.http import HttpResponse
+        from django.test import RequestFactory
+        from cis.views import campus as campus_views
+        request = RequestFactory().get('/')
+        request.user = self.user
+        with mock.patch.object(campus_views, 'render', return_value=HttpResponse()) as render, \
+                mock.patch.object(campus_views, 'draw_menu', return_value=''), \
+                campus_context(host_campus):
+            campus_views.detail(request, record.id)
+        return render.call_args.args[2]
+
+    def test_viewing_another_campus_uses_that_campus_terms(self):
+        context = self._context(self.c1, host_campus=self.c2)
+        self.assertEqual(context['active_term'], self.t1)
+        self.assertEqual(list(context['terms']), [self.t1])
+
+    def test_campus_without_an_active_term_renders(self):
+        context = self._context(self.c2, host_campus=self.c1)
+        self.assertIsNone(context['active_term'])
+        self.assertEqual(list(context['terms']), [self.t2])

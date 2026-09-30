@@ -20,7 +20,25 @@ from cis.forms.course import CampusForm
 from cis.menu import cis_menu, draw_menu
 
 from ..serializers.course import CampusSerializer
-from cis.utils import CIS_user_only, active_term
+from cis.utils import CIS_user_only, TermNotConfigured, active_term
+from cis.campus_context import is_multi_campus
+
+
+def _campus_terms(campus):
+    """The terms the detail page filters by: the viewed campus's own when
+    multi-campus, whichever host the page is opened from."""
+    if is_multi_campus():
+        return Term.objects.filter(academic_year__campus=campus)
+    return Term.objects.all()
+
+
+def _campus_active_term(campus):
+    """The viewed campus's active term, or None when it has none yet -- the
+    page must still render so the campus can be configured."""
+    try:
+        return active_term(campus)
+    except TermNotConfigured:
+        return None
 
 class CampusViewSet(viewsets.ReadOnlyModelViewSet):
     # PT-44: /ce/api/campus/ backs the CIS-only /ce/campuses/ page.
@@ -75,8 +93,8 @@ def detail(request, record_id):
             },
             'highschools_served_api_url': f'/ce/api/highschool-served/?format=datatables&campus_id={record.id}',
             'classes_registered_api_url': f'/ce/api/class-registered/?format=datatables&campus_id={record.id}',
-            'terms': Term.objects.all().order_by('-code'),
-            'active_term': active_term(),
+            'terms': _campus_terms(record).order_by('-code'),
+            'active_term': _campus_active_term(record),
             'menu': draw_menu(cis_menu, 'campus', 'campuses'),
             'record': record
         })

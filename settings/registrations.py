@@ -74,12 +74,18 @@ class RegistrationForm(forms.Form):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        term_choices = []
-        for term in Term.objects.all():
-            term_choices.append((str(term.id), term))
+        from ..campus_context import current_campus, is_multi_campus
+        terms, years = Term.objects.all(), AcademicYear.objects.all()
+        if is_multi_campus():
+            # A campus's registration settings may only name its own terms (MC-07).
+            campus = current_campus()
+            terms = terms.filter(academic_year__campus=campus)
+            years = years.filter(campus=campus)
+
+        term_choices = [(str(term.id), term) for term in terms]
 
         self.fields['academic_year'].choices = [
-            (str(acad_year.id), acad_year) for acad_year in AcademicYear.objects.all()
+            (str(acad_year.id), acad_year) for acad_year in years
         ]
 
         self.fields['homeschool'].choices = [('','Select')] + [
