@@ -4,6 +4,7 @@ from django.conf import settings
 from django.db.utils import IntegrityError
 from django.core.management.base import BaseCommand
 
+from cis.campus_context import scope_to_current_campus
 from cis.utils import upload_to_s3
 from cis.models.student import Student
 from cis.models.section import StudentRegistration
@@ -61,7 +62,11 @@ class Command(BaseCommand):
             )
 
         # Single source of truth — same selection the Pending SIS Mirror tab shows.
-        registrations = StudentRegistration.objects.pending_sis_mirror(mirror_status)
+        # Multi-campus: cron runs this once per campus (run_for_each_campus), so each
+        # run takes only its own campus's registrations. Single-campus: unchanged.
+        registrations = scope_to_current_campus(
+            StudentRegistration.objects.pending_sis_mirror(mirror_status),
+            'class_section__course__campus')
 
         summary += 'Found ' + str(registrations.count()) + ' records to send'
         detailed_log['total_registrations'] = registrations.count()

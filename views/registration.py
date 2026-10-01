@@ -655,12 +655,29 @@ def send_to_sis(request):
     )
 
     # The record decides the campus: each record is mirrored inside its own
-    # campus context, so the tenant mirror service resolves that campus.
-    from cis.campus_context import campus_context
+    # campus context, so the tenant mirror service resolves that campus. A
+    # record with no campus, or whose campus has no Ethos credentials, is
+    # reported in the summary and skipped; the rest still go.
+    import importlib.util
+    from cis.campus_context import campus_context, NoCampusContext
+    if importlib.util.find_spec('ethos.ethos'):
+        from ethos.ethos.credentials import EthosNotConfigured
+    else:
+        from ethos.credentials import EthosNotConfigured
     summary = []
-    for record in records.select_related('class_section__course__campus').order_by('pk'):
-        with campus_context(record.class_section.course.campus):
-            result, rez = get_tenant_service('registration').mirror_to_sis(record, request)
+    for record in records.select_related(
+            'class_section__course__campus', 'student__user').order_by('pk'):
+        campus = record.class_section.course.campus
+        sname = f'{record.student.user.last_name}, {record.student.user.first_name}'
+        try:
+            with campus_context(campus):
+                result, rez = get_tenant_service('registration').mirror_to_sis(record, request)
+        except NoCampusContext:
+            rez = [f'{sname} / {record.sexy_status} - not sent: '
+                   f'{record.class_section.course.name} has no campus']
+        except EthosNotConfigured:
+            rez = [f'{sname} / {record.sexy_status} - not sent: '
+                   f'Ethos is not configured for campus {getattr(campus, "code", campus)}']
         summary += rez
 
     context = {
