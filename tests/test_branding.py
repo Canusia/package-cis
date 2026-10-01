@@ -121,3 +121,30 @@ class BrandProblemsTests(TestCase):
         from cis.branding import brand_problems
         self.assertEqual(brand_problems({'logo': 'images/logo.png',
                                          'colors': {'color-primary': '#29348f'}}), [])
+
+
+class BrandingCheckTests(TestCase):
+    def _run(self, brands):
+        from cis.checks import branding_check
+        module = mock.Mock(BRANDS=brands)
+        with mock.patch('cis.checks.get_tenant_service', return_value=module):
+            return {m.id for m in branding_check(None)}
+
+    def test_valid_map_passes(self):
+        campus = _campus()
+        self.assertEqual(self._run({campus.code: {
+            'logo': 'images/logo.png', 'colors': {'color-primary': '#123456'}}}), set())
+
+    def test_missing_asset_unknown_key_unsafe_color(self):
+        campus = _campus()
+        ids = self._run({campus.code: {'logo': 'brand/nope/missing.png', 'bakground': 'x',
+                                       'colors': {'x': 'a;b'}}})
+        self.assertEqual(ids, {'cis.E001', 'cis.E002', 'cis.E003'})
+
+    def test_unknown_campus_code_warns(self):
+        self.assertEqual(self._run({'NO_SUCH_CODE': {'logo': 'images/logo.png'}}), {'cis.W004'})
+
+    def test_no_branding_module_passes(self):
+        from cis.checks import branding_check
+        with mock.patch('cis.checks.get_tenant_service', side_effect=ModuleNotFoundError):
+            self.assertEqual(branding_check(None), [])

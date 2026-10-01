@@ -14,7 +14,9 @@ falls back to a plain list without it, so this warns rather than errors.
 import importlib.util
 
 from django.conf import settings
-from django.core.checks import Warning as CheckWarning, register
+from django.core.checks import Error as CheckError, Warning as CheckWarning, register
+
+from cis.services.tenant_services import get_tenant_service
 
 
 @register()
@@ -83,3 +85,42 @@ def hs_uploads_table_check(app_configs, **kwargs):
             id='cis.W003',
         )
     ]
+
+
+@register()
+def branding_check(app_configs, **kwargs):
+    """E001-E003, W004 (package-cis #61): the tenant's per-campus branding map
+    (``services/branding.py``'s ``BRANDS``) -- every asset must exist, every key
+    be known and every colour be safe, caught at build time rather than as a
+    broken logo in production."""
+    from django.contrib.staticfiles import finders
+    from cis.branding import brand_problems
+
+    try:
+        brands = getattr(get_tenant_service('branding'), 'BRANDS', None)
+    except ModuleNotFoundError:
+        return []
+    if not isinstance(brands, dict):
+        return []
+
+    messages = []
+    for code, entry in brands.items():
+        for key in ('logo', 'background', 'favicon'):
+            path = entry.get(key)
+            if path and not finders.find(path):
+                messages.append(CheckError(
+                    f'Branding for {code}: {key} {path!r} is not a static file.',
+                    id='cis.E001'))
+        for check_code, message in brand_problems(entry):
+            messages.append(CheckError(
+                f'Branding for {code}: {message}.', id=f'cis.{check_code}'))
+
+    try:
+        from cis.models.course import Campus
+        known = set(Campus.objects.filter(code__in=list(brands)).values_list('code', flat=True))
+    except Exception:  # no database yet (image build, fresh checkout)
+        return messages
+    for code in sorted(set(brands) - known):
+        messages.append(CheckWarning(
+            f'Branding for {code}: no campus has this code.', id='cis.W004'))
+    return messages
