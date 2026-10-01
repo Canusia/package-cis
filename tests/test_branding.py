@@ -148,3 +148,52 @@ class BrandingCheckTests(TestCase):
         from cis.checks import branding_check
         with mock.patch('cis.checks.get_tenant_service', side_effect=ModuleNotFoundError):
             self.assertEqual(branding_check(None), [])
+
+
+from django.template import Context, Template
+
+
+class BrandTagTests(TestCase):
+    def _render(self, source, campus=None, brands=None):
+        with _tenant(brands or {}), campus_context(campus):
+            return Template('{% load brand %}' + source).render(Context({}))
+
+    def test_brand_css_is_empty_by_default(self):
+        self.assertEqual(self._render('{% brand_css %}'), '')
+
+    def test_brand_css_emits_root_block_and_favicon(self):
+        campus = _campus()
+        out = self._render('{% brand_css %}', campus, {campus.code: {
+            'colors': {'color-primary': '#29348f'}, 'favicon': 'images/logo.png'}})
+        self.assertIn('<style>:root{--color-primary:#29348f;}</style>', out)
+        self.assertIn('<link rel="icon" href="/static/images/logo.png">', out)
+
+    def test_brand_css_drops_injection(self):
+        campus = _campus()
+        out = self._render('{% brand_css %}', campus, {campus.code: {
+            'colors': {'sidebar-bg': 'red;}</style><script>alert(1)</script>'}}})
+        self.assertNotIn('<script>', out)
+
+    def test_logo_url_matches_static_by_default_without_request(self):
+        from django.templatetags.static import static
+        self.assertEqual(self._render('{% brand_logo_url %}'), static('images/logo.png'))
+        self.assertEqual(self._render('{% brand_background_url %}'), static('images/bg.jpg'))
+
+    def test_logo_url_uses_campus_logo(self):
+        campus = _campus()
+        out = self._render('{% brand_logo_url %}', campus,
+                           {campus.code: {'logo': 'brand/x/logo.png'}})
+        self.assertEqual(out, '/static/brand/x/logo.png')
+
+
+class ContextProcessorTests(TestCase):
+    def test_names_swapped_and_settings_untouched(self):
+        from django.test import RequestFactory
+        from cis.context_processors import export_vars
+        campus = _campus()
+        before = dict(settings.MY_CE)
+        with _tenant({campus.code: {'site_name': 'LIT Portal'}}), campus_context(campus):
+            data = export_vars(RequestFactory().get('/'))
+        self.assertEqual(data['MYCE_SETTINGS']['site_name'], 'LIT Portal')
+        self.assertEqual(data['MYCE_SETTINGS']['DEBUG'], settings.MY_CE['DEBUG'])
+        self.assertEqual(settings.MY_CE, before)
