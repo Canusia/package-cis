@@ -71,7 +71,7 @@ class SendToSisCampusTests(TestCase):
             self.regs.append(reg)
 
     @override_settings(MULTI_CAMPUS=True)
-    def test_bulk_send_builds_one_client_per_campus(self):
+    def test_bulk_send_mirrors_each_record_in_its_campus(self):
         from cis.views.registration import send_to_sis
         rec = _Recorder()
         seen = []
@@ -91,15 +91,15 @@ class SendToSisCampusTests(TestCase):
              patch('cis.views.registration.render') as render:
             send_to_sis(request)
 
-        # three records on two campuses: exactly two clients, not three
-        self.assertEqual(len(rec.campuses), 2)
-        self.assertCountEqual(rec.campuses, [self.camp_a, self.camp_b])
-        # and each record is mirrored under its own campus
-        self.assertEqual(len(seen), 3)
-        by_pk = dict(seen)
-        self.assertEqual(by_pk[self.regs[0].pk], self.camp_a)
-        self.assertEqual(by_pk[self.regs[1].pk], self.camp_b)
-        self.assertEqual(by_pk[self.regs[2].pk], self.camp_a)
+        # the view builds no Ethos client itself; the tenant service does
+        self.assertEqual(rec.campuses, [])
+        # records interleaved A, B, A are mirrored under their own campus
+        # (pks may be UUIDs, so the view's order_by('pk') need not match A, B, A)
+        campus_of = {self.regs[0].pk: self.camp_a, self.regs[1].pk: self.camp_b,
+                     self.regs[2].pk: self.camp_a}
+        self.assertEqual([c for _, c in seen],
+                         [campus_of[pk] for pk in sorted(campus_of)])
+        self.assertEqual(sorted(pk for pk, _ in seen), sorted(campus_of))
 
 
 class TermLookupCampusTests(TestCase):
