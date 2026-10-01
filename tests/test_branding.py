@@ -248,3 +248,46 @@ class PageTemplateTests(TestCase):
             out = render_to_string('cis/base.html', {'MYCE_SETTINGS': {**settings.MY_CE, 'show_logo': 'True'}})
         self.assertIn('/static/brand/x/logo.png', out)
         self.assertIn('/static/brand/x/bg.jpg', out)
+
+
+class CampusCodeReadOnlyTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        self.staff = User.objects.create(username=f's-{uuid.uuid4().hex[:6]}',
+                                         email=f'{uuid.uuid4().hex[:6]}@example.com')
+        self.root = User.objects.create(username=f'r-{uuid.uuid4().hex[:6]}', is_superuser=True,
+                                        email=f'{uuid.uuid4().hex[:6]}@example.com')
+        self.campus = _campus(code='ORIG_CODE')
+
+    def _data(self, code):
+        return {'name': self.campus.name, 'code': code}
+
+    def test_staff_cannot_change_an_existing_code(self):
+        from cis.forms.course import CampusForm
+        form = CampusForm(self._data('HIJACK'), instance=self.campus, user=self.staff)
+        self.assertTrue(form.fields['code'].disabled)
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.save().code, 'ORIG_CODE')
+
+    def test_superuser_can_change_it(self):
+        from cis.forms.course import CampusForm
+        form = CampusForm(self._data('NEW_CODE'), instance=self.campus, user=self.root)
+        self.assertFalse(form.fields['code'].disabled)
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.save().code, 'NEW_CODE')
+
+    def test_code_is_editable_on_add(self):
+        from cis.forms.course import CampusForm
+        self.assertFalse(CampusForm(user=self.staff).fields['code'].disabled)
+
+    def test_campus_page_passes_the_user(self):
+        from django.http import HttpResponse
+        from django.test import RequestFactory
+        from cis.views import campus as campus_views
+        request = RequestFactory().get('/')
+        request.user = self.staff
+        with mock.patch.object(campus_views, 'render', return_value=HttpResponse()) as render, \
+                mock.patch.object(campus_views, 'draw_menu', return_value=''):
+            campus_views.detail(request, self.campus.id)
+        self.assertTrue(render.call_args.args[2]['form'].fields['code'].disabled)

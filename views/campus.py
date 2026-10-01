@@ -64,7 +64,7 @@ def detail(request, record_id):
     record = get_object_or_404(Campus, pk=record_id)
 
     if request.method == 'POST':
-        form = CampusForm(request.POST, instance=record)
+        form = CampusForm(request.POST, instance=record, user=request.user)
 
         if form.is_valid():
             # save() also saves every M2M: locations and saml_idps.
@@ -77,7 +77,7 @@ def detail(request, record_id):
                 'list-group-item-success')
             return redirect('cis:campus', record_id=record_id)
     else:
-        form = CampusForm(instance=record)
+        form = CampusForm(instance=record, user=request.user)
 
     return render(
         request,
@@ -108,7 +108,7 @@ def add_new(request):
     ajax = request.GET.get('ajax', None)
 
     if request.method == 'POST':
-        form = CampusForm(request.POST)
+        form = CampusForm(request.POST, user=request.user)
         ajax = request.POST.get('ajax', None)
 
         if form.is_valid():
@@ -139,7 +139,7 @@ def add_new(request):
             }
             return JsonResponse(data)
     else:
-        form = CampusForm()
+        form = CampusForm(user=request.user)
 
     if ajax == '1':
         base_template = 'cis/ajax-base.html'

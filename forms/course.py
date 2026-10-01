@@ -372,6 +372,16 @@ class CampusForm(ModelForm):
                          'Used only when MULTI_CAMPUS is on.',
         }
 
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Campus.code keys SIS imports and per-campus branding (#61): fixed once
+        # the campus exists, except for superusers. A disabled field ignores
+        # posted values, so a crafted POST cannot change it either.
+        # (_state.adding, not pk: Campus.id has a uuid4 default, so even an
+        # unsaved campus has a pk.)
+        if not self.instance._state.adding and not getattr(user, 'is_superuser', False):
+            self.fields['code'].disabled = True
+
 class CohortForm(ModelForm):
     class Meta:
         model = Cohort
