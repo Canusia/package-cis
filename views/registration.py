@@ -659,11 +659,20 @@ def send_to_sis(request):
         from ethos.ethos.library.ethos import Ethos
     else:
         from ethos.library.ethos import Ethos
-    recLib = Ethos()
 
+    # The record decides the campus: one SIS client per campus (not per
+    # record), and each record is mirrored inside its own campus context so
+    # the tenant mirror service's campus-less Ethos() resolves that campus.
+    from cis.campus_context import campus_context
+    clients = {}
     summary = []
-    for record in records:
-        result, rez = get_tenant_service('registration').mirror_to_sis(record, request)
+    for record in records.select_related('class_section__course__campus'):
+        campus = record.class_section.course.campus
+        key = campus.pk if campus else None
+        if key not in clients:
+            clients[key] = Ethos(campus=campus)
+        with campus_context(campus):
+            result, rez = get_tenant_service('registration').mirror_to_sis(record, request)
         summary += rez
         
     context = {

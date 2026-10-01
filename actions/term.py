@@ -28,7 +28,7 @@ def _subterm_dates(period):
 def _fetch_subterms(term):
     """Fetch this term's direct sub-term academic periods from the SIS."""
     parent_guid = str(term.external_sis_id)
-    periods = Ethos().get_child_academic_periods(parent_guid, depth=2)
+    periods = Ethos(campus=term.academic_year.campus).get_child_academic_periods(parent_guid, depth=2)
     return [
         p for p in periods
         if p.get('category', {}).get('type') == 'subterm'
@@ -159,7 +159,7 @@ def lookup_sis_id(request):
                              'title': 'SIS Lookup',
                              'message': 'This term has no code to look up.'})
 
-    guid = Ethos().get_academic_period_id(term.code)
+    guid = Ethos(campus=term.academic_year.campus).get_academic_period_id(term.code)
     if not guid:
         return JsonResponse({'outcome': 'alert', 'status': 'error',
                              'title': 'SIS Lookup',
