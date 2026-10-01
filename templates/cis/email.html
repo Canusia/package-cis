@@ -1,4 +1,4 @@
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional //EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office"><head><!--[if gte mso 9]><xml><o:OfficeDocumentSettings><o:AllowPNG/><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml><![endif]-->
+{% load brand %}{% brand as b %}<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional //EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office"><head><!--[if gte mso 9]><xml><o:OfficeDocumentSettings><o:AllowPNG/><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml><![endif]-->
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
         <meta name="viewport" content="width=device-width">
         <!--[if !mso]><!-->
@@ -114,7 +114,7 @@
     </head>
     
     <body class="clean-body" style="margin: 0; padding: 0; -webkit-text-size-adjust: 100%; background-color: #fafafa;">
-    <div style="color:transparent;visibility:hidden;opacity:0;font-size:0px;border:0;max-height:1px;width:1px;margin:0px;padding:0px;border-width:0px!important;display:none!important;line-height:0px!important;"><img border="0" width="1" height="1" src="https://rmu.prod.canusiaplatform.com/static/images/logo.png"></div>
+    <div style="color:transparent;visibility:hidden;opacity:0;font-size:0px;border:0;max-height:1px;width:1px;margin:0px;padding:0px;border-width:0px!important;display:none!important;line-height:0px!important;"><img border="0" width="1" height="1" src="{{ b.absolute_logo_url|default:'https://rmu.prod.canusiaplatform.com/static/images/logo.png' }}"></div>
         
         <table class="nl-container" style="table-layout: fixed; vertical-align: top; min-width: 320px; Margin: 0 auto; border-spacing: 0; border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt; background-color: #fafafa; width: 100%;" cellpadding="0" cellspacing="0" role="presentation" width="100%" bgcolor="#fafafa" valign="top">
             <tbody>
@@ -132,7 +132,7 @@
                                             <div style="border-top:0px solid transparent; border-left:0px solid transparent; border-bottom:0px solid transparent; border-right:0px solid transparent; padding-top:5px; padding-bottom:5px; padding-right: 0px; padding-left: 0px; background-color: #d44501 !important;">
                                                 <!--<![endif]-->
                                                 <div class="img-container left fixedwidth" align="left" style="padding-right: 0px;padding-left: 50px;">
-                                                    <!--[if mso]><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr style="line-height:0px"><td style="padding-right: 0px;padding-left: 50px;" align="left"><![endif]--><img class="left fixedwidth" border="0" src="https://rmu.prod.canusiaplatform.com/static/images/logo.png" style="text-decoration: none; -ms-interpolation-mode: bicubic; height: 80px; border: none; max-width: 250px; display: block;" width="150">
+                                                    <!--[if mso]><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr style="line-height:0px"><td style="padding-right: 0px;padding-left: 50px;" align="left"><![endif]--><img class="left fixedwidth" border="0" src="{{ b.absolute_logo_url|default:'https://rmu.prod.canusiaplatform.com/static/images/logo.png' }}" style="text-decoration: none; -ms-interpolation-mode: bicubic; height: 80px; border: none; max-width: 250px; display: block;" width="150">
                                                     <!--[if mso]></td></tr></table><![endif]-->
                                                 </div>
                                                 <!--[if (!mso)&(!IE)]><!-->

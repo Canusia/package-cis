@@ -26,7 +26,7 @@
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 
-  {% load static %}
+  {% load static brand %}
 
   {% load crispy_forms_tags %}
   {% load templatehelpers %}
@@ -70,7 +70,7 @@
     <a class="sidebar-brand"  href="{% url 'logged_home' %}">
       <div class="sidebar-brand-text1">
         {% if MYCE_SETTINGS.show_logo == 'True' %}
-        <img src="{% static 'images/logo.png' %}" style="height: 60px;" class="img-fluid d-none d-sm-inline-block"
+        <img src="{% brand_logo_url %}" style="height: 60px;" class="img-fluid d-none d-sm-inline-block"
           alt="Logo">
 
         {%else%}

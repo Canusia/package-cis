@@ -197,3 +197,54 @@ class ContextProcessorTests(TestCase):
         self.assertEqual(data['MYCE_SETTINGS']['site_name'], 'LIT Portal')
         self.assertEqual(data['MYCE_SETTINGS']['DEBUG'], settings.MY_CE['DEBUG'])
         self.assertEqual(settings.MY_CE, before)
+
+
+class EmailTemplateTests(TestCase):
+    FALLBACK = 'https://rmu.prod.canusiaplatform.com/static/images/logo.png'
+
+    def _email(self, campus=None, brands=None):
+        import os
+        from django.template import Engine
+        import cis
+        # cis's own copy: on a tenant with myce_theme the loader would pick the theme's.
+        path = os.path.join(os.path.dirname(cis.__file__), 'templates', 'cis', 'email.html')
+        with open(path) as fh:
+            source = fh.read()
+        with _tenant(brands or {}), campus_context(campus):
+            return Engine.get_default().from_string(source).render(Context({'message': 'hi'}))
+
+    def test_no_campus_keeps_the_fallback_url(self):
+        out = self._email()
+        self.assertIn(self.FALLBACK, out)
+        self.assertTrue(out.startswith('<!DOCTYPE'), out[:40])
+
+    def test_campus_with_site_uses_its_domain(self):
+        campus = _campus(domain='lit.example.edu')
+        out = self._email(campus, {campus.code: {'logo': 'images/logo.png'}})
+        self.assertIn('https://lit.example.edu/static/images/logo.png', out)
+        self.assertNotIn(self.FALLBACK, out)
+
+    @override_settings(MULTI_CAMPUS=True)
+    def test_campus_without_site_keeps_the_fallback(self):
+        campus = _campus()
+        self.assertIn(self.FALLBACK, self._email(campus, {}))
+
+
+class PageTemplateTests(TestCase):
+    def test_header_includes_carries_brand_css_after_the_stylesheet(self):
+        from django.template.loader import render_to_string
+        campus = _campus()
+        with _tenant({campus.code: {'colors': {'color-primary': '#29348f'}}}), \
+                campus_context(campus):
+            out = render_to_string('cis/header-includes.html')
+        self.assertIn('--color-primary:#29348f', out)
+        self.assertLess(out.index('css/style.css'), out.index('--color-primary'))
+
+    def test_base_uses_campus_logo_and_background(self):
+        from django.template.loader import render_to_string
+        campus = _campus()
+        with _tenant({campus.code: {'logo': 'brand/x/logo.png', 'background': 'brand/x/bg.jpg'}}), \
+                campus_context(campus), override_settings(MY_CE={**settings.MY_CE, 'show_logo': 'True'}):
+            out = render_to_string('cis/base.html', {'MYCE_SETTINGS': {**settings.MY_CE, 'show_logo': 'True'}})
+        self.assertIn('/static/brand/x/logo.png', out)
+        self.assertIn('/static/brand/x/bg.jpg', out)

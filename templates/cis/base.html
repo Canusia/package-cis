@@ -5,7 +5,7 @@
   
   <meta charset="utf-8">
 
-  {% load static %}
+  {% load static brand %}
 
 
   <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
@@ -17,6 +17,7 @@
   <title>{% block title %}123{% endblock %}</title>
 
   <link rel="stylesheet" href="{% static 'css/style.css'%}">
+  {% brand_css %}
 
   <link rel="stylesheet" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
   <!-- <script src="https://code.jquery.com/jquery-3.2.1.min.js" crossorigin="anonymous"></script> -->
@@ -33,7 +34,7 @@
     <style>
 
       .bg {
-        background-image: url("{% static 'images/bg.jpg'%}");
+        background-image: url("{% brand_background_url %}");
         height: 100%;
 
         background-position: center;
@@ -61,7 +62,7 @@
       <div class="container d-flex justify-content-between">
         <a href="{% url 'index' %}" class="navbar-brand mr-0 d-flex align-items-center">
           {% if MYCE_SETTINGS.show_logo == 'True' %}
-          <img class="img-fluid" src="{% static 'images/logo.png' %}"
+          <img class="img-fluid" src="{% brand_logo_url %}"
             style="padding-right: 15px; border-right: 0px solid #9f9f9f; height: 60px;" alt="College Logo">
           {%else%}
           {{MYCE_SETTINGS.site_name }}
