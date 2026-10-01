@@ -28,7 +28,8 @@ def _tenant(brands):
 class BrandResolutionTests(TestCase):
     def test_no_campus_gives_todays_defaults(self):
         from cis.branding import current_brand
-        brand = current_brand()
+        with _tenant({}):  # not the running tenant's own branding module
+            brand = current_brand()
         self.assertEqual(brand.site_name, settings.MY_CE['site_name'])
         self.assertEqual(brand.college_name, settings.MY_CE['college_name'])
         self.assertEqual(brand.logo, 'images/logo.png')
@@ -89,6 +90,7 @@ class BrandResolutionTests(TestCase):
 
 
 class AbsoluteLogoUrlTests(TestCase):
+    @override_settings(MULTI_CAMPUS=True)
     def test_campus_with_site_gets_its_own_domain(self):
         from cis.branding import current_brand
         campus = _campus(domain='lit.example.edu')
@@ -218,6 +220,7 @@ class EmailTemplateTests(TestCase):
         self.assertIn(self.FALLBACK, out)
         self.assertTrue(out.startswith('<!DOCTYPE'), out[:40])
 
+    @override_settings(MULTI_CAMPUS=True)
     def test_campus_with_site_uses_its_domain(self):
         campus = _campus(domain='lit.example.edu')
         out = self._email(campus, {campus.code: {'logo': 'images/logo.png'}})
@@ -322,3 +325,22 @@ class PortalNamesTests(TestCase):
                 mock.patch.object(home, 'render', return_value=HttpResponse()) as render:
             home.index(request)
         self.assertEqual(render.call_args.args[2]['portal']['site_name'], 'LIT Dual Credit')
+
+
+class SingleCampusEmailUnchangedTests(TestCase):
+    """Review #3: a single-campus deployment whose campus has a Site (set up
+    ahead of MULTI_CAMPUS) must keep today's email logo URL."""
+
+    @override_settings(MULTI_CAMPUS=False)
+    def test_single_campus_with_site_keeps_the_fallback(self):
+        from cis.branding import current_brand
+        campus = _campus(domain='ewu.example.edu')
+        with _tenant({}), campus_context(campus):
+            self.assertEqual(current_brand().absolute_logo_url, '')
+
+    @override_settings(MULTI_CAMPUS=True)
+    def test_multi_campus_brand_without_site_keeps_the_fallback(self):
+        from cis.branding import current_brand
+        campus = _campus()
+        with _tenant({campus.code: {'logo': 'images/logo.png'}}), campus_context(campus):
+            self.assertEqual(current_brand().absolute_logo_url, '')

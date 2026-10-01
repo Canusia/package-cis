@@ -72,10 +72,13 @@ class Brand:
     @property
     def absolute_logo_url(self):
         """The logo on the campus's own host, for emails; '' when there is no
-        campus or it has no Site (the email template keeps its own URL)."""
-        if self.campus is None or not getattr(self.campus, 'site_id', None):
+        campus, it has no Site, or the deployment is single-campus -- the
+        email template then keeps its own URL, so single-campus email is
+        unchanged even when a Site was set up ahead of MULTI_CAMPUS."""
+        from cis.campus_context import campus_url, is_multi_campus
+        if (not is_multi_campus() or self.campus is None
+                or not getattr(self.campus, 'site_id', None)):
             return ''
-        from cis.campus_context import campus_url
         try:
             return campus_url(self.campus, self.logo_url)
         except Exception:
