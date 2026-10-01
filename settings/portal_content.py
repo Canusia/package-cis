@@ -1,6 +1,8 @@
 import json
 from django import forms
 from django.conf import settings
+
+from cis.branding import branded_my_ce
 from django.http import JsonResponse
 from django.urls import reverse_lazy
 from django.core.exceptions import ValidationError
@@ -140,7 +142,7 @@ class portal_content(SettingForm):
                 request,
                 template,
                 {
-                    'portal':settings.MY_CE,
+                    'portal': branded_my_ce(),
                     'offerings': None,
                     'lookup_form': None
                 },
@@ -148,32 +150,32 @@ class portal_content(SettingForm):
         elif field_name in ['student_text']:
             # content = self.from_db().get('student_terms')
             template = 'cis/index/student.html'
-            ctx = {'portal': settings.MY_CE, 'form': MyCELoginForm(request),
+            ctx = {'portal': branded_my_ce(), 'form': MyCELoginForm(request),
                    'registration_is_open': True}
             ctx['page_body'] = render_landing_body(request, 'student', ctx)
             return render(request, template, ctx)
         elif field_name in ['instructor_text']:
             # content = self.from_db().get('student_terms')
             template = 'cis/index/instructor.html'
-            ctx = {'portal': settings.MY_CE, 'form': MyCELoginForm(request)}
+            ctx = {'portal': branded_my_ce(), 'form': MyCELoginForm(request)}
             ctx['page_body'] = render_landing_body(request, 'instructor', ctx)
             return render(request, template, ctx)
         elif field_name in ['faculty_text']:
             # content = self.from_db().get('student_terms')
             template = 'cis/index/faculty.html'
-            ctx = {'portal': settings.MY_CE, 'form': MyCELoginForm(request)}
+            ctx = {'portal': branded_my_ce(), 'form': MyCELoginForm(request)}
             ctx['page_body'] = render_landing_body(request, 'faculty', ctx)
             return render(request, template, ctx)
         elif field_name in ['staff_text']:
             # content = self.from_db().get('student_terms')
             template = 'cis/index/staff.html'
-            ctx = {'portal': settings.MY_CE, 'form': MyCELoginForm(request)}
+            ctx = {'portal': branded_my_ce(), 'form': MyCELoginForm(request)}
             ctx['page_body'] = render_landing_body(request, 'staff', ctx)
             return render(request, template, ctx)
         elif field_name in ['counselor_text']:
             # content = self.from_db().get('student_terms')
             template = 'cis/index/highschool_admin.html'
-            ctx = {'portal': settings.MY_CE, 'form': MyCELoginForm(request)}
+            ctx = {'portal': branded_my_ce(), 'form': MyCELoginForm(request)}
             ctx['page_body'] = render_landing_body(request, 'counselor', ctx)
             return render(request, template, ctx)
         elif field_name in ['instructor_app_text']:

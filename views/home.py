@@ -2,6 +2,8 @@ import logging
 
 from django.shortcuts import render, get_object_or_404
 from django.conf import settings
+
+from cis.branding import branded_my_ce
 from django.contrib import messages, auth
 
 from django.urls import reverse_lazy
@@ -123,7 +125,7 @@ def index(request):
         offerings = None
         look_up_form = HighSchoolOfferingLookupForm()
     return render(request, 'cis/index/index.html', {
-        'portal':settings.MY_CE,
+        'portal': branded_my_ce(),
         'offerings': offerings,
         'lookup_form': look_up_form})
 index.login_required = False
@@ -161,7 +163,7 @@ def student_index(request):
         'registration_is_open': is_student_registration_open(),
         'window_close_notice': window_close_notice,
         'form': form,
-        'portal': settings.MY_CE,
+        'portal': branded_my_ce(),
     }
     context['page_body'] = render_landing_body(request, 'student', context)
     return render(request, 'cis/index/student.html', context)
@@ -205,7 +207,7 @@ def instructor_index(request):
         closed_message = ''
     
     context = {
-        'portal': settings.MY_CE,
+        'portal': branded_my_ce(),
         'form': form,
         'accepting_applications': accepting_applications,
         'closed_message': closed_message,
@@ -239,7 +241,7 @@ def highschool_facilitator_index(request):
     if request.user.is_authenticated:
         return HttpResponseRedirect(reverse_lazy('logged_home'))
 
-    context = {'label': 'Facilitator', 'form': form, 'portal': settings.MY_CE}
+    context = {'label': 'Facilitator', 'form': form, 'portal': branded_my_ce()}
     context['page_body'] = render_landing_body(request, 'counselor', context)
     return render(request, 'cis/index/highschool_admin.html', context)
 highschool_facilitator_index.login_required = False
@@ -268,7 +270,7 @@ def highschool_admin_index(request):
     if request.user.is_authenticated:
         return HttpResponseRedirect(reverse_lazy('logged_home'))
 
-    context = {'label': 'School Counselor or Administrator', 'form': form, 'portal': settings.MY_CE}
+    context = {'label': 'School Counselor or Administrator', 'form': form, 'portal': branded_my_ce()}
     context['page_body'] = render_landing_body(request, 'counselor', context)
     return render(request, 'cis/index/highschool_admin.html', context)
 highschool_admin_index.login_required = False
@@ -337,7 +339,7 @@ def staff_index(request):
 
     if request.user.is_authenticated:
         return HttpResponseRedirect(reverse_lazy('logged_home'))
-    context = {'portal': settings.MY_CE, 'form': MyCELoginForm(request)}
+    context = {'portal': branded_my_ce(), 'form': MyCELoginForm(request)}
     context['page_body'] = render_landing_body(request, 'staff', context)
     return render(request, 'cis/index/staff.html', context)
 staff_index.login_required = False
@@ -367,7 +369,7 @@ def faculty_index(request):
 
     if request.user.is_authenticated:
         return HttpResponseRedirect(reverse_lazy('logged_home'))
-    context = {'portal': settings.MY_CE, 'form': MyCELoginForm(request)}
+    context = {'portal': branded_my_ce(), 'form': MyCELoginForm(request)}
     context['page_body'] = render_landing_body(request, 'faculty', context)
     return render(request, 'cis/index/faculty.html', context)
 faculty_index.login_required = False
@@ -408,7 +410,7 @@ def dashboard(request):
         request,
         'cis/dashboard.html',
         {
-            'portal': settings.MY_CE,
+            'portal': branded_my_ce(),
             'reg_settings': reg_settings,
             'active_term': active_term,
             'access_requests_api_url': '/ce/api/hs-administrator-access-request',
@@ -434,7 +436,7 @@ def logged_home(request):
         request,
         'cis/index/logged_home.html',
         {
-            'portal': settings.MY_CE,
+            'portal': branded_my_ce(),
             'roles': user_roles
         })
 
@@ -475,6 +477,6 @@ def lockout(request, credentials, *args, **kwargs):
     )
 
     return render(request, 'cis/index/index.html', {
-        'portal':settings.MY_CE
+        'portal': branded_my_ce()
     })
 lockout.login_required = False

@@ -291,3 +291,34 @@ class CampusCodeReadOnlyTests(TestCase):
                 mock.patch.object(campus_views, 'draw_menu', return_value=''):
             campus_views.detail(request, self.campus.id)
         self.assertTrue(render.call_args.args[2]['form'].fields['code'].disabled)
+
+
+class PortalNamesTests(TestCase):
+    """Login views pass `portal` (their titles and headers use portal.site_name
+    and portal.college_name); it must carry the campus's names too."""
+
+    def test_branded_my_ce_overlays_names_on_a_copy(self):
+        from cis.branding import branded_my_ce
+        campus = _campus()
+        before = dict(settings.MY_CE)
+        with _tenant({campus.code: {'college_name': 'Lamar Institute of Technology'}}), \
+                campus_context(campus):
+            portal = branded_my_ce()
+        self.assertEqual(portal['college_name'], 'Lamar Institute of Technology')
+        self.assertEqual(portal['roles'], settings.MY_CE['roles'])
+        self.assertEqual(settings.MY_CE, before)
+
+    def test_login_page_portal_carries_campus_names(self):
+        from django.contrib.auth.models import AnonymousUser
+        from django.contrib.sessions.middleware import SessionMiddleware
+        from django.http import HttpResponse
+        from django.test import RequestFactory
+        from cis.views import home
+        campus = _campus()
+        request = RequestFactory().get('/')
+        request.user = AnonymousUser()
+        SessionMiddleware(lambda r: None).process_request(request)
+        with _tenant({campus.code: {'site_name': 'LIT Dual Credit'}}), campus_context(campus), \
+                mock.patch.object(home, 'render', return_value=HttpResponse()) as render:
+            home.index(request)
+        self.assertEqual(render.call_args.args[2]['portal']['site_name'], 'LIT Dual Credit')

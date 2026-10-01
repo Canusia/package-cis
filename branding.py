@@ -121,3 +121,9 @@ def current_brand():
     """The Brand for the campus being served (or set by campus_context())."""
     from cis.campus_context import current_campus_or_none
     return brand_for(current_campus_or_none())
+
+
+def branded_my_ce():
+    """A copy of settings.MY_CE with the current campus's names -- what pages
+    get as MYCE_SETTINGS and the login views pass as ``portal``."""
+    return {**settings.MY_CE, **current_brand().names()}
