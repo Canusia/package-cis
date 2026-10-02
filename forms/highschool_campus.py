@@ -1,5 +1,6 @@
 """Form for linking a high school to a campus (building code + status)."""
 from django import forms
+from django.db import IntegrityError, transaction
 
 from cis.campus_gate import get_accessible_campuses
 from cis.models.course import Campus
@@ -58,3 +59,34 @@ class HighSchoolCampusForm(forms.ModelForm):
         if commit:
             link.save()
         return link
+
+    def save_or_error(self):
+        """Save, turning a lost race on a unique constraint into a form error.
+
+        clean() only pre-checks; a double-click or concurrent submit can still
+        reach the database constraint. Returns the link, or None with the
+        error added to the form.
+        """
+        try:
+            with transaction.atomic():
+                return self.save()
+        except IntegrityError:
+            campus = (self.instance.campus if not self.instance._state.adding
+                      else self.cleaned_data.get('campus'))
+            code = self.cleaned_data.get('building_code')
+            clash = None
+            if campus and code:
+                clash = (HighSchoolCampus.objects
+                         .filter(campus=campus, building_code=code)
+                         .exclude(pk=self.instance.pk)
+                         .select_related('highschool').first())
+            if clash:
+                self.add_error(
+                    'building_code',
+                    f'Building code "{code}" is already used by '
+                    f'{clash.highschool.name} at {campus.name}.')
+            else:
+                self.add_error(
+                    'campus' if 'campus' in self.fields else None,
+                    'This high school is already linked to that campus.')
+            return None

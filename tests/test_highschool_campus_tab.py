@@ -144,6 +144,72 @@ class AddTests(_Base):
         self.assertEqual(resp.status_code, 200, resp.content)
 
 
+class RaceAndInputTests(_Base):
+    def test_non_uuid_campus_is_form_error_not_500(self):
+        resp = self._call(views.highschool_campus_add, self.staff, post={
+            'apply': '1', 'campus': 'not-a-uuid', 'status': 'Active'},
+            record_id=self.hs.id)
+        self.assertEqual(resp.status_code, 400)
+
+    def test_add_duplicate_link_race_is_form_error(self):
+        from unittest import mock
+        real_clean = HighSchoolCampusForm._post_clean
+
+        def clean_then_race(form):
+            out = real_clean(form)
+            _link(self.hs, self.c, 'RC')  # concurrent submit wins
+            return out
+        with mock.patch.object(HighSchoolCampusForm, "_post_clean", clean_then_race):
+            resp = self._call(views.highschool_campus_add, self.staff, post={
+                'apply': '1', 'campus': str(self.c.id),
+                'building_code': 'RC2', 'status': 'Active'},
+                record_id=self.hs.id)
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('already linked', resp.content.decode())
+        self.assertEqual(
+            HighSchoolCampus.objects.filter(highschool=self.hs, campus=self.c).count(), 1)
+
+    def test_code_race_names_school(self):
+        from unittest import mock
+        other = _hs('Xray Prep')
+        real_clean = HighSchoolCampusForm._post_clean
+
+        def clean_then_race(form):
+            out = real_clean(form)
+            _link(other, self.c, 'RACE')
+            return out
+        with mock.patch.object(HighSchoolCampusForm, "_post_clean", clean_then_race):
+            resp = self._call(views.highschool_campus_add, self.staff, post={
+                'apply': '1', 'campus': str(self.c.id),
+                'building_code': 'RACE', 'status': 'Active'},
+                record_id=self.hs.id)
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('Xray Prep', resp.content.decode())
+
+    def test_edit_code_race_is_form_error(self):
+        from unittest import mock
+        other = _hs('Whiskey')
+        real_clean = HighSchoolCampusForm._post_clean
+
+        def clean_then_race(form):
+            out = real_clean(form)
+            _link(other, self.a, 'EDR')
+            return out
+        with mock.patch.object(HighSchoolCampusForm, "_post_clean", clean_then_race):
+            resp = self._call(views.highschool_campus_edit, self.staff, post={
+                'apply': '1', 'building_code': 'EDR', 'status': 'Active'},
+                link_id=self.link_a.id)
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('Whiskey', resp.content.decode())
+
+    def test_unlinking_host_campus_redirects(self):
+        resp = self._call(views.highschool_campus_delete, self.staff,
+                          post={'apply': '1'}, link_id=self.link_a.id)
+        data = self._json(resp)
+        self.assertEqual(data['outcome'], 'redirect')
+        self.assertEqual(data['url'], reverse('cis:highschools'))
+
+
 class EditDeleteTests(_Base):
     def _edit(self, user, link, post=None):
         return self._call(views.highschool_campus_edit, user, post=post,

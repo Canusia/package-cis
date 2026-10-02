@@ -2,6 +2,7 @@ import csv
 import io
 from django.utils.http import content_disposition_header
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError
 from django.db.models import Q, Count, Prefetch
 from django.contrib import messages
@@ -901,7 +902,7 @@ def highschool_campus_add(request, record_id):
     campus_id = request.POST.get('campus')
     try:
         campus = Campus.objects.filter(pk=campus_id).first() if campus_id else None
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, DjangoValidationError):
         campus = None
     if campus is not None and not can_process_campus(request.user, campus):
         return _forbidden()
@@ -909,7 +910,9 @@ def highschool_campus_add(request, record_id):
     form = HighSchoolCampusForm(request.POST, user=request.user, highschool=record)
     if not form.is_valid():
         return _form_error(form)
-    link = form.save()
+    link = form.save_or_error()
+    if link is None:
+        return _form_error(form)
     return _campus_link_done(
         'Campus linked', 'Linked %s to %s.' % (record.name, link.campus.name))
 
@@ -948,7 +951,8 @@ def highschool_campus_edit(request, link_id):
         request.POST, instance=link, user=request.user, highschool=link.highschool)
     if not form.is_valid():
         return _form_error(form)
-    form.save()
+    if form.save_or_error() is None:
+        return _form_error(form)
     return _campus_link_done(
         'Campus link updated', 'Updated %s at %s.' % (link.highschool.name, link.campus.name))
 
