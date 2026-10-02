@@ -6,6 +6,7 @@ from typing import Dict, List, Optional, Tuple
 from django.db import transaction
 from pydantic import ValidationError as PydanticValidationError
 
+from cis.campus_context import is_multi_campus
 from cis.models.highschool import HighSchool, HighSchoolCampus
 from cis.signals.highschool_campus import (
     link_campus, link_new_highschools, set_link_statuses)
@@ -19,10 +20,32 @@ logger = logging.getLogger(__name__)
 class HighSchoolImporter:
     """Handles importing HighSchools from CSV"""
 
-    def __init__(self, use_bulk_operations=True, batch_size=500, use_transactions='none'):
+    def __init__(self, use_bulk_operations=True, batch_size=500, use_transactions='none',
+                 user=None):
         self.use_bulk_operations = use_bulk_operations
+        # The acting user. Only a superuser may link a school the current
+        # campus does not already have (multi-campus); None acts as staff.
+        self.user = user
         self.batch_size = batch_size
         self.use_transactions = use_transactions
+
+    def _link_restriction_campus(self):
+        """The campus whose existing links bound this import, or None.
+
+        Multi-campus, non-superuser, with a current campus: rows may only
+        update schools already linked to that campus.
+        """
+        if not is_multi_campus() or getattr(self.user, 'is_superuser', False):
+            return None
+        return link_campus()
+
+    def _unlinked_skip_message(self, highschool):
+        message = (
+            f'Skipped - {highschool.name} ({highschool.code}) is not linked to '
+            'this campus; only a superuser or the school\'s campus staff can '
+            'link it. No changes were made.')
+        logger.warning('High school import: %s', message)
+        return message
 
     def process_csv(self, dictReader) -> Dict:
         """Main entry point for CSV import."""
@@ -155,12 +178,24 @@ class HighSchoolImporter:
         to_update = []
 
         link_statuses = {}  # school pk -> status for the campus link (updates)
+        skipped = []
+
+        restrict = self._link_restriction_campus()
+        linked_ids = set()
+        if restrict is not None and existing_records:
+            linked_ids = set(HighSchoolCampus.objects.filter(
+                campus=restrict,
+                highschool_id__in=[hs.pk for hs in existing_records.values()],
+            ).values_list('highschool_id', flat=True))
 
         for data in prepared_data:
             key = data['validated'].code
 
             if key in existing_records:
                 highschool = existing_records[key]
+                if restrict is not None and highschool.pk not in linked_ids:
+                    skipped.append((data, self._unlinked_skip_message(highschool)))
+                    continue
                 self._update_highschool(highschool, data)
                 to_update.append(highschool)
                 if data['validated'].status is not None:
@@ -220,7 +255,14 @@ class HighSchoolImporter:
             self._apply_link_statuses(link_statuses)
 
         # Phase 2e: Build results
+        skipped_ids = {id(d) for d, _ in skipped}
+        for data, message in skipped:
+            data['row']['RESULT'] = message
+            results.append(ImportResult(
+                success=False, row_data=data['row'], error_message=message))
         for data in prepared_data:
+            if id(data) in skipped_ids:
+                continue
             data['row']['RESULT'] = 'Success'
             results.append(ImportResult(success=True, row_data=data['row']))
 
@@ -328,6 +370,13 @@ class HighSchoolImporter:
             # Check if record exists by code and update or create
             try:
                 highschool = HighSchool.objects.get(code=validated.code)
+                restrict = self._link_restriction_campus()
+                if restrict is not None and not HighSchoolCampus.objects.filter(
+                        highschool=highschool, campus=restrict).exists():
+                    message = self._unlinked_skip_message(highschool)
+                    row['RESULT'] = message
+                    return ImportResult(
+                        success=False, row_data=row, error_message=message)
                 self._update_highschool(highschool, data)
                 highschool.save()
                 if validated.status is not None:

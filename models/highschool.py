@@ -429,13 +429,16 @@ class HighSchool(models.Model):
         return class_sections
 
     @staticmethod
-    def import_from_csv(dictReader, use_bulk=True):
+    def import_from_csv(dictReader, use_bulk=True, user=None):
         """
         Import high schools from CSV with optional bulk operations.
 
         Args:
             dictReader: CSV DictReader object
             use_bulk: If True, use bulk operations for better performance (default: True)
+            user: the acting user. In multi-campus mode only a superuser may
+                link a school the current campus does not already have;
+                None is treated as a non-superuser.
 
         Returns:
             Dict with 'status', 'records', and 'summary' keys
@@ -445,7 +448,8 @@ class HighSchool(models.Model):
         importer = HighSchoolImporter(
             use_bulk_operations=use_bulk,
             batch_size=500,
-            use_transactions='none'
+            use_transactions='none',
+            user=user,
         )
         return importer.process_csv(dictReader)
 

@@ -422,7 +422,7 @@ def import_from_file(request):
         decoded_file = request.FILES.get('file').read().decode('utf-8-sig', errors='ignore')
         reader = csv.DictReader(io.StringIO(decoded_file))
 
-        result = HighSchool.import_from_csv(reader)
+        result = HighSchool.import_from_csv(reader, user=request.user)
         if result['status'] == 'success':
             if not result['records']:
                 messages.add_message(

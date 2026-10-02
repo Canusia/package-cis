@@ -202,6 +202,66 @@ class ImportMultiCampusTests(TestCase):
             HighSchoolCampus.objects.filter(highschool__code=code).exists())
 
 
+    def test_staff_import_does_not_link_school_of_another_campus(self):
+        hs = _hs('Theirs', status='Active')
+        _link(hs, self.a, 'Active')
+        with campus_context(self.b):
+            for bulk in (True, False):
+                result = HighSchool.import_from_csv(_rows(
+                    {'name': 'Theirs renamed', 'code': hs.code,
+                     'status': 'Inactive'}), use_bulk=bulk)
+                self.assertFalse(
+                    HighSchoolCampus.objects.filter(
+                        highschool=hs, campus=self.b).exists())
+                record = result['records'][0]
+                self.assertIn('Skipped', record['RESULT'])
+                self.assertIn(hs.name, record['RESULT'])
+                self.assertIn(hs.code, record['RESULT'])
+        hs.refresh_from_db()
+        self.assertEqual(hs.name, 'Theirs')
+        self.assertEqual(
+            HighSchoolCampus.objects.get(highschool=hs, campus=self.a).status,
+            'Active')
+
+    def test_staff_import_with_no_status_does_not_touch_unlinked_school(self):
+        hs = _hs('Theirs', status='Active')
+        _link(hs, self.a, 'Active')
+        with campus_context(self.b):
+            HighSchool.import_from_csv(_rows(
+                {'name': 'Renamed', 'code': hs.code}), use_bulk=True)
+        self.assertFalse(HighSchoolCampus.objects.filter(
+            highschool=hs, campus=self.b).exists())
+        self.assertEqual(HighSchool.objects.get(pk=hs.pk).name, 'Theirs')
+
+    def test_superuser_import_links_school_to_current_campus(self):
+        su = User.objects.create_superuser(
+            username=f'su-{_sfx()}', email=f'{_sfx()}@x.com', password='x')
+        for bulk in (True, False):
+            hs = _hs('Theirs', status='Active')
+            _link(hs, self.a, 'Active')
+            with campus_context(self.b):
+                HighSchool.import_from_csv(_rows(
+                    {'name': 'Theirs', 'code': hs.code, 'status': 'Inactive'}),
+                    use_bulk=bulk, user=su)
+            link = HighSchoolCampus.objects.get(highschool=hs, campus=self.b)
+            self.assertEqual(link.status, 'Inactive')
+
+    def test_staff_import_updates_already_linked_school(self):
+        hs = _hs('Mine', status='Active')
+        _link(hs, self.b, 'Active')
+        user = User.objects.create_user(
+            username=f'st-{_sfx()}', email=f'{_sfx()}@x.com', password='x')
+        for bulk, status in ((True, 'Inactive'), (False, 'Active')):
+            with campus_context(self.b):
+                result = HighSchool.import_from_csv(_rows(
+                    {'name': 'Mine', 'code': hs.code, 'status': status}),
+                    use_bulk=bulk, user=user)
+            self.assertEqual(result['records'][0]['RESULT'], 'Success')
+            self.assertEqual(
+                HighSchoolCampus.objects.get(highschool=hs, campus=self.b).status,
+                status)
+
+
 # --- C3 + I5b: status form --------------------------------------------------
 
 class _StatusBase(TestCase):
