@@ -23,6 +23,8 @@ from cis.models.course import Course
 from django.utils.safestring import mark_safe
 
 from cis.services.table_configs import get_table_config
+from cis.highschool_scope import scope_highschools
+from cis.campus_context import current_campus_or_none
 build_sections_table_config = get_table_config('sections_table').build_config
 build_instructors_table_config = get_table_config('instructors_table').build_config
 build_highschools_table_config = get_table_config('highschools_table').build_config
@@ -92,15 +94,33 @@ class HighSchoolViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         status = self.request.GET.get('status')
+        user = self.request.user
+        records = scope_highschools(HighSchool.objects.all(), user=user)
 
         if status:
-            records = HighSchool.objects.filter(
-                status=status
-            )
-        else:
-            records = HighSchool.objects.all()
+            records = filter_by_link_status(records, status)
 
-        return records
+        return records.prefetch_related('campus_links')
+
+
+def _status_campus():
+    """Campus whose link status a status filter means, or None.
+
+    None only for a superuser outside any campus context (multi-campus), where
+    the global derived status is the only meaningful one.
+    """
+    return current_campus_or_none()
+
+
+def filter_by_link_status(records, status, campus=None):
+    """Schools whose link on the (current) campus has ``status``."""
+    campus = campus or _status_campus()
+    if campus is None:
+        return records.filter(status=status)
+    return records.filter(
+        campus_links__campus=campus, campus_links__status=status
+    ).distinct()
+
 
 class HighSchoolServedByCampusViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = HighSchoolSerializer
@@ -272,11 +292,13 @@ def highschool_map_data(request):
         statuses = [status[0] for status in StudentRegistration.STATUS_OPTIONS]
 
     # Base query - active schools with coordinates
-    schools = HighSchool.objects.select_related('district').filter(
-        status__iexact='active',
+    schools = scope_highschools(
+        HighSchool.objects.select_related('district'), user=request.user
+    ).filter(
         latitude__isnull=False,
         longitude__isnull=False
     )
+    schools = filter_by_link_status(schools, 'Active')
 
     # Filter by terms if provided
     if term_ids:
@@ -463,7 +485,9 @@ def add_new(request):
 
 def tab(request, record_id, tab_slug):
     """Render a single High School detail-page tab fragment (lazy AJAX)."""
-    record = get_object_or_404(HighSchool, pk=record_id)
+    record = get_object_or_404(
+        scope_highschools(HighSchool.objects.all(), user=request.user),
+        pk=record_id)
     return highschool_tabs.render_tab(request, record, tab_slug)
 
 
@@ -474,7 +498,9 @@ def detail(request, record_id):
     High school details page
     '''
     template = 'cis/highschools/details.html'
-    record = get_object_or_404(HighSchool, pk=record_id)
+    record = get_object_or_404(
+        scope_highschools(HighSchool.objects.all(), user=request.user),
+        pk=record_id)
 
     hs_transcript_upload_form = HSTranscriptUploadForm()
 

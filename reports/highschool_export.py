@@ -9,6 +9,7 @@ from crispy_forms.layout import Submit
 from cis.utils import export_to_excel, user_has_cis_role
 
 from cis.models.highschool import HighSchool
+from cis.highschool_scope import scope_highschools
 
 class highschool_export(forms.Form):
 
@@ -43,9 +44,15 @@ class highschool_export(forms.Form):
         file_name = "highschools.csv"
 
         try:
-            records = HighSchool.objects.filter(
-                status__in=highschool_status
-            ).order_by('name')
+            from cis.views.highschool import filter_by_link_status
+            from django.db.models import Q
+            records = scope_highschools(
+                HighSchool.objects.all(), user=self.request.user)
+            q = Q()
+            for st in highschool_status:
+                q |= Q(pk__in=filter_by_link_status(
+                    HighSchool.objects.all(), st).values('pk'))
+            records = records.filter(q).order_by('name')
 
             fields = {
                 # 'pk': 'HighSchoolMemberPositionID',
