@@ -4,7 +4,7 @@ CIS Models
 from .customuser import CustomUser
 from .district import District
 from .highschool import (
-    HighSchool, HighSchoolClassOffering,
+    HighSchool, HighSchoolCampus, HighSchoolClassOffering,
     HighSchoolCollegeAdvisor
 )
 

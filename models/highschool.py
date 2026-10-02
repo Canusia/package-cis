@@ -4,6 +4,7 @@ High School Model
 from email.policy import default
 import os, uuid
 from django.db import models
+from django.db.models import Q
 from django.contrib import messages, auth
 
 from simple_history.models import HistoricalRecords
@@ -234,6 +235,10 @@ class HighSchool(models.Model):
     )
 
     oncampus_sections = models.CharField(max_length=100, blank=True, null=True)
+
+    campuses = models.ManyToManyField(
+        'cis.Campus', through='cis.HighSchoolCampus',
+        related_name='highschools', blank=True)
 
     objects = HighSchoolManager()
     
@@ -487,3 +492,35 @@ class HighSchool(models.Model):
             highschool=self,
             term__in=terms
         )
+
+
+class HighSchoolCampus(models.Model):
+    """A high school's link to a campus, with that campus's building code
+    (what the SIS importer matches) and Active/Inactive status."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    highschool = models.ForeignKey(
+        'cis.HighSchool', on_delete=models.CASCADE, related_name='campus_links')
+    campus = models.ForeignKey(
+        'cis.Campus', on_delete=models.PROTECT, related_name='highschool_links')
+    building_code = models.CharField(max_length=20, blank=True, default='')
+
+    STATUS_OPTIONS = (
+        ('Active', 'Active'),
+        ('Inactive', 'Inactive'),
+    )
+    status = models.CharField(max_length=30, choices=STATUS_OPTIONS, default='Active')
+
+    history = HistoricalRecords()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['highschool', 'campus'], name='hs_campus_once'),
+            models.UniqueConstraint(
+                fields=['campus', 'building_code'],
+                condition=~Q(building_code=''),
+                name='hs_campus_code_unique'),
+        ]
+
+    def __str__(self):
+        return f'{self.highschool} @ {self.campus}'
