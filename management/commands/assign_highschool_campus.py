@@ -49,6 +49,8 @@ class Command(BaseCommand):
             schools = list(HighSchool.objects.order_by('name'))
         else:
             raw = [part.strip() for part in options['ids'].split(',') if part.strip()]
+            if not raw:
+                raise CommandError('No school ids given.')
             if code and len(raw) != 1:
                 raise CommandError('--building-code needs exactly one --ids value.')
             ids = []
@@ -68,6 +70,7 @@ class Command(BaseCommand):
         dry = options['dry_run']
         status = options['status']
         created = skipped = errors = 0
+        error_lines = []
 
         for hs in schools:
             if hs.pk in linked_ids:
@@ -80,8 +83,8 @@ class Command(BaseCommand):
                          .select_related('highschool').first())
                 if clash:
                     errors += 1
-                    self.stdout.write(
-                        f'  error {hs.name}: building code "{code}" is already used by '
+                    error_lines.append(
+                        f'{hs.name}: building code "{code}" is already used by '
                         f'{clash.highschool.name} at {campus.code}.')
                     continue
             if dry:
@@ -94,14 +97,16 @@ class Command(BaseCommand):
                         highschool=hs, campus=campus, building_code=code, status=status)
             except IntegrityError:
                 errors += 1
-                self.stdout.write(
-                    f'  error {hs.name}: could not link (building code or link '
+                error_lines.append(
+                    f'{hs.name}: could not link (building code or link '
                     f'already taken at {campus.code}).')
                 continue
             created += 1
             self.stdout.write(f'  linked {hs.name}')
 
         verb = 'would be linked' if dry else 'linked'
-        self.stdout.write(
-            f'{created} school(s) {verb} to {campus.code}; '
-            f'{skipped} skipped (already linked); {errors} error(s).')
+        summary = (f'{created} school(s) {verb} to {campus.code}; '
+                   f'{skipped} skipped (already linked); {errors} error(s).')
+        if errors:
+            raise CommandError('\n'.join(error_lines + [summary]))
+        self.stdout.write(summary)

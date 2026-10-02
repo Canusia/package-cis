@@ -111,11 +111,16 @@ class AssignHighSchoolCampusTests(TestCase):
     def test_building_code_clash_is_a_clear_error_not_a_traceback(self):
         HighSchoolCampus.objects.create(
             highschool=self.h2, campus=self.campus, building_code='B1')
-        out = _run('--campus', self.campus.code, '--ids', str(self.h1.pk),
-                   '--building-code', 'B1')
+        with self.assertRaises(CommandError) as ctx:
+            _run('--campus', self.campus.code, '--ids', str(self.h1.pk),
+                 '--building-code', 'B1')
         self.assertFalse(self.links().filter(highschool=self.h1).exists())
-        self.assertIn('B1', out)
-        self.assertIn('Two', out)
+        self.assertIn('B1', str(ctx.exception))
+        self.assertIn('Two', str(ctx.exception))
+
+    def test_ids_with_no_values_is_command_error(self):
+        with self.assertRaises(CommandError):
+            _run('--campus', self.campus.code, '--ids', ',')
 
     def test_same_code_on_another_campus_is_fine(self):
         HighSchoolCampus.objects.create(
