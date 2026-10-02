@@ -21,7 +21,10 @@ def _campus():
 
 def _hs(name, **kw):
     kw.setdefault('code', uuid.uuid4().hex[:8])
-    return HighSchool.objects.create(name=name, **kw)
+    hs = HighSchool.objects.create(name=name, **kw)
+    # The new-school signal may auto-link; these tests set links explicitly.
+    HighSchoolCampus.objects.filter(highschool=hs).delete()
+    return hs
 
 
 def _link(hs, campus, code='', status='Active'):

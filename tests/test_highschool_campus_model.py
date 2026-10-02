@@ -21,7 +21,11 @@ def _campus(tag=''):
 
 
 def _hs(name, **kw):
-    return HighSchool.objects.create(name=name, code=uuid.uuid4().hex[:8], **kw)
+    hs = HighSchool.objects.create(name=name, code=uuid.uuid4().hex[:8], **kw)
+    # The new-school signal may auto-link; these tests set links explicitly.
+    HighSchoolCampus.objects.filter(highschool=hs).delete()
+    HighSchool.objects.filter(pk=hs.pk).update(status=hs.status)  # undo derived status
+    return hs
 
 
 class ConstraintTests(TestCase):

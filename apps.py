@@ -645,6 +645,7 @@ class CisConfig(AppConfig):
         import cis.signals.teacher_applications
         import cis.signals.campus
         import cis.signals.staff_campus
+        import cis.signals.highschool_campus
         import cis.signals.sections
         import cis.signals.support_docs
 
