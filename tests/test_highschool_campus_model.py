@@ -133,9 +133,37 @@ class BackfillTests(TestCase):
         self.assertEqual(HighSchoolCampus.objects.count(), 0)
 
     @override_settings(MULTI_CAMPUS=False)
-    def test_several_prefixed_campuses_links_nothing(self):
-        self._single_campus()
+    def test_several_prefixed_campuses_link_to_first_by_name(self):
+        # Same rule as cis.campus_context.deployment_campus().
+        first = self._single_campus()
+        Campus.objects.filter(pk=first.pk).update(name='0000-first')
         _campus()
+        h1, h2 = _hs('X'), _hs('Y', status='Inactive')
+        backfill.forward(real_apps, None)
+        self.assertEqual(
+            sorted(HighSchoolCampus.objects.values_list('highschool_id', 'campus_id')),
+            sorted([(h1.pk, first.pk), (h2.pk, first.pk)]))
+
+    @override_settings(MULTI_CAMPUS=False)
+    def test_no_prefixed_campus_links_nothing(self):
+        Campus.objects.filter(
+            code__startswith=settings.CAMPUS_CODE_PREFIX).delete()
         _hs('X')
         backfill.forward(real_apps, None)
         self.assertEqual(HighSchoolCampus.objects.count(), 0)
+
+    @override_settings(MULTI_CAMPUS=False)
+    def test_school_status_written_as_derived(self):
+        self._single_campus()
+        want = {'active': 'Active', ' ACTIVE ': 'Active', 'Pending': 'Inactive',
+                '': 'Inactive', 'Inactive': 'Inactive'}
+        schools = {s: _hs(f'S-{i}', status=s) for i, s in enumerate(want)}
+        # Historical models, as in a real migrate: no link signals fire, so
+        # the migration itself must write the derived status.
+        from django.db import connection
+        from django.db.migrations.executor import MigrationExecutor
+        state = MigrationExecutor(connection).loader.project_state(
+            ('cis', '0097_highschool_campus_backfill'))
+        backfill.forward(state.apps, None)
+        for s, h in schools.items():
+            self.assertEqual(HighSchool.objects.get(pk=h.pk).status, want[s], repr(s))

@@ -12,6 +12,7 @@ from cis.utils import export_to_excel, user_has_cis_role
 
 from cis.backends.storage_backend import PrivateMediaStorage
 from cis.models.highschool import HighSchool
+from cis.highschool_scope import picker_queryset
 from cis.models.highschool_administrator import (
     HSAdministratorPosition, HSPosition
 )
@@ -46,8 +47,7 @@ class highschool_admin_password_reset(forms.Form):
         self.helper.add_input(Submit('submit', 'Generate Export'))
 
         self.fields['positions'].queryset = HSPosition.objects.all().order_by('name')
-        self.fields['highschools'].queryset = HighSchool.objects.filter(
-            status__iexact='Active').order_by('name')
+        self.fields['highschools'].queryset = picker_queryset()
 
     def run(self, task, data):
         position_ids = data.get('positions', None)

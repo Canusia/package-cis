@@ -144,3 +144,40 @@ class SingleCampusTests(_Base):
     def test_empty_code_none(self):
         self.assertIsNone(highschool_for_building_code(''))
         self.assertIsNone(highschool_for_building_code(None))
+
+
+@override_settings(MULTI_CAMPUS=False)
+class SingleCampusNoContextTests(TestCase):
+    """No campus_context(): the deployment campus, or legacy behaviour when
+    the deployment has no prefixed campus at all."""
+
+    def test_two_prefixed_campuses_use_first_by_name(self):
+        first = Campus.objects.create(
+            name='0000-first', code=f'{settings.CAMPUS_CODE_PREFIX}_{uuid.uuid4().hex[:6]}')
+        second = _campus()
+        for c in Campus.objects.filter(
+                code__startswith=settings.CAMPUS_CODE_PREFIX).exclude(pk=first.pk):
+            Campus.objects.filter(pk=c.pk).update(name=f'zz-{c.name}')
+        here, there = _hs('Here'), _hs('There')
+        _link(here, first)
+        _link(there, second)
+        self.assertEqual(list(campus_highschools()), [here])
+        self.assertEqual(list(picker_queryset()), [here])
+        self.assertEqual(
+            list(scope_highschools(HighSchool.objects.filter(pk__in=[here.pk, there.pk]))),
+            [here])
+
+    def test_zero_prefixed_campuses_is_legacy(self):
+        HighSchoolCampus.objects.all().delete()
+        Campus.objects.filter(code__startswith=settings.CAMPUS_CODE_PREFIX).delete()
+        active = _hs('Active One', status='Active')
+        lower = _hs('Lower One', status='active')
+        inactive = _hs('Inactive One', status='Inactive')
+        pks = [active.pk, lower.pk, inactive.pk]
+        self.assertEqual(
+            set(campus_highschools().filter(pk__in=pks)), {active, lower})
+        self.assertEqual(
+            set(picker_queryset(keep=inactive).filter(pk__in=pks)),
+            {active, lower, inactive})
+        qs = HighSchool.objects.filter(pk__in=pks)
+        self.assertEqual(set(scope_highschools(qs)), {active, lower, inactive})

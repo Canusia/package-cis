@@ -12,7 +12,7 @@ from form_fields import fields as FFields
 
 from cis.models.customuser import CustomUser
 from cis.models.highschool import (
-    HighSchool, HighSchoolCollegeAdvisor,
+    HighSchool, HighSchoolCampus, HighSchoolCollegeAdvisor,
     HighSchoolTranscript
 )
 
@@ -105,6 +105,11 @@ class MigrateForm(forms.Form):
                     message.append(
                         f'Failed to move {model_name} - {obj} {e}. Please edit/delete this record manually'
                     )
+
+        # Campus links are not movable references (one link per school and
+        # campus): fold them into the destination explicitly.
+        from cis.signals.highschool_campus import merge_campus_links
+        merge_campus_links(record, data.get('destination_record'))
 
         return (success, message)
 
@@ -639,7 +644,7 @@ class HighSchoolStatusUpdateForm(forms.Form):
         widget=forms.HiddenInput
     )
     
-    status = forms.ChoiceField(choices=HighSchool.STATUS_OPTIONS, label='New Status')
+    status = forms.ChoiceField(choices=HighSchoolCampus.STATUS_OPTIONS, label='New Status')
 
     note = forms.CharField(
         label='Comment/Note',
@@ -692,13 +697,15 @@ class HighSchoolStatusUpdateForm(forms.Form):
         )
     )
 
-    def __init__(self, record, *args, **kwargs):
+    def __init__(self, record, *args, campus=None, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.fields['record_id'].initial = record.id
         self.fields['action'].initial = 'change_status'
 
-        self.fields['status'].help_text = f"Current status is '{record.status}'"
+        current = _campus_status(record, campus)
+        where = f" at {campus.name}" if campus is not None else ''
+        self.fields['status'].help_text = f"Current status{where} is '{current}'"
         hs_admins = HSAdministratorPosition.objects.filter(
             highschool=record
         ).order_by(
@@ -722,14 +729,33 @@ class HighSchoolStatusUpdateForm(forms.Form):
             teacher_cert_list += f"{teacher_cert.teacher_highschool.teacher} / {teacher_cert.course} => {teacher_cert.status}<br>"
         self.fields['hs_teachers'].initial = teacher_cert_list
 
-    def save(self, request, record, commit=True):
+    def save(self, request, record, campus=None, commit=True):
+        """Set the status of ``record``'s link on ``campus`` (created if
+        missing); the school's own status is derived from its links. With no
+        campus (a deployment with no prefixed campus, so no links), the
+        school's status is written directly as before.
+
+        The note and the member/instructor cascade apply only when the status
+        actually changed. Returns whether it changed.
+        """
+        from cis.signals.highschool_campus import set_link_status
         data = self.cleaned_data
+        new_status = data.get('status')
+        old_status = _campus_status(record, campus)
 
-        note_message = f"Updating status from {record.status} => {data['status']}<br>" + data.get('note')
+        if campus is None:
+            changed = record.status != new_status
+            if changed:
+                record.status = new_status
+                record.save()
+        else:
+            changed = set_link_status(record, new_status, campus)
+        if not changed:
+            return False
 
-        record.status = data.get('status')
-        record.save()
-
+        where = f" at {campus.name}" if campus is not None else ''
+        note_message = (f"Updating status{where} from {old_status} => {new_status}<br>"
+                        + data.get('note'))
         record.add_note(request.user, note_message)
         
         if data.get('hs_member_status'):
@@ -745,7 +771,17 @@ class HighSchoolStatusUpdateForm(forms.Form):
             ).update(
                 status=data.get('hs_teacher_status')
             )
-        
+        return True
+
+
+def _campus_status(record, campus):
+    """``record``'s link status on ``campus``; its own status with no campus."""
+    if campus is None:
+        return record.status
+    link = record.campus_links.filter(campus=campus).first()
+    return link.status if link else 'not linked'
+
+
 class HighSchoolUploadForm(forms.Form):
     file = forms.FileField(
         widget=forms.FileInput(attrs={'accept': 'text/csv'})

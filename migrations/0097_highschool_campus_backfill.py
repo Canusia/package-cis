@@ -1,7 +1,14 @@
 """Link every high school to the deployment's campus on single-campus tenants.
 
-Multi-campus deployments (MULTI_CAMPUS on, or not exactly one prefixed campus)
-are left unlinked; their schools are linked with assign_highschool_campus.
+Single-campus (MULTI_CAMPUS off): the deployment campus is the first prefixed
+campus by name -- the same rule as cis.campus_context.deployment_campus(),
+so the backfill and the runtime agree. With no prefixed campus nothing is
+linked. Multi-campus deployments are left unlinked; their schools are linked
+with assign_highschool_campus.
+
+Each linked school's own status is then written as the derived value (Active
+if its link is Active, else Inactive). Historical models fire no signals, so
+the migration does it itself.
 """
 import logging
 
@@ -19,11 +26,13 @@ def forward(apps, schema_editor):
     HighSchool = apps.get_model('cis', 'HighSchool')
     HighSchoolCampus = apps.get_model('cis', 'HighSchoolCampus')
 
-    campuses = list(Campus.objects.filter(
-        code__startswith=settings.CAMPUS_CODE_PREFIX)[:2])
-    if len(campuses) != 1:
+    campus = Campus.objects.filter(
+        code__startswith=settings.CAMPUS_CODE_PREFIX).order_by('name').first()
+    if campus is None:
+        logger.warning(
+            'No campus with code prefix %r; high schools left unlinked.',
+            settings.CAMPUS_CODE_PREFIX)
         return
-    campus = campuses[0]
 
     used = set(HighSchoolCampus.objects.filter(campus=campus).exclude(
         building_code='').values_list('building_code', flat=True))
@@ -56,6 +65,15 @@ def forward(apps, schema_editor):
         HighSchoolCampus.objects.create(
             highschool=hs, campus=campus, building_code=code,
             status='Active' if norm == 'active' else 'Inactive')
+
+    # Derived status, for every linked school (only this campus's links exist
+    # on a single-campus deployment, but derive from all to be exact).
+    linked = HighSchoolCampus.objects.values_list('highschool_id', flat=True)
+    active = HighSchoolCampus.objects.filter(status='Active').values_list(
+        'highschool_id', flat=True)
+    HighSchool.objects.filter(pk__in=active).update(status='Active')
+    HighSchool.objects.filter(pk__in=linked).exclude(pk__in=active).update(
+        status='Inactive')
 
 
 class Migration(migrations.Migration):

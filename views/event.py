@@ -96,10 +96,11 @@ def index(request):
             'order': order})
 
 def ajax_search(request):
+    from cis.highschool_scope import scope_highschools
+    from cis.models.highschool import HighSchool
     search = request.GET.get('q','')
-    records = HighSchool.objects.filter(
-        name__contains=search
-    )
+    records = scope_highschools(
+        HighSchool.objects.filter(name__contains=search), user=request.user)
 
     result = {'items':[]}
     if records:

@@ -513,6 +513,7 @@ class HighSchoolCampus(models.Model):
     history = HistoricalRecords()
 
     class Meta:
+        verbose_name_plural = 'high school campuses'
         constraints = [
             models.UniqueConstraint(
                 fields=['highschool', 'campus'], name='hs_campus_once'),

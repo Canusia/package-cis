@@ -19,6 +19,7 @@ from cis.utils import (
 )
 
 from cis.models.highschool import HighSchool
+from cis.highschool_scope import picker_queryset
 from cis.models.highschool_administrator import (
     HSAdministratorPosition, HSPosition
 )
@@ -48,9 +49,7 @@ class teacher_password_reset(forms.Form):
                 'report:run_report', args=[request.GET.get('report_id')]
             )
         
-        self.fields['highschools'].queryset = HighSchool.objects.filter(
-            status__iexact='Active'
-        ).order_by('name')
+        self.fields['highschools'].queryset = picker_queryset()
 
     def run(self, task, data):
         highschool_ids = data.get('highschools', None)

@@ -6,7 +6,9 @@ from typing import Dict, List, Optional, Tuple
 from django.db import transaction
 from pydantic import ValidationError as PydanticValidationError
 
-from cis.models.highschool import HighSchool
+from cis.models.highschool import HighSchool, HighSchoolCampus
+from cis.signals.highschool_campus import (
+    link_campus, link_new_highschools, set_link_statuses)
 from cis.models.district import District
 from .validation import ValidationError, ImportResult
 from .highschool_schema import HighSchoolRow
@@ -152,6 +154,8 @@ class HighSchoolImporter:
         to_create = []
         to_update = []
 
+        link_statuses = {}  # school pk -> status for the campus link (updates)
+
         for data in prepared_data:
             key = data['validated'].code
 
@@ -159,6 +163,8 @@ class HighSchoolImporter:
                 highschool = existing_records[key]
                 self._update_highschool(highschool, data)
                 to_update.append(highschool)
+                if data['validated'].status is not None:
+                    link_statuses[highschool.pk] = data['validated'].status
             else:
                 highschool = self._create_highschool_instance(data)
                 to_create.append(highschool)
@@ -171,6 +177,8 @@ class HighSchoolImporter:
             try:
                 HighSchool.objects.bulk_create(to_create, batch_size=100)
                 created_count = len(to_create)
+                # bulk_create skips post_save: link them as the signal would.
+                link_new_highschools(to_create)
                 logger.info(f"Bulk created {created_count} records")
             except Exception as e:
                 logger.error(f"Bulk create failed: {e}", exc_info=True)
@@ -185,8 +193,10 @@ class HighSchoolImporter:
                             logger.error(f"Failed to save {hs.name}: {save_error}")
 
         if to_update:
+            # HighSchool.status is derived from campus links; the row's status
+            # is written to the current campus's link below instead.
             update_fields = [
-                'name', 'sau', 'status', 'district', 'address1', 'address2',
+                'name', 'sau', 'district', 'address1', 'address2',
                 'city', 'state', 'postal_code', 'primary_phone', 'secondary_phone',
                 'fax', 'url', 'state_code', 'hs_type', 'hs_pay_type',
             ]
@@ -206,6 +216,9 @@ class HighSchoolImporter:
                         except Exception as save_error:
                             logger.error(f"Failed to update {hs.name}: {save_error}")
 
+        if link_statuses:
+            self._apply_link_statuses(link_statuses)
+
         # Phase 2e: Build results
         for data in prepared_data:
             data['row']['RESULT'] = 'Success'
@@ -213,6 +226,28 @@ class HighSchoolImporter:
 
         logger.info(f"Batch complete: {created_count} created, {updated_count} updated")
         return results
+
+    def _apply_link_statuses(self, statuses: Dict):
+        """Write imported statuses to the current campus's links.
+
+        HighSchool.status is derived from the links, so writing it directly
+        would be overwritten. With no campus to write to, only schools with
+        no links at all (a deployment with no prefixed campus) keep the
+        legacy direct write; for linked schools the status is skipped.
+        """
+        campus = link_campus()
+        if campus is not None:
+            set_link_statuses(statuses, campus)
+            return
+        linked = set(HighSchoolCampus.objects.filter(
+            highschool_id__in=list(statuses)).values_list('highschool_id', flat=True))
+        for hs_id, status in statuses.items():
+            if hs_id in linked:
+                logger.warning(
+                    'High school %s: no campus to set imported status %r on; skipped.',
+                    hs_id, status)
+            else:
+                HighSchool.objects.filter(pk=hs_id).update(status=status)
 
     def _fetch_existing_records(self, codes: List[str]) -> Dict:
         """Fetch existing HighSchool records in bulk, keyed by code."""
@@ -295,6 +330,8 @@ class HighSchoolImporter:
                 highschool = HighSchool.objects.get(code=validated.code)
                 self._update_highschool(highschool, data)
                 highschool.save()
+                if validated.status is not None:
+                    self._apply_link_statuses({highschool.pk: validated.status})
             except HighSchool.DoesNotExist:
                 highschool = self._create_highschool_instance(data)
                 highschool.save()

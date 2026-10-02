@@ -650,6 +650,17 @@ REGISTRATION_TYPES = [
 
 from django.contrib.contenttypes.models import ContentType
 
+# (model label, field name) pairs that are not movable references. A high
+# school's campus links are one per school and campus, so moving them would
+# break that constraint; the merge handles them itself (merge_campus_links).
+# Campus.highschools is the reverse side of the same M2M.
+_UNMOVABLE_REFERENCES = {
+    ('cis.campus', 'highschools'),
+    ('cis.highschoolcampus', 'highschool'),
+    ('cis.historicalhighschoolcampus', 'highschool'),
+}
+
+
 def get_foreign_key_references(instance):
     references = []
 
@@ -673,6 +684,8 @@ def get_foreign_key_references(instance):
 
             # Check if the model has any foreign keys to the instance's model
             for field in model_class._meta.get_fields():
+                if (model_class._meta.label_lower, field.name) in _UNMOVABLE_REFERENCES:
+                    continue
                 if field.is_relation and field.related_model == instance.__class__:
                     # Get the objects that reference the instance
                     related_objects = model_class.objects.filter(**{field.name: instance})

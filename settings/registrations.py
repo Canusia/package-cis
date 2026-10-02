@@ -88,8 +88,14 @@ class RegistrationForm(forms.Form):
             (str(acad_year.id), acad_year) for acad_year in years
         ]
 
+        # Schools active on the campus, plus the saved home school so an
+        # existing value is never dropped from the choices.
+        from ..highschool_scope import picker_queryset
+        keep = (self.initial or {}).get('homeschool')
+        if not keep and hasattr(self, 'from_db'):
+            keep = (self.from_db() or {}).get('homeschool')
         self.fields['homeschool'].choices = [('','Select')] + [
-            (str(school.id), school.name) for school in HighSchool.objects.all().order_by('name')
+            (str(school.id), school.name) for school in picker_queryset(keep=keep or None)
         ]
 
         # self.fields['signature_term'].choices = term_choices

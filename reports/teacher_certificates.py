@@ -13,6 +13,7 @@ from crispy_forms.layout import Submit
 
 from cis.utils import get_field
 from cis.models.highschool import HighSchool
+from cis.highschool_scope import picker_queryset
 from cis.models.teacher import TeacherCourseCertificate
 
 
@@ -52,8 +53,7 @@ class teacher_certificates(forms.Form):
         if self.request:
             self.helper.form_action = reverse_lazy(
                 'report:run_report', args=[request.GET.get('report_id')])
-        self.fields['highschools'].queryset = HighSchool.objects.filter(
-            status__iexact='active').order_by('name')
+        self.fields['highschools'].queryset = picker_queryset()
 
     def filtered_queryset(self, window_days=None, highschools=None, statuses=None):
         """Teacher course certificates, optionally limited to a due-date window.

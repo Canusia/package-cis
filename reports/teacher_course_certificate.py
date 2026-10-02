@@ -14,6 +14,7 @@ from crispy_forms.layout import Submit
 from cis.utils import get_field
 
 from cis.models.highschool import HighSchool
+from cis.highschool_scope import picker_queryset
 from cis.models.term import Term
 from cis.models.section import ClassSection
 from cis.models.teacher import TeacherCourseCertificate
@@ -61,7 +62,7 @@ class teacher_course_certificate(forms.Form):
             )
         
         self.fields['course'].queryset = Course.objects.all().order_by('name')
-        self.fields['highschools'].queryset = HighSchool.objects.filter(status__iexact='active').order_by('name')
+        self.fields['highschools'].queryset = picker_queryset()
         self.fields['terms'].queryset = Term.objects.all().order_by('-code')
 
     def run(self, task, data):

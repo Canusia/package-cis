@@ -15,6 +15,7 @@ from cis.models.term import Term
 from cis.models.course import Campus
 from cis.models.section import StudentRegistration
 from cis.models.highschool import HighSchool
+from cis.highschool_scope import scope_highschools
 from cis.utils import get_field
 from cis.campus_gate import get_accessible_campuses, scope_report_by_campus
 from cis.reports.datasource_mixin import ReportDataSourceMixin
@@ -85,8 +86,9 @@ class class_roster(ReportDataSourceMixin, forms.Form):
                 'report:run_report', args=[request.GET.get('report_id')])
 
             if 'ce' in self.roles:
-                # if request.user has ce role
-                self.fields['highschool'].queryset = HighSchool.objects.all()
+                # if request.user has ce role: the campus's schools, any status
+                self.fields['highschool'].queryset = scope_highschools(
+                    HighSchool.objects.all(), user=self.request.user).order_by('name')
 
             elif 'highschool_admin' in self.roles:
                 highschool_ids = self.request.user.get_highschools_for_admin()

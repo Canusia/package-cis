@@ -19,6 +19,7 @@ from cis.utils import (
 
 from cis.models.highschool_administrator import HSAdministrator
 from cis.models.highschool import HighSchool
+from cis.highschool_scope import picker_queryset
 from cis.models.term import Term
 from cis.models.course import Campus
 from cis.models.section import ClassSection, StudentRegistration
@@ -52,9 +53,7 @@ class class_export(forms.Form):
         self.helper.form_method = 'POST'
         self.helper.add_input(Submit('submit', 'Generate Export'))
 
-        self.fields['highschool'].queryset = HighSchool.objects.filter(
-            status__iexact='active'
-        ).order_by('name')
+        self.fields['highschool'].queryset = picker_queryset()
 
         if self.request:
             self.helper.form_action = reverse_lazy(

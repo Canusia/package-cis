@@ -2,7 +2,7 @@
 from django import forms
 from django.db import IntegrityError, transaction
 
-from cis.campus_gate import get_accessible_campuses
+from cis.highschool_scope import manageable_campuses
 from cis.models.course import Campus
 from cis.models.highschool import HighSchoolCampus
 
@@ -10,7 +10,8 @@ from cis.models.highschool import HighSchoolCampus
 class HighSchoolCampusForm(forms.ModelForm):
     """Add (no ``instance``) or edit (``instance``) a HighSchoolCampus.
 
-    Campus choices are the campuses ``user`` may process minus those the
+    Campus choices are the campuses ``user`` may manage links on
+    (``can_manage_link``) minus those the
     school is already linked to. On edit the campus is fixed.
     """
 
@@ -27,7 +28,7 @@ class HighSchoolCampusForm(forms.ModelForm):
         else:
             linked = self.highschool.campus_links.values_list('campus_id', flat=True)
             self.fields['campus'] = forms.ModelChoiceField(
-                queryset=get_accessible_campuses(user).exclude(pk__in=list(linked)).order_by('name'),
+                queryset=manageable_campuses(user).exclude(pk__in=list(linked)).order_by('name'),
                 empty_label='Select a campus')
         self.fields['building_code'].required = False
         self.fields['building_code'].help_text = (

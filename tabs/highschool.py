@@ -22,12 +22,12 @@ def _instructors_build(record):
 @highschool_tabs.tab(slug='campuses', title='Campuses', order=15,
                      template='cis/highschools/tabs/_campuses.html')
 def campuses_tab(request, record):
-    from cis.campus_gate import can_process_campus, get_accessible_campuses
+    from cis.highschool_scope import can_manage_link, manageable_campuses
     links = list(record.campus_links.select_related('campus').order_by('campus__name'))
     for link in links:
-        link.can_manage = can_process_campus(request.user, link.campus)
+        link.can_manage = can_manage_link(request.user, link.campus)
     linked = {link.campus_id for link in links}
-    can_add = any(c.pk not in linked for c in get_accessible_campuses(request.user))
+    can_add = any(c.pk not in linked for c in manageable_campuses(request.user))
     return {'campus_links': links, 'can_add_campus': can_add}
 
 

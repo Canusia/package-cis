@@ -17,6 +17,7 @@ from cis.models.highschool_administrator import HSAdministrator
 
 from cis.models.term import Term
 from cis.models.highschool import HighSchool
+from cis.highschool_scope import picker_queryset
 from cis.models.section import ClassSection, Campus, StudentRegistration
 
 class missing_parent_consent(forms.Form):
@@ -51,9 +52,7 @@ class missing_parent_consent(forms.Form):
         self.helper.form_method = 'POST'
         self.helper.add_input(Submit('submit', 'Generate Export'))
 
-        self.fields['highschool'].queryset = HighSchool.objects.filter(
-            status__iexact='active'
-        ).order_by('name')
+        self.fields['highschool'].queryset = picker_queryset()
 
         # for cis users only show their campus
         if self.request:

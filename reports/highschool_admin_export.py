@@ -10,6 +10,7 @@ from cis.utils import export_to_excel
 from cis.reports.datasource_mixin import ReportDataSourceMixin
 
 from cis.models.highschool import HighSchool
+from cis.highschool_scope import picker_queryset
 from cis.models.highschool_administrator import (
     HSAdministratorPosition, HSPosition
 )
@@ -59,9 +60,7 @@ class highschool_admin_export(ReportDataSourceMixin, forms.Form):
             )
         
         self.fields['positions'].queryset = HSPosition.objects.all().order_by('name')
-        self.fields['highschools'].queryset = HighSchool.objects.filter(
-            status__iexact='Active'
-        ).order_by('name')
+        self.fields['highschools'].queryset = picker_queryset()
 
     def recipient_queryset(self, data):
         records = HSAdministratorPosition.objects.select_related(

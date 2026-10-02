@@ -398,9 +398,8 @@ def highschool_map_courses(request):
 
 def ajax_search(request):
     search = request.GET.get('q','')
-    records = HighSchool.objects.filter(
-        name__contains=search
-    )
+    records = scope_highschools(
+        HighSchool.objects.filter(name__contains=search), user=request.user)
 
     result = {'items':[]}
     if records:
@@ -604,7 +603,15 @@ def detail(request, record_id):
         })
 
 def delete(request, record_id):
-    record = get_object_or_404(HighSchool, pk=record_id)
+    """Delete a school visible on this campus. Deleting removes every campus's
+    link, so the user must be able to manage each campus it is linked to."""
+    from cis.highschool_scope import can_manage_link
+    record = get_object_or_404(
+        scope_highschools(HighSchool.objects.all(), user=request.user),
+        pk=record_id)
+    for link in record.campus_links.select_related('campus'):
+        if not can_manage_link(request.user, link.campus):
+            return _forbidden()
 
     try:
         record.delete()
@@ -787,7 +794,8 @@ def set_hs_type(request):
         }, status=400)
 
     updated = 0
-    for record in HighSchool.objects.filter(pk__in=ids):
+    for record in scope_highschools(
+            HighSchool.objects.filter(pk__in=ids), user=request.user):
         record.hs_type = selected
         record.save()
         updated += 1
@@ -834,7 +842,8 @@ def set_is_cte(request):
     is_cte = value == '1'
 
     updated = 0
-    for record in HighSchool.objects.filter(pk__in=ids):
+    for record in scope_highschools(
+            HighSchool.objects.filter(pk__in=ids), user=request.user):
         record.is_cte = is_cte
         record.save()
         updated += 1
@@ -877,11 +886,12 @@ def highschool_campus_add(request, record_id):
     """Link a high school to a campus.
 
     Two-step like set_hs_type: the first POST returns the modal, the modal's
-    form posts back with apply=1. Only campuses the user may process are
-    offered, and a hand-built POST naming any other campus is refused (403).
+    form posts back with apply=1. Only campuses the user may manage links on
+    (``can_manage_link``) are offered, and a hand-built POST naming any other
+    campus is refused (403).
     """
-    from cis.campus_gate import can_process_campus
     from cis.forms.highschool_campus import HighSchoolCampusForm
+    from cis.highschool_scope import can_manage_link
     from cis.models.course import Campus
 
     if not user_has_cis_role(request.user):
@@ -904,7 +914,7 @@ def highschool_campus_add(request, record_id):
         campus = Campus.objects.filter(pk=campus_id).first() if campus_id else None
     except (ValueError, TypeError, DjangoValidationError):
         campus = None
-    if campus is not None and not can_process_campus(request.user, campus):
+    if campus is not None and not can_manage_link(request.user, campus):
         return _forbidden()
 
     form = HighSchoolCampusForm(request.POST, user=request.user, highschool=record)
@@ -919,12 +929,12 @@ def highschool_campus_add(request, record_id):
 
 def _get_manageable_link(request, link_id):
     """(link, None) when the user may act on it, else (None, 403 response)."""
-    from cis.campus_gate import can_process_campus
+    from cis.highschool_scope import can_manage_link
     if not user_has_cis_role(request.user):
         return None, _forbidden()
     link = get_object_or_404(
         HighSchoolCampus.objects.select_related('highschool', 'campus'), pk=link_id)
-    if not can_process_campus(request.user, link.campus):
+    if not can_manage_link(request.user, link.campus):
         return None, _forbidden()
     return link, None
 
@@ -981,23 +991,39 @@ def highschool_campus_delete(request, link_id):
 
 
 def manage_status(request):
+    """Set a school's status on the current campus (its link there).
+
+    Single-campus: the deployment campus's link, created if missing.
+    Multi-campus: the host's campus (superusers included). The school's own
+    status is derived from its links. Requires can_manage_link.
+    """
+    from cis.highschool_scope import can_manage_link
+    from cis.signals.highschool_campus import link_campus
     template = 'cis/highschools/update_status.html'
+    scoped = scope_highschools(HighSchool.objects.all(), user=request.user)
+
+    record_id = request.POST.get('record_id') if request.method == 'POST' \
+        else request.GET.get('record_id')
+    record = get_object_or_404(scoped, pk=record_id)
+
+    campus = link_campus()
+    if campus is None and record.campus_links.exists():
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Open this school on a campus to change its status there.',
+        }, status=400)
+    if not can_manage_link(request.user, campus):
+        return _forbidden()
 
     if request.method == 'POST':
-
-        record_id = request.POST.get('record_id')
-        record = get_object_or_404(
-            HighSchool,
-            pk=record_id
-        )
-
-        form = HighSchoolStatusUpdateForm(record=record, data=request.POST)
+        form = HighSchoolStatusUpdateForm(record=record, campus=campus, data=request.POST)
         if form.is_valid():
-            status = form.save(request, record)
+            changed = form.save(request, record, campus=campus)
 
             data = {
                 'status':'success',
-                'message':'Successfully updated record',
+                'message': 'Successfully updated record' if changed
+                           else 'Status unchanged; nothing to update',
                 'action': 'reload_page'
             }
             return JsonResponse(data)
@@ -1009,13 +1035,7 @@ def manage_status(request):
             }
         return JsonResponse(data, status=400)
 
-    record_id = request.GET.get('record_id')
-    record = get_object_or_404(
-        HighSchool,
-        pk=record_id
-    )
-
-    form = HighSchoolStatusUpdateForm(record)
+    form = HighSchoolStatusUpdateForm(record, campus=campus)
     context = {
         'title': 'Change High School Status',
         'form': form,

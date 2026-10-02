@@ -23,6 +23,9 @@ class Migration(migrations.Migration):
                 ('campus', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='highschool_links', to='cis.campus')),
                 ('highschool', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='campus_links', to='cis.highschool')),
             ],
+            options={
+                'verbose_name_plural': 'high school campuses',
+            },
         ),
         migrations.AddField(
             model_name='highschool',
@@ -45,7 +48,7 @@ class Migration(migrations.Migration):
             ],
             options={
                 'verbose_name': 'historical high school campus',
-                'verbose_name_plural': 'historical high school campuss',
+                'verbose_name_plural': 'historical high school campuses',
                 'ordering': ('-history_date', '-history_id'),
                 'get_latest_by': ('history_date', 'history_id'),
             },
