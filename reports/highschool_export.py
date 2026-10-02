@@ -52,7 +52,16 @@ class highschool_export(forms.Form):
             for st in highschool_status:
                 q |= Q(pk__in=filter_by_link_status(
                     HighSchool.objects.all(), st).values('pk'))
-            records = records.filter(q).order_by('name')
+            records = list(records.filter(q).order_by('name'))
+            from cis.campus_context import current_campus_or_none
+            from cis.models.highschool import HighSchoolCampus
+            campus = current_campus_or_none()
+            link_status = {}
+            if campus is not None:
+                link_status = dict(HighSchoolCampus.objects.filter(
+                    campus=campus).values_list('highschool_id', 'status'))
+            for r in records:
+                r.link_status = link_status.get(r.pk, '')
 
             fields = {
                 # 'pk': 'HighSchoolMemberPositionID',
@@ -66,7 +75,7 @@ class highschool_export(forms.Form):
                 'postal_code': 'Zip',
                 'primary_phone': 'Phone',
                 'district.name': 'County',
-                'status': 'Status'
+                'link_status': 'Status'
             }
         except Exception as e:
             print(e)

@@ -83,6 +83,19 @@ class ListTests(_Base):
             self._list(self.su, self.a),
             {'Alpha', 'Bravo', 'Charlie', 'Delta'})
 
+    def test_linked_filter_superuser(self):
+        self.assertEqual(self._list(self.su, self.a, '?linked=yes'),
+                         {'Alpha', 'Bravo'})
+        self.assertEqual(self._list(self.su, self.a, '?linked=no'),
+                         {'Charlie', 'Delta'})
+        self.assertEqual(self._list(self.su, self.a, '?linked=bogus'),
+                         {'Alpha', 'Bravo', 'Charlie', 'Delta'})
+
+    def test_linked_filter_ignored_for_non_superuser(self):
+        for v in ('yes', 'no'):
+            self.assertEqual(self._list(self.staff, self.a, '?linked=' + v),
+                             {'Alpha', 'Bravo'})
+
     def test_serializes_campus_building_code_and_status(self):
         req = APIRequestFactory().get('/ce/api/highschool')
         force_authenticate(req, user=self.staff)
@@ -167,3 +180,17 @@ class ExportTests(_Base):
         self.assertNotIn('Charlie', out)
         out = self._export(self.staff, self.a, ['Active', 'Inactive'])
         self.assertIn('Bravo', out)
+
+    def test_export_status_is_link_status(self):
+        out = self._export(self.staff, self.a, ['Active', 'Inactive'])
+        rows = {l.split(',')[0]: l.strip().split(',')[-1]
+                for l in out.splitlines()[1:]}
+        self.assertEqual(rows['Alpha'], 'Active')
+        self.assertEqual(rows['Bravo'], 'Inactive')
+
+    def test_export_superuser_status_filter_is_link_status_here(self):
+        # Same as the list: a status filter means link status on this campus,
+        # so schools not linked here never appear (and never show a status).
+        out = self._export(self.su, self.a, ['Active', 'Inactive'])
+        self.assertNotIn('Charlie', out)
+        self.assertNotIn('Delta', out)

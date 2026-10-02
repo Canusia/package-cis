@@ -26,6 +26,31 @@
             <div class="">
                 {% include "cis/messages.html" with messages=messages %}
 
+                {% if show_linked_filter %}
+                <div class="card mb-3"><div class="card-body bg-gray-200">
+                    <form class="form-inline filter" onsubmit="return false;">
+                        <label for="hs-linked-filter" class="mr-2">Campus link</label>
+                        <select id="hs-linked-filter" class="form-control form-control-sm">
+                            <option value="">All schools</option>
+                            <option value="yes">Linked here</option>
+                            <option value="no">Not linked here</option>
+                        </select>
+                    </form>
+                </div></div>
+                <script>
+                jQuery(function ($) {
+                    $('#hs-linked-filter').on('change', function () {
+                        var v = this.value;
+                        (window.highschoolTables || []).forEach(function (dt) {
+                            var u = dt.ajax.url().replace(/([?&])linked=[^&]*&?/, '$1').replace(/[?&]$/, '');
+                            if (v) { u += (u.indexOf('?') < 0 ? '?' : '&') + 'linked=' + v; }
+                            dt.ajax.url(u).load();
+                        });
+                    });
+                });
+                </script>
+                {% endif %}
+
                 <ul class="nav nav-tabs">
                     <li class="nav-item">
                         <a class="nav-link active" data-toggle="tab" href="#all_active">Active High Schools</a>

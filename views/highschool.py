@@ -97,6 +97,14 @@ class HighSchoolViewSet(viewsets.ReadOnlyModelViewSet):
         user = self.request.user
         records = scope_highschools(HighSchool.objects.all(), user=user)
 
+        linked = self.request.GET.get('linked')
+        campus = current_campus_or_none()
+        if getattr(user, 'is_superuser', False) and campus and linked in ('yes', 'no'):
+            here = HighSchool.objects.filter(
+                campus_links__campus=campus).values('pk')
+            records = (records.filter(pk__in=here) if linked == 'yes'
+                       else records.exclude(pk__in=here))
+
         if status:
             records = filter_by_link_status(records, status)
 
@@ -273,6 +281,8 @@ def index(request):
                 bulk_actions=HIGHSCHOOL_BULK_ACTIONS,
                 bulk_actions_url=str(reverse('cis:highschool_bulk_actions')),
             ),
+            'show_linked_filter': bool(
+                request.user.is_superuser and current_campus_or_none()),
             'urls': {
                 'details_prefix': '/ce/highschool/',
                 'add_new': 'cis:hs_add_new'
