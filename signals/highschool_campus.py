@@ -1,6 +1,6 @@
 """High school <-> campus link signals.
 
-* A new HighSchool is linked as Active to the campus it was created under.
+* A new HighSchool is linked to the campus it was created under, with the school's own status.
 * HighSchool.status is derived from the school's campus links: Active if any
   link is Active, else Inactive; unchanged when the school has no links. It is
   written with ``.update()`` so no HighSchool signals (or history) fire.
@@ -35,8 +35,11 @@ def link_new_highschool(sender, instance, created=False, raw=False, **kwargs):
             'New high school %s (%s) has no campus to link to; left unlinked.',
             instance.pk, instance)
         return
+    # The link carries the school's own status, so the derived status equals
+    # what was written (same mapping as the backfill).
+    status = 'Active' if (instance.status or '').strip().lower() == 'active' else 'Inactive'
     HighSchoolCampus.objects.get_or_create(
-        highschool=instance, campus=campus, defaults={'status': 'Active'})
+        highschool=instance, campus=campus, defaults={'status': status})
 
 
 @receiver(pre_save, sender=HighSchool)

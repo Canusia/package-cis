@@ -33,6 +33,15 @@ class NewSchoolSingleCampusTests(TestCase):
         self.assertEqual(link.campus, deployment_campus())
         self.assertEqual(link.status, 'Active')
 
+    def test_link_carries_school_status(self):
+        _campus()
+        for written, want in (('Inactive', 'Inactive'), ('', 'Inactive'),
+                              ('Active', 'Active')):
+            hs = _hs(status=written)
+            self.assertEqual(
+                HighSchoolCampus.objects.get(highschool=hs).status, want, written)
+            self.assertEqual(_status(hs), want, written)
+
     def test_no_campus_logs_warning_and_no_link(self):
         Campus.objects.all().delete()
         with self.assertLogs('cis.signals.highschool_campus', 'WARNING'):
