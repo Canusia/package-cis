@@ -92,6 +92,25 @@ class BackfillTests(TestCase):
         codes = sorted([links[h_bh.id].building_code, links[h_dup.id].building_code])
         self.assertEqual(codes, ['', 'BH'])
 
+    @override_settings(MULTI_CAMPUS=False)
+    def test_overlong_sau_gets_empty_code(self):
+        self._single_campus()
+        h = _hs('Long', sau='X' * 25)
+        backfill.forward(real_apps, None)
+        self.assertEqual(
+            HighSchoolCampus.objects.get(highschool=h).building_code, '')
+
+    @override_settings(MULTI_CAMPUS=False)
+    def test_status_mapped_explicitly(self):
+        self._single_campus()
+        want = {'Active': 'Active', '': 'Inactive', 'Pending': 'Inactive',
+                'Inactive': 'Inactive'}
+        schools = {s: _hs(f'S-{i}', status=s) for i, s in enumerate(want)}
+        backfill.forward(real_apps, None)
+        for s, h in schools.items():
+            self.assertEqual(
+                HighSchoolCampus.objects.get(highschool=h).status, want[s], s)
+
     @override_settings(MULTI_CAMPUS=True)
     def test_multi_campus_links_nothing(self):
         self._single_campus()

@@ -36,6 +36,11 @@ def forward(apps, schema_editor):
         code = (hs.sau or '').strip()
         if code in ('', '-'):
             code = ''
+        elif len(code) > 20:
+            logger.warning(
+                'High school %s (%s): sau %r is longer than 20 characters; '
+                'building code left empty.', hs.name, hs.pk, code)
+            code = ''
         elif code in used:
             logger.warning(
                 'High school %s (%s): building code %r already held on '
@@ -43,9 +48,13 @@ def forward(apps, schema_editor):
             code = ''
         else:
             used.add(code)
+        if hs.status not in ('Active', 'Inactive'):
+            logger.warning(
+                'High school %s: non-standard status %r linked as Inactive.',
+                hs.pk, hs.status)
         HighSchoolCampus.objects.create(
             highschool=hs, campus=campus, building_code=code,
-            status=hs.status or 'Active')
+            status='Active' if hs.status == 'Active' else 'Inactive')
 
 
 class Migration(migrations.Migration):
