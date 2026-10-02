@@ -1,0 +1,23 @@
+{% comment %}
+Unlink-campus confirmation modal body. Rendered into #bulk_modal_content by
+ActionRegistry; the form posts back to the same endpoint with apply=1.
+{% endcomment %}
+<div class="card">
+    <div class="card-body">
+        <h3 class="card-title">{{ title }}</h3>
+        <div class="card-text">
+            <form action="{{ form_action|safe }}" method="post" class="frm_ajax">
+                {% csrf_token %}
+                <input type="hidden" name="apply" value="1">
+                <p class="alert alert-warning">
+                    Unlink <strong>{{ link.highschool.name }}</strong> from
+                    <strong>{{ link.campus.name }}</strong>? The building code
+                    {% if link.building_code %}<strong>{{ link.building_code }}</strong>{% else %}(none){% endif %}
+                    is removed with the link.
+                </p>
+                <input type="submit" class="btn btn-danger btn-sm" value="Unlink">
+                <input type="button" class="btn btn-sm" onclick="window.closeBulkActionModal()" value="Cancel &amp; Close">
+            </form>
+        </div>
+    </div>
+</div>

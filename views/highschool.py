@@ -849,6 +849,133 @@ def set_is_cte(request):
     })
 
 
+def _forbidden():
+    return JsonResponse(
+        {'status': 'error', 'message': 'You do not have permission to do that.'},
+        status=403)
+
+
+def _form_error(form):
+    return JsonResponse({
+        'message': 'Please correct the errors and try again.',
+        'errors': form.errors.as_json(),
+    }, status=400)
+
+
+def _campus_link_done(title, message, redirect_to=None):
+    if redirect_to:
+        return JsonResponse({'outcome': 'redirect', 'url': redirect_to})
+    return JsonResponse({
+        'outcome': 'call',
+        'fn': 'reloadHighschoolCampuses',
+        'args': {'title': title, 'message': message},
+    })
+
+
+def highschool_campus_add(request, record_id):
+    """Link a high school to a campus.
+
+    Two-step like set_hs_type: the first POST returns the modal, the modal's
+    form posts back with apply=1. Only campuses the user may process are
+    offered, and a hand-built POST naming any other campus is refused (403).
+    """
+    from cis.campus_gate import can_process_campus
+    from cis.forms.highschool_campus import HighSchoolCampusForm
+    from cis.models.course import Campus
+
+    if not user_has_cis_role(request.user):
+        return _forbidden()
+    record = get_object_or_404(
+        scope_highschools(HighSchool.objects.all(), user=request.user),
+        pk=record_id)
+    action_url = str(reverse('cis:highschool_campus_add', args=[record.id]))
+
+    if request.POST.get('apply') != '1':
+        form = HighSchoolCampusForm(user=request.user, highschool=record)
+        html = render_to_string('cis/highschools/campus_link_form.html', {
+            'title': 'Link to Campus', 'form': form, 'form_action': action_url,
+            'submit_label': 'Link Campus', 'record': record,
+        }, request=request)
+        return JsonResponse({'outcome': 'modal', 'html': html})
+
+    campus_id = request.POST.get('campus')
+    try:
+        campus = Campus.objects.filter(pk=campus_id).first() if campus_id else None
+    except (ValueError, TypeError):
+        campus = None
+    if campus is not None and not can_process_campus(request.user, campus):
+        return _forbidden()
+
+    form = HighSchoolCampusForm(request.POST, user=request.user, highschool=record)
+    if not form.is_valid():
+        return _form_error(form)
+    link = form.save()
+    return _campus_link_done(
+        'Campus linked', 'Linked %s to %s.' % (record.name, link.campus.name))
+
+
+def _get_manageable_link(request, link_id):
+    """(link, None) when the user may act on it, else (None, 403 response)."""
+    from cis.campus_gate import can_process_campus
+    if not user_has_cis_role(request.user):
+        return None, _forbidden()
+    link = get_object_or_404(
+        HighSchoolCampus.objects.select_related('highschool', 'campus'), pk=link_id)
+    if not can_process_campus(request.user, link.campus):
+        return None, _forbidden()
+    return link, None
+
+
+def highschool_campus_edit(request, link_id):
+    """Edit a link's building code and status (same two-step shape)."""
+    from cis.forms.highschool_campus import HighSchoolCampusForm
+
+    link, denied = _get_manageable_link(request, link_id)
+    if denied:
+        return denied
+    action_url = str(reverse('cis:highschool_campus_edit', args=[link.id]))
+
+    if request.POST.get('apply') != '1':
+        form = HighSchoolCampusForm(
+            instance=link, user=request.user, highschool=link.highschool)
+        html = render_to_string('cis/highschools/campus_link_form.html', {
+            'title': 'Edit Campus Link', 'form': form, 'form_action': action_url,
+            'submit_label': 'Save', 'record': link.highschool, 'link': link,
+        }, request=request)
+        return JsonResponse({'outcome': 'modal', 'html': html})
+
+    form = HighSchoolCampusForm(
+        request.POST, instance=link, user=request.user, highschool=link.highschool)
+    if not form.is_valid():
+        return _form_error(form)
+    form.save()
+    return _campus_link_done(
+        'Campus link updated', 'Updated %s at %s.' % (link.highschool.name, link.campus.name))
+
+
+def highschool_campus_delete(request, link_id):
+    """Unlink a high school from a campus (confirmation modal, then delete)."""
+    link, denied = _get_manageable_link(request, link_id)
+    if denied:
+        return denied
+
+    if request.POST.get('apply') != '1':
+        html = render_to_string('cis/highschools/campus_link_delete.html', {
+            'title': 'Unlink Campus', 'link': link,
+            'form_action': str(reverse('cis:highschool_campus_delete', args=[link.id])),
+        }, request=request)
+        return JsonResponse({'outcome': 'modal', 'html': html})
+
+    highschool, campus_name = link.highschool, link.campus.name
+    link.delete()
+    # Unlinking the campus being served hides the school from this user.
+    visible = scope_highschools(
+        HighSchool.objects.filter(pk=highschool.pk), user=request.user).exists()
+    return _campus_link_done(
+        'Campus unlinked', 'Unlinked %s from %s.' % (highschool.name, campus_name),
+        redirect_to=None if visible else str(reverse('cis:highschools')))
+
+
 def manage_status(request):
     template = 'cis/highschools/update_status.html'
 

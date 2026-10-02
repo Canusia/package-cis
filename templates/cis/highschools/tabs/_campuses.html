@@ -1,0 +1,49 @@
+<div class="card border-top-0">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table id="highschool_campuses" class="table table-striped" style="width:100%">
+                <thead>
+                    <tr>
+                        <th>Campus</th>
+                        <th>Building code</th>
+                        <th>Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for link in campus_links %}
+                    <tr>
+                        <td>{{ link.campus.name }}</td>
+                        <td>{{ link.building_code }}</td>
+                        <td>{{ link.status }}</td>
+                        <td class="text-right">
+                            {% if link.can_manage %}
+                            <button type="button" class="btn btn-sm btn-primary"
+                                onclick="ActionRegistry.doAction('{% url 'cis:highschool_campus_edit' link.id %}', 'edit_campus_link', '{{ link.id }}')">Edit</button>
+                            <button type="button" class="btn btn-sm btn-danger"
+                                onclick="ActionRegistry.doAction('{% url 'cis:highschool_campus_delete' link.id %}', 'unlink_campus', '{{ link.id }}')">Unlink</button>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="4" class="text-muted">Not linked to any campus.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if can_add_campus %}
+        <button type="button" class="btn btn-sm btn-primary"
+            onclick="ActionRegistry.doAction('{% url 'cis:highschool_campus_add' record.id %}', 'link_campus', '{{ record.id }}')">
+            <i class="fas fa-plus"></i> Link to campus</button>
+        {% endif %}
+    </div>
+</div>
+<script>
+    // Called by ActionRegistry after a link action succeeds.
+    window.reloadHighschoolCampuses = function (args) {
+        var span = document.createElement('span');
+        span.textContent = (args && args.message) || '';
+        swal({ title: (args && args.title) || 'Done', content: span, icon: 'success' })
+            .then(function () { window.location.reload(); });
+    };
+</script>

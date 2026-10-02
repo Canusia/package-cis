@@ -1,0 +1,22 @@
+{% load crispy_forms_tags %}
+{% comment %}
+Add / edit campus-link modal body. Rendered into #bulk_modal_content by
+ActionRegistry; the form posts back to the same endpoint with apply=1.
+{% endcomment %}
+<div class="card">
+    <div class="card-body">
+        <h3 class="card-title">{{ title }}</h3>
+        <div class="card-text">
+            <form action="{{ form_action|safe }}" method="post" class="frm_ajax">
+                {% csrf_token %}
+                <input type="hidden" name="apply" value="1">
+                <p class="text-muted">
+                    {{ record.name }}{% if link %} at {{ link.campus.name }}{% endif %}
+                </p>
+                {{ form|crispy }}
+                <input type="submit" class="btn btn-primary btn-sm" value="{{ submit_label }}">
+                <input type="button" class="btn btn-sm" onclick="window.closeBulkActionModal()" value="Cancel &amp; Close">
+            </form>
+        </div>
+    </div>
+</div>

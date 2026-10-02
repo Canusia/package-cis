@@ -19,6 +19,7 @@ from cis.views.highschool import (
     HighSchoolTranscriptViewSet,
     do_bulk_action as hs_bulk_actions,
     delete as delete_highschool,
+    highschool_campus_add, highschool_campus_edit, highschool_campus_delete,
     tab as highschool_tab,
 )
 
@@ -629,6 +630,9 @@ urlpatterns = [
         user_passes_test(user_has_cis_role, login_url='/')(hs_bulk_actions),
         name='highschool_bulk_actions'
     ),
+    path('highschool/<uuid:record_id>/campus/add', user_passes_test(user_has_cis_role, login_url='/')(highschool_campus_add), name='highschool_campus_add'),
+    path('highschool/campus-link/<uuid:link_id>/edit', user_passes_test(user_has_cis_role, login_url='/')(highschool_campus_edit), name='highschool_campus_edit'),
+    path('highschool/campus-link/<uuid:link_id>/delete', user_passes_test(user_has_cis_role, login_url='/')(highschool_campus_delete), name='highschool_campus_delete'),
     path('highschool_roles/', user_passes_test(user_has_cis_role, login_url='/')(hs_roles), name='hs_roles'),
     path('highschool_role/add_new', user_passes_test(user_has_cis_role, login_url='/')(hs_role_add_new), name='hs_role_add_new'),
     path('highschool_role/<uuid:record_id>', user_passes_test(user_has_cis_role, login_url='/')(hs_role), name='hs_role'),
