@@ -3,7 +3,7 @@ import io
 from django.utils.http import content_disposition_header
 
 from django.db import IntegrityError
-from django.db.models import Q, Count
+from django.db.models import Q, Count, Prefetch
 from django.contrib import messages
 from django.conf import settings
 
@@ -16,7 +16,7 @@ from django.urls import reverse
 from cis.models.teacher import TeacherHighSchool
 from cis.campus_gate import scope_by_course_cert_campus
 from cis.models.highschool import (
-    HighSchool, HighSchoolCollegeAdvisor, HighSchoolTranscript
+    HighSchool, HighSchoolCampus, HighSchoolCollegeAdvisor, HighSchoolTranscript
 )
 from cis.models.term import Term
 from cis.models.course import Course
@@ -71,7 +71,8 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from ..serializers.highschool import (
-    HighSchoolSerializer, HighSchoolTeacherSerializer,
+    HighSchoolSerializer, HighSchoolCampusListSerializer,
+    HighSchoolTeacherSerializer,
     HighSchoolAdministratorSerializer,
     HighSchoolTranscriptSerializer
 )
@@ -89,7 +90,7 @@ from cis.views.eager import (
 from cis.serializers import tables
 
 class HighSchoolViewSet(viewsets.ReadOnlyModelViewSet):
-    serializer_class = HighSchoolSerializer
+    serializer_class = HighSchoolCampusListSerializer
     permission_classes = [CIS_user_only]
 
     def get_queryset(self):
@@ -108,7 +109,10 @@ class HighSchoolViewSet(viewsets.ReadOnlyModelViewSet):
         if status:
             records = filter_by_link_status(records, status)
 
-        return records.prefetch_related('campus_links')
+        links = HighSchoolCampus.objects.filter(campus=campus) if campus \
+            else HighSchoolCampus.objects.none()
+        return records.prefetch_related(
+            Prefetch('campus_links', queryset=links, to_attr='_campus_links'))
 
 
 def _status_campus():
@@ -381,7 +385,8 @@ def highschool_map_courses(request):
 
     course_ids = ClassSection.objects.filter(
         term_id__in=term_ids,
-        highschool__isnull=False
+        highschool__in=scope_highschools(
+            HighSchool.objects.all(), user=request.user),
     ).values_list('course_id', flat=True).distinct()
 
     courses = Course.objects.filter(id__in=course_ids).order_by('name')

@@ -6,6 +6,8 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.http import Http404
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.test import RequestFactory, TestCase, override_settings
 from rest_framework.test import APIRequestFactory, force_authenticate
 
@@ -194,3 +196,53 @@ class ExportTests(_Base):
         out = self._export(self.su, self.a, ['Active', 'Inactive'])
         self.assertNotIn('Charlie', out)
         self.assertNotIn('Delta', out)
+
+
+@override_settings(MULTI_CAMPUS=True)
+class QueryCountAndMapCoursesTests(_Base):
+    def _count(self):
+        req = APIRequestFactory().get('/ce/api/highschool')
+        force_authenticate(req, user=self.staff)
+        with campus_context(self.a):
+            with CaptureQueriesContext(connection) as ctx:
+                resp = views.HighSchoolViewSet.as_view({'get': 'list'})(req)
+                resp.render() if hasattr(resp, 'render') else None
+                rows = resp.data['results'] if 'results' in resp.data else resp.data
+                list(rows)
+        self.q = [q['sql'][:160] for q in ctx.captured_queries]
+        return len(ctx), len(rows)
+
+    def test_query_count_does_not_grow_with_rows(self):
+        n2, r2 = self._count()
+        for i in range(3):
+            _hs(f'Extra{i}', self.a, code=f'X{i}')
+        n5, r5 = self._count()
+        self.assertEqual((r2, r5), (2, 5))
+        self.assertEqual(n2, n5, '\n'.join(self.q))
+
+    def test_shared_serializer_has_no_campus_fields(self):
+        from cis.serializers.highschool import HighSchoolSerializer
+        self.assertNotIn('campus_status', HighSchoolSerializer(self.alpha).data)
+
+    def test_map_courses_scoped(self):
+        from cis.models.course import Cohort, Course
+        from cis.models.section import ClassSection
+        from cis.models.term import AcademicYear, Term
+        with campus_context(self.a):
+            ay = AcademicYear.objects.create(name=f'AY-{_sfx()}')
+            term = Term.objects.create(
+                academic_year=ay, code='FA', label=f'T-{_sfx()}')
+        cohort = Cohort.objects.create(name=f'Co-{_sfx()}', designator='CO')
+        mine = Course.objects.create(catalog_number='1', title='Mine', cohort=cohort, campus=self.a)
+        theirs = Course.objects.create(catalog_number='2', title='Theirs', cohort=cohort, campus=self.b)
+        ClassSection.objects.create(term=term, course=mine, highschool=self.alpha, campus=self.a)
+        ClassSection.objects.create(term=term, course=theirs, highschool=self.charlie, campus=self.b)
+
+        def names(user):
+            req = RequestFactory().get('/x', {'term_ids': [str(term.id)]})
+            req.user = user
+            with campus_context(self.a):
+                data = json.loads(views.highschool_map_courses(req).content)
+            return {c['name'] for c in data['courses']}
+        self.assertEqual(names(self.staff), {mine.name})
+        self.assertEqual(names(self.su), {mine.name, theirs.name})

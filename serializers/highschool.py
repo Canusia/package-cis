@@ -45,29 +45,11 @@ class HighSchoolSerializer(serializers.ModelSerializer):
     # search still target the real hs_type column (see highschools_table).
     hs_type_display = serializers.CharField(read_only=True)
 
-    # The current campus's link. Computed per row from the prefetched
-    # campus_links, so the table marks these columns non-orderable and
-    # non-searchable (they are not ORM paths).
-    campus_building_code = serializers.SerializerMethodField()
-    campus_status = serializers.SerializerMethodField()
-
-    def _campus_link(self, obj):
-        from cis.campus_context import current_campus_or_none
-        campus = current_campus_or_none()
-        if campus is None:
-            return None
-        for link in obj.campus_links.all():
-            if link.campus_id == campus.pk:
-                return link
-        return None
-
-    def get_campus_building_code(self, obj):
-        link = self._campus_link(obj)
-        return link.building_code if link else ''
-
-    def get_campus_status(self, obj):
-        link = self._campus_link(obj)
-        return link.status if link else ''
+    def get_field_names(self, declared_fields, info):
+        # fields='__all__' would pick up the HighSchool.campuses M2M, one
+        # query per row wherever a school is nested. Keep the pre-link shape.
+        names = super().get_field_names(declared_fields, info)
+        return [n for n in names if n != 'campuses']
 
     class Meta:
         model = HighSchool
@@ -75,6 +57,31 @@ class HighSchoolSerializer(serializers.ModelSerializer):
         datatables_always_serialize = [
             'city', 'state', 'postal_code'
         ]
+
+class HighSchoolCampusListSerializer(HighSchoolSerializer):
+    """HighSchoolSerializer for the CE list, plus the host campus's link.
+
+    Reads ``_campus_links``, which HighSchoolViewSet prefetches filtered to the
+    one resolved campus, so it adds no queries per row. Not for nesting.
+    """
+    campus_building_code = serializers.SerializerMethodField()
+    campus_status = serializers.SerializerMethodField()
+
+    def _link(self, obj):
+        links = getattr(obj, '_campus_links', None) or []
+        return links[0] if links else None
+
+    def get_campus_building_code(self, obj):
+        link = self._link(obj)
+        return link.building_code if link else ''
+
+    def get_campus_status(self, obj):
+        link = self._link(obj)
+        return link.status if link else ''
+
+    class Meta(HighSchoolSerializer.Meta):
+        ref_name = 'CisHighSchoolCampusList'
+
 
 class _HighSchoolNameSerializer(serializers.ModelSerializer):
     class Meta:
