@@ -111,6 +111,16 @@ class BackfillTests(TestCase):
             self.assertEqual(
                 HighSchoolCampus.objects.get(highschool=h).status, want[s], s)
 
+    @override_settings(MULTI_CAMPUS=False)
+    def test_status_case_insensitive_without_logging(self):
+        self._single_campus()
+        a, b = _hs('Lower', status='active'), _hs('Upper', status=' ACTIVE ')
+        with self.assertNoLogs(backfill.logger, level='WARNING'):
+            backfill.forward(real_apps, None)
+        for h in (a, b):
+            self.assertEqual(
+                HighSchoolCampus.objects.get(highschool=h).status, 'Active')
+
     @override_settings(MULTI_CAMPUS=True)
     def test_multi_campus_links_nothing(self):
         self._single_campus()

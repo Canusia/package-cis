@@ -48,13 +48,14 @@ def forward(apps, schema_editor):
             code = ''
         else:
             used.add(code)
-        if hs.status not in ('Active', 'Inactive'):
+        norm = (hs.status or '').strip().lower()
+        if norm not in ('active', 'inactive'):
             logger.warning(
                 'High school %s: non-standard status %r linked as Inactive.',
                 hs.pk, hs.status)
         HighSchoolCampus.objects.create(
             highschool=hs, campus=campus, building_code=code,
-            status='Active' if hs.status == 'Active' else 'Inactive')
+            status='Active' if norm == 'active' else 'Inactive')
 
 
 class Migration(migrations.Migration):
