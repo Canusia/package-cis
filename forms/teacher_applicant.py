@@ -12,6 +12,7 @@ from django_recaptcha.fields import ReCaptchaField
 
 from cis.models.customuser import CustomUser
 from ..models.highschool import HighSchool
+from ..highschool_scope import picker_queryset
 from ..models.term import AcademicYear
 from ..models.course import Course
 from ..models.teacher_applicant import (
@@ -866,9 +867,8 @@ class EditSchoolCourseForm(forms.Form):
             ('', 'Select')
         ]
         highschools += [
-            (h.id, h.name) for h in HighSchool.objects.filter(
-                status__in=['Active']
-            )
+            (h.id, h.name) for h in picker_queryset(
+                keep=getattr(teacher_application, 'highschool_id', None))
         ]
         self.fields['highschool'].choices = highschools
 
@@ -1085,9 +1085,7 @@ class SchoolCourseForm(forms.Form):
             ('', 'Select')
         ]
         highschools += [
-            (h.id, h.name) for h in HighSchool.objects.filter(
-                status__in=['Active']
-            )
+            (h.id, h.name) for h in picker_queryset()
         ]
         self.fields['highschool'].choices = highschools
 

@@ -211,6 +211,13 @@ def _model_choice(entry, ctx):
     'cis.models.highschool.HighSchool.objects.all'), so a tenant can express
     "active, non-CTE high schools" as a manager method in its own app."""
     queryset = resolve_dotted(entry['queryset'])
+    from cis.models.highschool import HighSchool
+    if getattr(queryset, 'model', None) is HighSchool:
+        # A school picker offers the current campus's active schools, plus the
+        # applicant's own school so an existing record never loses it.
+        from cis.highschool_scope import picker_queryset
+        keep = getattr((ctx or {}).get('student'), 'highschool_id', None)
+        queryset = queryset.filter(pk__in=picker_queryset(keep=keep).values('pk'))
     f = _build(entry, forms.ModelChoiceField,
                _common(entry, queryset=queryset,
                        empty_label=entry.get('empty_label', '---')))

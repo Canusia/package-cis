@@ -15,6 +15,7 @@ from django.core.exceptions import ValidationError
 from cis.forms import student_profile as _profile
 from cis.forms.student_profile import StudentProfileForm
 from cis.models.highschool import HighSchool
+from cis.highschool_scope import picker_queryset
 from cis.models.student import Student
 
 
@@ -40,7 +41,7 @@ class StudentImportRowForm(StudentProfileForm):
     def __init__(self, *args, highschools=None, **kwargs):
         self._allowed_highschools = (
             highschools if highschools is not None
-            else HighSchool.objects.filter(status__iexact='Active')
+            else picker_queryset()
         )
         super().__init__(student=None, request=None, *args, **kwargs)
 

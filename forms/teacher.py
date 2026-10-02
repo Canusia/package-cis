@@ -8,6 +8,7 @@ from django.utils.translation import gettext_lazy as _
 from form_fields import fields as FFields
 
 from cis.models.highschool import HighSchool
+from cis.highschool_scope import picker_queryset
 from cis.models.course import Course
 from cis.models.teacher import (
     Teacher, TeacherHighSchool, TeacherCourseCertificate,
@@ -677,7 +678,7 @@ class TeacherHighSchoolForm(forms.Form):
     def __init__(self, id, teacher_id, ajax, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.fields['highschool'].queryset = HighSchool.objects.all().order_by('name')
+        self.fields['highschool'].queryset = picker_queryset()
         self.fields['ajax'].initial = ajax
 
         if id == '-1':

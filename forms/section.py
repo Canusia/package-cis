@@ -19,6 +19,7 @@ from cis.models.section import (
 from cis.utils import REGISTRATION_TYPES, YES_NO_SELECT_OPTIONS, YES_NO_OPTIONS
 
 from cis.models.highschool import HighSchool
+from cis.highschool_scope import picker_queryset
 from cis.models.term import Term
 from cis.models.student import Student
 
@@ -527,7 +528,7 @@ class HighSchoolClassOfferingForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['highschool'].queryset = HighSchool.objects.all()
+        self.fields['highschool'].queryset = picker_queryset()
 
 class ClassSectionUploadForm(forms.Form):
     file = forms.FileField(
@@ -729,7 +730,7 @@ class AddNewStudentRegistrationForm(forms.Form):
         required=True
     )
     term = forms.ModelChoiceField(queryset=Term.objects.all())
-    highschool = forms.ModelChoiceField(queryset=HighSchool.objects.all())
+    highschool = forms.ModelChoiceField(queryset=HighSchool.objects.none())
 
     class_section = forms.ModelChoiceField(queryset=None)
     status = forms.ChoiceField(choices=StudentRegistration.STATUS_OPTIONS)
@@ -737,6 +738,9 @@ class AddNewStudentRegistrationForm(forms.Form):
     def __init__(self, *args, **kwargs):
 
         super(AddNewStudentRegistrationForm, self).__init__(*args, **kwargs)
+
+        # per request, so it follows the current campus
+        self.fields['highschool'].queryset = picker_queryset()
 
         self.helper = FormHelper()
         self.helper.form_class = 'frm_ajax'

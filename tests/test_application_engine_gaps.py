@@ -8,6 +8,7 @@
 """
 import datetime
 import uuid
+from django.conf import settings
 
 from django import forms
 from django.contrib.auth import get_user_model
@@ -126,11 +127,24 @@ class RuntimeFieldTypeTests(TestCase):
     def test_model_choice_queryset_comes_from_the_spec(self):
         from cis.models.highschool import HighSchool
 
+        from cis.campus_context import campus_context
+        from cis.models.course import Campus
+        from cis.models.highschool import HighSchoolCampus
+
+        # A school picker offers the current campus's Active schools, so the
+        # school must be linked to the campus the form is built under.
+        campus = Campus.objects.create(
+            name=f'C-{_sfx()}', code=f'{settings.CAMPUS_CODE_PREFIX}_{_sfx()}')
         hs = HighSchool.objects.create(name=f'HS-{_sfx()}')
-        _, field = build_fields({
-            'name': 'highschool', 'type': 'model_choice', 'label': 'High School',
-            'target': 'student', 'queryset': 'cis.models.highschool.HighSchool.objects.all',
-        })[0]
+        HighSchoolCampus.objects.update_or_create(
+            highschool=hs, campus=campus, defaults={'status': 'Active'})
+        with campus_context(campus):
+            _, field = build_fields({
+                'name': 'highschool', 'type': 'model_choice',
+                'label': 'High School', 'target': 'student',
+                'queryset': 'cis.models.highschool.HighSchool.objects.all',
+            })[0]
+            self.assertIn(hs, field.queryset)
         self.assertIsInstance(field, forms.ModelChoiceField)
         self.assertIn(hs, field.queryset)
 

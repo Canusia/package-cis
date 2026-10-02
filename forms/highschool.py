@@ -27,6 +27,7 @@ from cis.models.highschool_administrator import (
 )
 from cis.models.teacher import TeacherCourseCertificate
 from cis.utils import user_has_cis_role, get_foreign_key_references
+from cis.highschool_scope import picker_queryset
 
 from cis.validators import validate_html_short_code
 
@@ -70,7 +71,7 @@ class MigrateForm(forms.Form):
     def __init__(self, record, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.fields['destination_record'].queryset = HighSchool.objects.all().exclude(
+        self.fields['destination_record'].queryset = picker_queryset().exclude(
             id=record.id
         )
 
@@ -360,7 +361,8 @@ class HSAdminAccessRequestModelForm(ModelForm):
 
         super().__init__(*args, **kwargs)
 
-        self.fields['highschool'].queryset = HighSchool.objects.filter(status__iexact='active')
+        self.fields['highschool'].queryset = picker_queryset(
+            keep=self.instance.highschool_id)
         
         if not user_has_cis_role(self.request.user):
             del self.fields['status']
@@ -422,7 +424,7 @@ class HSCollegeAdvisorForm(forms.Form):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.fields['highschool'].queryset = HighSchool.objects.all()
+        self.fields['highschool'].queryset = picker_queryset()
         self.fields['advisor'].queryset = CustomUser.objects.filter(
             groups__name='ce'
         )
@@ -436,7 +438,7 @@ class HighSchoolOfferingLookupForm(forms.Form):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.fields['highschool'].queryset = HighSchool.objects.all()
+        self.fields['highschool'].queryset = picker_queryset()
 
 class HSAdministratorPositionForm(forms.Form):
     highschool = forms.ModelChoiceField(queryset=None)
@@ -497,7 +499,7 @@ class HSAdministratorPositionForm(forms.Form):
                 widget=forms.Textarea()
             )
         else:
-            self.fields['highschool'].queryset = HighSchool.objects.all().order_by('name')
+            self.fields['highschool'].queryset = picker_queryset()
             self.fields['position'].queryset = HSPosition.objects.all().order_by('name')
         
     def save(self, request, commit=True):
