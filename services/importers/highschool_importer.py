@@ -9,7 +9,7 @@ from pydantic import ValidationError as PydanticValidationError
 from cis.campus_context import is_multi_campus
 from cis.models.highschool import HighSchool, HighSchoolCampus
 from cis.signals.highschool_campus import (
-    link_campus, link_new_highschools, set_link_statuses)
+    link_campus, link_new_highschools, set_link_codes, set_link_statuses)
 from cis.models.district import District
 from .validation import ValidationError, ImportResult
 from .highschool_schema import HighSchoolRow
@@ -178,6 +178,7 @@ class HighSchoolImporter:
         to_update = []
 
         link_statuses = {}  # school pk -> status for the campus link (updates)
+        link_codes = {}  # school pk -> (building code, row data) for the campus link (updates)
         skipped = []
 
         restrict = self._link_restriction_campus()
@@ -200,6 +201,8 @@ class HighSchoolImporter:
                 to_update.append(highschool)
                 if data['validated'].status is not None:
                     link_statuses[highschool.pk] = data['validated'].status
+                if data['validated'].sau is not None:
+                    link_codes[highschool.pk] = (data['validated'].sau, data)
             else:
                 highschool = self._create_highschool_instance(data)
                 to_create.append(highschool)
@@ -253,6 +256,9 @@ class HighSchoolImporter:
 
         if link_statuses:
             self._apply_link_statuses(link_statuses)
+        code_notes = {}  # id(row data) -> why its building code was not written
+        if link_codes:
+            code_notes = self._apply_link_codes(link_codes)
 
         # Phase 2e: Build results
         skipped_ids = {id(d) for d, _ in skipped}
@@ -263,7 +269,7 @@ class HighSchoolImporter:
         for data in prepared_data:
             if id(data) in skipped_ids:
                 continue
-            data['row']['RESULT'] = 'Success'
+            data['row']['RESULT'] = 'Success' + code_notes.get(id(data), '')
             results.append(ImportResult(success=True, row_data=data['row']))
 
         logger.info(f"Batch complete: {created_count} created, {updated_count} updated")
@@ -290,6 +296,27 @@ class HighSchoolImporter:
                     hs_id, status)
             else:
                 HighSchool.objects.filter(pk=hs_id).update(status=status)
+
+    def _apply_link_codes(self, codes: Dict) -> Dict:
+        """Write imported building codes to the current campus's links.
+
+        The link's code is the one the section importer matches (the school's
+        own sau is only a fallback), so an import must land it there. A code
+        another school holds on the campus is left unwritten; returns
+        id(row data) -> note for those rows' RESULT. With no campus to write
+        to, the legacy sau (already updated) is all there is.
+        """
+        campus = link_campus()
+        if campus is None:
+            return {}
+        clashes = set_link_codes({pk: code for pk, (code, _) in codes.items()}, campus)
+        notes = {}
+        for pk, (code, holder) in clashes.items():
+            message = (f' (building code {code!r} not set on the campus: already '
+                       f'used by {holder}; the existing code was kept)')
+            logger.warning('High school import: school %s%s', pk, message)
+            notes[id(codes[pk][1])] = message
+        return notes
 
     def _fetch_existing_records(self, codes: List[str]) -> Dict:
         """Fetch existing HighSchool records in bulk, keyed by code."""

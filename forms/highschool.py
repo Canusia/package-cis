@@ -835,6 +835,15 @@ class HSModelForm(ModelForm):
         if self.instance:
             del self.fields['status']
 
+        # The building code the section importer matches is the campus link's
+        # (Campuses tab). sau seeds that link when a school is added; on an
+        # existing school it is read-only so the two cannot drift apart.
+        if not self.instance._state.adding and 'sau' in self.fields:
+            self.fields['sau'].disabled = True
+            self.fields['sau'].help_text = (
+                'Set per campus on the Campuses tab; that is the code the '
+                'section importer matches.')
+
         # if self.instance.name:
         #     self.fields['access_approver'].queryset = self.instance.administrators_in_highschool()
         # else:

@@ -9,8 +9,12 @@ The helpers below are the single place that rule lives. Code that bypasses
 model signals (``bulk_create``, ``bulk_update``, ``.update()``) or writes a
 school-level status (CSV import, the status form, a merge) goes through them:
 ``link_campus``, ``link_status``, ``link_new_highschools``,
-``set_link_status``, ``set_link_statuses``, ``recompute_statuses`` and
-``merge_campus_links``.
+``set_link_status``, ``set_link_statuses``, ``set_link_codes``,
+``recompute_statuses`` and ``merge_campus_links``.
+
+* A new link's building code is seeded from the school's legacy ``sau`` (the
+  same rules as migration 0097); the link's code is the one the section
+  importer matches, so it is the single source of truth.
 """
 import logging
 
@@ -45,6 +49,41 @@ def link_campus():
 def link_status(value):
     """A school status as a link status: 'Active' (any case) or 'Inactive'."""
     return 'Active' if (value or '').strip().lower() == 'active' else 'Inactive'
+
+
+BUILDING_CODE_MAX = HighSchoolCampus._meta.get_field('building_code').max_length
+
+
+def building_code_from_sau(sau):
+    """A legacy ``sau`` as a link building code, or '' when it is blank, the
+    '-' placeholder, or too long for the column (migration 0097's rules)."""
+    code = (sau or '').strip()
+    if code == '-' or len(code) > BUILDING_CODE_MAX:
+        return ''
+    return code
+
+
+def _codes_in_use(campus):
+    """Building codes already held on ``campus``: code -> holding school id."""
+    return dict(HighSchoolCampus.objects.filter(campus=campus).exclude(
+        building_code='').values_list('building_code', 'highschool_id'))
+
+
+def _seed_code(highschool, campus, in_use):
+    """The building code a new link of ``highschool`` on ``campus`` starts with.
+
+    ``in_use`` (code -> school id) is updated with the code handed out, so a
+    batch never gives one code to two schools.
+    """
+    code = building_code_from_sau(highschool.sau)
+    if code and in_use.get(code, highschool.pk) != highschool.pk:
+        logger.warning(
+            'High school %s (%s): building code %r already held on campus %s; '
+            'left empty.', highschool, highschool.pk, code, campus)
+        return ''
+    if code:
+        in_use[code] = highschool.pk
+    return code
 
 
 def recompute_statuses(highschool_ids):
@@ -86,7 +125,9 @@ def link_new_highschools(highschools, campus=None):
         return []
     have = set(HighSchoolCampus.objects.filter(
         campus=campus, highschool__in=highschools).values_list('highschool_id', flat=True))
-    links = [HighSchoolCampus(highschool=hs, campus=campus, status=link_status(hs.status))
+    in_use = _codes_in_use(campus)
+    links = [HighSchoolCampus(highschool=hs, campus=campus, status=link_status(hs.status),
+                              building_code=_seed_code(hs, campus, in_use))
              for hs in highschools if hs.pk not in have]
     if links:
         bulk_create_with_history(links, HighSchoolCampus)
@@ -136,6 +177,50 @@ def set_link_statuses(statuses, campus):
     recompute_statuses(statuses)
 
 
+def set_link_codes(codes, campus):
+    """Write building codes to ``campus``'s links; ``codes`` maps school pk -> code.
+
+    For importers. Blank codes are ignored (a blank cell never clears a code).
+    A code another school already holds on the campus is not written; those
+    are returned as {school pk: (code, holding school name)}; a code counts as
+    held until its holder gives it up, so two schools swapping codes in one
+    import both clash rather than break the unique constraint. A missing link
+    is created with the school's own status.
+    """
+    codes = {pk: building_code_from_sau(code) for pk, code in codes.items()}
+    codes = {pk: code for pk, code in codes.items() if code}
+    if not codes:
+        return {}
+    in_use = _codes_in_use(campus)
+    existing = {link.highschool_id: link for link in HighSchoolCampus.objects.filter(
+        campus=campus, highschool_id__in=list(codes))}
+    clashes, create, update = {}, [], []
+    schools = {hs.pk: hs for hs in HighSchool.objects.filter(pk__in=list(codes))}
+    for pk, code in codes.items():
+        holder = in_use.get(code)
+        if holder is not None and holder != pk:
+            clashes[pk] = code
+            continue
+        in_use[code] = pk
+        link = existing.get(pk)
+        if link is None:
+            create.append(HighSchoolCampus(
+                highschool_id=pk, campus=campus, building_code=code,
+                status=link_status(schools[pk].status) if pk in schools else 'Inactive'))
+        elif link.building_code != code:
+            link.building_code = code
+            update.append(link)
+    if create:
+        bulk_create_with_history(create, HighSchoolCampus)
+    if update:
+        bulk_update_with_history(update, HighSchoolCampus, ['building_code'])
+    if create:
+        recompute_statuses([link.highschool_id for link in create])
+    holders = dict(HighSchool.objects.filter(
+        pk__in=[in_use[code] for code in clashes.values()]).values_list('pk', 'name'))
+    return {pk: (code, holders.get(in_use[code], '')) for pk, code in clashes.items()}
+
+
 def merge_campus_links(source, target):
     """Fold ``source``'s campus links into ``target`` (a school merge).
 
@@ -164,9 +249,12 @@ def link_new_highschool(sender, instance, created=False, raw=False, **kwargs):
         return
     # The link carries the school's own status, so the derived status equals
     # what was written (same mapping as the backfill).
+    if HighSchoolCampus.objects.filter(highschool=instance, campus=campus).exists():
+        return
     HighSchoolCampus.objects.get_or_create(
         highschool=instance, campus=campus,
-        defaults={'status': link_status(instance.status)})
+        defaults={'status': link_status(instance.status),
+                  'building_code': _seed_code(instance, campus, _codes_in_use(campus))})
 
 
 @receiver(pre_save, sender=HighSchool)
