@@ -341,9 +341,9 @@ FROZEN_PATHS = {
         'student.user.last_name',
     ],
     '/ce/highschools/': [
-        'address1', 'city', 'code', 'hs_pay_type',
-        'hs_type_display', 'id', 'name', 'postal_code',
-        'primary_phone', 'sau', 'state', 'status',
+        'address1', 'campus_building_code', 'campus_status', 'city', 'code',
+        'hs_pay_type', 'hs_type_display', 'id', 'is_cte', 'name',
+        'postal_code', 'primary_phone', 'state',
     ],
     '/ce/highschool_admins/': [
         'highschool.name', 'hsadmin.id', 'hsadmin.user.email',
