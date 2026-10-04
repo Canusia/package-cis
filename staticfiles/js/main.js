@@ -64,6 +64,13 @@ jQuery(document).ready(function ($) {
     Cookies.set('is_mobile', '2');
   }
 
+  // menu.py opens the active section's submenu ('show'); on a collapsed
+  // sidebar that renders as a flyout over the page. Close it on load --
+  // tapping a section still opens it.
+  if ($('body ul.sidebar').hasClass('toggled')) {
+    $('.sidebar .collapse.show').removeClass('show');
+  }
+
   window.closeModal = function () {
       $('#details').modal('hide');
   };

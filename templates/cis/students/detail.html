@@ -77,7 +77,10 @@ jQuery(document).ready(function () {
             success: function(response) {
                 $.unblockUI();
                 swal("", response.message, response.status);
-                if (response.status == 'success') { window.parent.closeModal(); }
+                if (response.status == 'success') {
+                    if (window.frameElement) window.parent.closeModal();
+                    else window.location.href = '/ce/students/';
+                }
             }
         });
     });
@@ -94,9 +97,11 @@ jQuery(document).ready(function () {
 // (student_role_revocable, student_name, other_roles, revoke_url); offer the
 // same follow-up prompt as student_detail.js's window.offerStudentRoleRevocation
 // (prompt-only; it no longer wires any DOM handler) before returning to the
-// index.
+// index. On mobile the page is opened full-page, not in the iframe, so
+// there is no modal to close: go to the index instead.
 function onRecordDeleted(args) {
     function finish() {
+        if (!window.frameElement) { window.location.href = '/ce/students/'; return; }
         window.parent.closeModal();
         window.parent.location.reload();
     }
