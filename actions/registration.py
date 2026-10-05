@@ -47,7 +47,15 @@ def lookup_section_registration_id(request):
         return JsonResponse({'outcome': 'alert', 'status': 'warning', 'title': 'SIS Lookup',
                              'message': 'Missing student SIS ID or section SIS ID — cannot look up.'})
 
-    found = ethos_identity.lookup_section_registration_id(registration)
+    # lookup_section_registration also returns the SIS status. Tenant services
+    # that predate it get the GUID alone, as before.
+    lookup = getattr(ethos_identity, 'lookup_section_registration', None)
+    if lookup:
+        sis_status = lookup(registration)
+        found = (sis_status or {}).get('id')
+    else:
+        sis_status = None
+        found = ethos_identity.lookup_section_registration_id(registration)
     if not found:
         return JsonResponse({'outcome': 'alert', 'status': 'warning', 'title': 'SIS Lookup',
                              'message': 'No matching section registration found in Ethos.'})
@@ -58,6 +66,7 @@ def lookup_section_registration_id(request):
         'registration': registration,
         'current_sis_id': current,
         'new_sis_id': found,
+        'sis_status': sis_status,
         'has_changes': str(found) != current,
         'form_action': reverse('cis:registration_bulk_actions'),
         'action_slug': 'lookup_section_registration_id',

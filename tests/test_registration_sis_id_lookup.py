@@ -128,6 +128,8 @@ class RegistrationActionHandlerTests(TestCase):
         self.reg.class_section.save(update_fields=['external_sis_id'])
 
         svc = mock_get_service.return_value
+        # A tenant whose service predates lookup_section_registration.
+        del svc.lookup_section_registration
         svc.lookup_section_registration_id.return_value = 'FOUND-REG-GUID'
 
         from cis.actions.registration import lookup_section_registration_id
@@ -144,6 +146,7 @@ class RegistrationActionHandlerTests(TestCase):
         self.reg.student.save(update_fields=['sis_id'])
         self.reg.class_section.external_sis_id = str(uuid.uuid4())
         self.reg.class_section.save(update_fields=['external_sis_id'])
+        del mock_get_service.return_value.lookup_section_registration
         mock_get_service.return_value.lookup_section_registration_id.return_value = None
 
         from cis.actions.registration import lookup_section_registration_id
@@ -153,6 +156,61 @@ class RegistrationActionHandlerTests(TestCase):
         payload = json.loads(resp.content)
         self.assertEqual(payload['outcome'], 'alert')
         self.assertEqual(payload['status'], 'warning')
+
+    def _give_guids(self):
+        self.reg.student.sis_id = str(uuid.uuid4())
+        self.reg.student.save(update_fields=['sis_id'])
+        self.reg.class_section.external_sis_id = str(uuid.uuid4())
+        self.reg.class_section.save(update_fields=['external_sis_id'])
+
+    @mock.patch('cis.actions.registration.get_tenant_service')
+    def test_lookup_step_shows_sis_status(self, mock_get_service):
+        self._give_guids()
+        svc = mock_get_service.return_value
+        svc.lookup_section_registration.return_value = {
+            'id': 'FOUND-REG-GUID', 'registration_status': 'registered',
+            'status_reason': 'registered', 'status_code': 'RE',
+            'status_title': 'Registered', 'status_date': '2026-01-27',
+        }
+
+        from cis.actions.registration import lookup_section_registration_id
+        resp = lookup_section_registration_id(
+            self._post({'ids[]': [str(self.reg.id)]}))
+
+        payload = json.loads(resp.content)
+        self.assertEqual(payload['outcome'], 'modal')
+        self.assertIn('FOUND-REG-GUID', payload['html'])
+        self.assertIn('Registration Status', payload['html'])
+        self.assertIn('RE — Registered', payload['html'])
+        self.assertIn('as of 2026-01-27', payload['html'])
+        self.assertIn('name="new_sis_id" value="FOUND-REG-GUID"', payload['html'])
+        svc.lookup_section_registration_id.assert_not_called()
+
+    @mock.patch('cis.actions.registration.get_tenant_service')
+    def test_lookup_step_with_status_warns_when_no_match(self, mock_get_service):
+        self._give_guids()
+        mock_get_service.return_value.lookup_section_registration.return_value = None
+
+        from cis.actions.registration import lookup_section_registration_id
+        resp = lookup_section_registration_id(
+            self._post({'ids[]': [str(self.reg.id)]}))
+
+        payload = json.loads(resp.content)
+        self.assertEqual(payload['outcome'], 'alert')
+        self.assertEqual(payload['status'], 'warning')
+
+    @mock.patch('cis.actions.registration.get_tenant_service')
+    def test_legacy_service_modal_has_no_status_row(self, mock_get_service):
+        self._give_guids()
+        svc = mock_get_service.return_value
+        del svc.lookup_section_registration
+        svc.lookup_section_registration_id.return_value = 'FOUND-REG-GUID'
+
+        from cis.actions.registration import lookup_section_registration_id
+        resp = lookup_section_registration_id(
+            self._post({'ids[]': [str(self.reg.id)]}))
+
+        self.assertNotIn('Registration Status', json.loads(resp.content)['html'])
 
     @mock.patch('cis.actions.registration.get_tenant_service')
     def test_confirmed_step_saves_and_calls_back(self, mock_get_service):

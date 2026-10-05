@@ -26,6 +26,16 @@
                         <td>{{ current_sis_id|default:"—" }}</td>
                         <td>{{ new_sis_id|default:"—" }}</td>
                     </tr>
+                    {% if sis_status %}
+                    <tr>
+                        <th>Registration Status</th>
+                        <td>{{ registration.get_status_display|default:registration.status|default:"—" }}</td>
+                        <td>
+                            {% if sis_status.status_code %}{{ sis_status.status_code }} — {{ sis_status.status_title }}<br>{% endif %}
+                            <small class="text-muted">{{ sis_status.registration_status|default:"—" }}{% if sis_status.status_reason and sis_status.status_reason != sis_status.registration_status %} / {{ sis_status.status_reason }}{% endif %}{% if sis_status.status_date %}, as of {{ sis_status.status_date }}{% endif %}</small>
+                        </td>
+                    </tr>
+                    {% endif %}
                 </tbody>
             </table>
 
