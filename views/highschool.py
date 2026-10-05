@@ -520,7 +520,6 @@ def detail(request, record_id):
     hs_transcript_upload_form = HSTranscriptUploadForm()
 
     from cis.forms.highschool import MigrateForm
-    migration_form = MigrateForm(record=record)
 
     form = HSModelForm(instance=record)
     if request.method == 'POST':

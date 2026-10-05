@@ -2,7 +2,7 @@ from django import forms
 from django.utils.translation import gettext_lazy as _
 from django.forms import ValidationError
 
-from cis.utils import get_foreign_key_references
+from cis.utils import get_foreign_key_references, get_foreign_key_reference_models
 from cis.models.term import (
     Term, AcademicYear
 )
@@ -63,15 +63,10 @@ class MigrateAcademicYearForm(forms.Form):
             id=record.id
         )
 
-        references = get_foreign_key_references(record)
-        move_item_choices = []
-
-        for model_name, obj in references:
-            choice = (f"{model_name}", f"{model_name}")
-            if choice not in move_item_choices:
-                move_item_choices.append(choice)
-
-        self.fields['move_items'].choices = move_item_choices
+        # Names only -- loading every referencing row timed out large records.
+        self.fields['move_items'].choices = [
+            (name, name) for name in get_foreign_key_reference_models(record)
+        ]
 
     def save(self, request, record):
         data = self.cleaned_data
@@ -136,19 +131,14 @@ class MigrateTermForm(forms.Form):
     def __init__(self, record, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.fields['destination_record'].queryset = Term.objects.all().exclude(
-            id=record.id
-        )
+        self.fields['destination_record'].queryset = Term.objects.select_related(
+            'academic_year'
+        ).exclude(id=record.id)
 
-        references = get_foreign_key_references(record)
-        move_item_choices = []
-
-        for model_name, obj in references:
-            choice = (f"{model_name}", f"{model_name}")
-            if choice not in move_item_choices:
-                move_item_choices.append(choice)
-
-        self.fields['move_items'].choices = move_item_choices
+        # Names only -- loading every referencing row timed out large records.
+        self.fields['move_items'].choices = [
+            (name, name) for name in get_foreign_key_reference_models(record)
+        ]
 
     def save(self, request, record):
         data = self.cleaned_data

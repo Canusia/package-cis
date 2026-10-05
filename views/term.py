@@ -83,8 +83,6 @@ def detail(request, record_id):
     record = get_object_or_404(Term, pk=record_id)
     form = TermForm(instance=record)
 
-    migration_form = MigrateTermForm(record=record)
-
     if request.method == 'POST':
 
         if request.POST.get('action') == 'migrate_term':

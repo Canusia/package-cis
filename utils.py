@@ -696,6 +696,39 @@ def get_foreign_key_references(instance):
         
     return references
 
+def get_foreign_key_reference_models(instance):
+    """Names of models with at least one row referencing `instance`.
+
+    Same relations, skip rules and order as get_foreign_key_references, but
+    one EXISTS query per relation instead of loading every referencing row.
+    Use this for the migrate tabs' "Select Items to Move" choices: the full
+    scan loaded every section and history row of a large term on each page
+    view and timed the page out.
+    """
+    names = []
+
+    try:
+        for content_type in ContentType.objects.all():
+            model_class = content_type.model_class()
+            if model_class is None:
+                continue
+
+            for field in model_class._meta.get_fields():
+                if (model_class._meta.label_lower, field.name) in _UNMOVABLE_REFERENCES:
+                    continue
+                if not (field.is_relation and field.related_model == instance.__class__):
+                    continue
+                if model_class.__name__ in names:
+                    continue
+                if model_class.objects.filter(**{field.name: instance}).exists():
+                    names.append(model_class.__name__)
+    except Exception:
+        # Mirrors get_foreign_key_references: a broken model must not break
+        # the detail page.
+        pass
+
+    return names
+
 def password_reset_email_template():
     from cis.settings.password_reset import password_reset
 

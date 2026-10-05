@@ -7,7 +7,7 @@ from cis.models.district import (
     District, DistrictPosition,
     DistrictAdministrator, DistrictAdministratorPosition)
 
-from cis.utils import user_has_cis_role, get_foreign_key_references
+from cis.utils import user_has_cis_role, get_foreign_key_references, get_foreign_key_reference_models
 
 class MigrateForm(forms.Form):
     
@@ -53,15 +53,10 @@ class MigrateForm(forms.Form):
             id=record.id
         )
 
-        references = get_foreign_key_references(record)
-        move_item_choices = []
-
-        for model_name, obj in references:
-            choice = (f"{model_name}", f"{model_name}")
-            if choice not in move_item_choices:
-                move_item_choices.append(choice)
-
-        self.fields['move_items'].choices = move_item_choices
+        # Names only -- loading every referencing row timed out large records.
+        self.fields['move_items'].choices = [
+            (name, name) for name in get_foreign_key_reference_models(record)
+        ]
 
     def save(self, request, record):
         data = self.cleaned_data

@@ -773,7 +773,6 @@ def detail(request, record_id):
         instance=course_doc_req, course=record
     )
 
-    migration_form = MigrateForm(record=record)
     if request.method == 'POST':
         
         if request.POST.get('action') == 'migrate_course':

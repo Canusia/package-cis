@@ -778,7 +778,6 @@ def detail(request, record_id):
     file_form = TeacherUploadForm(teacher=record)
 
     ed_bg_form = EdBgForm(user=record.user)
-    migration_form = MigrateForm(record)
 
     form = TeacherForm(initial={
         'first_name':record.user.first_name,
