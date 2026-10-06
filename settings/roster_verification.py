@@ -167,7 +167,11 @@ class SettingForm(forms.Form):
     notify_status = forms.MultipleChoiceField(
         choices=ClassSection.ROSTER_STATUS,
         widget=forms.CheckboxSelectMultiple,
-        help_text='when should CE office be notified',
+        help_text=(
+            'When should CE office be notified. For each selected status, the '
+            'staff notification below is sent to the addresses listed in '
+            '\'Notification List\'.'
+        ),
         label="Status to Notify",
         required=False
     )
