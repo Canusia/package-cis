@@ -31,6 +31,19 @@ Change log
     None selected lists every status. The roster PDF follows it when statuses
     are chosen and otherwise keeps listing Registered only. Read it through
     roster_registration_statuses() / ClassSection.roster_registrations().
+  * The verification request and reminders are a digest: one email per
+    recipient listing all their pending classes, instead of one per class
+    (ClassSection.send_roster_verification_digests; the reminder cron and the
+    CE bulk "Send the verification request email?" use it). New short codes
+    {{section_list}} (a table: Course, Section, CRN, Term, High School,
+    Instructor) and {{section_count}} in both request subjects and messages.
+    The per-class codes ({{class_number}}, {{course_name}}, ...) are filled
+    only when a digest holds one class -- update saved templates to use
+    {{section_list}}, or multi-class digests show those codes blank.
+  * "Class section statuses to remind" (`reminder_section_statuses`): the
+    reminder cron only picks classes in these ClassSection statuses (Active,
+    Cancelled). None selected reminds every class pending verification, as
+    before. Read it through reminder_section_statuses().
 """
 import json
 from django import forms
@@ -118,6 +131,18 @@ class SettingForm(forms.Form):
         label="Frequency of Notification in days"
     )
 
+    reminder_section_statuses = forms.MultipleChoiceField(
+        choices=ClassSection.CLASS_STATUS,
+        widget=forms.CheckboxSelectMultiple,
+        required=False,
+        label='Class section statuses to remind',
+        help_text=(
+            'Only classes with these statuses get the repeated reminders (e.g. '
+            'Active, to skip cancelled classes). When none are selected, every '
+            'class pending verification is reminded.'
+        ),
+    )
+
     cron = forms.CharField(
         max_length=20,
         help_text='Min Hr Day Month WeekDay',
@@ -127,20 +152,20 @@ class SettingForm(forms.Form):
 
     request_verify_subject = forms.CharField(
         max_length=None,
-        help_text='Customize with {{class_number}}, {{section_number}}, {{course_name}}, {{term}}',
+        help_text='Sent as one digest per recipient listing all their pending classes. Customize with {{section_count}}; the class codes below are filled only when the digest has a single class: {{class_number}}, {{section_number}}, {{course_name}}, {{term}}',
         label="Verification Request Email Subject")
 
     request_verify_email = forms.CharField(
         max_length=None,
         widget=forms.Textarea,
         validators=[validate_html_short_code],
-        help_text='Customize with {{teacher_first_name}}, {{teacher_last_name}}, {{class_number}}, {{section_number}}, {{course_name}}, {{highschool}}, {{term}}. <a href="#" class="float-right" onClick="do_bulk_action(\'roster_verification\', \'request_verify_email\')" >See Preview</a>',
+        help_text='One digest per instructor. Customize with {{recipient_first_name}}, {{recipient_last_name}}, {{section_list}} (table of their pending classes), {{section_count}}; single-class only: {{teacher_first_name}}, {{teacher_last_name}}, {{class_number}}, {{section_number}}, {{course_name}}, {{highschool}}, {{term}}. <a href="#" class="float-right" onClick="do_bulk_action(\'roster_verification\', \'request_verify_email\')" >See Preview</a>',
         label="Verification Request Email Message")
 
     hsadmin_request_verify_subject = forms.CharField(
         max_length=None,
         required=False,
-        help_text='Sent to high school admins when they can verify. Customize with {{class_number}}, {{section_number}}, {{course_name}}, {{term}}',
+        help_text='Sent to high school admins when they can verify. Sent as one digest per recipient listing all their pending classes. Customize with {{section_count}}; the class codes below are filled only when the digest has a single class: {{class_number}}, {{section_number}}, {{course_name}}, {{term}}',
         label="Verification Request Email Subject (High School Admins)")
 
     hsadmin_request_verify_email = forms.CharField(
@@ -148,7 +173,7 @@ class SettingForm(forms.Form):
         required=False,
         widget=forms.Textarea,
         validators=[validate_html_short_code],
-        help_text='Customize with {{recipient_first_name}}, {{recipient_last_name}}, {{teacher_first_name}}, {{teacher_last_name}}, {{class_number}}, {{section_number}}, {{course_name}}, {{highschool}}, {{term}}. <a href="#" class="float-right" onClick="do_bulk_action(\'roster_verification\', \'hsadmin_request_verify_email\')" >See Preview</a>',
+        help_text='One digest per high school admin. Customize with {{recipient_first_name}}, {{recipient_last_name}}, {{section_list}} (table of their pending classes), {{section_count}}; single-class only: {{teacher_first_name}}, {{teacher_last_name}}, {{class_number}}, {{section_number}}, {{course_name}}, {{highschool}}, {{term}}. <a href="#" class="float-right" onClick="do_bulk_action(\'roster_verification\', \'hsadmin_request_verify_email\')" >See Preview</a>',
         label="Verification Request Email Message (High School Admins)")
    
     action_veri_group = FFields.LongLabelField(
@@ -304,6 +329,14 @@ class roster_verification(SettingForm):
             'reporter_first_name': "Pat",
             'reporter_last_name': "Jones",
             'class_number': "12345",
+            'section_count': 2,
+            'section_list': mark_safe(
+                '<table border="1" cellpadding="4" cellspacing="0" style="border-collapse:collapse">'
+                '<thead><tr><th>Course</th><th>Section</th><th>CRN</th><th>Term</th>'
+                '<th>High School</th><th>Instructor</th></tr></thead><tbody>'
+                '<tr><td>ACC 101</td><td>v001</td><td>12345</td><td>Fall 2020</td><td>John J High School</td><td>Dale Smith</td></tr>'
+                '<tr><td>ACC 102</td><td>v002</td><td>12346</td><td>Fall 2020</td><td>John J High School</td><td>Dale Smith</td></tr>'
+                '</tbody></table>'),
             'section_list': mark_safe("<br>".join(['ACC 101', 'ACC 102'])),
             'term': "Fall 2020",
             'pre_visit_note': 'Private Note',
@@ -341,13 +374,13 @@ class roster_verification(SettingForm):
             'notify_status': ['accurate', 'inaccurate'],
             'notify_address': 'kadaji@gmail.com',
             'notify_verify_email': '{{teacher_first_name}}, {{teacher_last_name}}, {{crn}}, {{highschool}}, {{course_name}}, {{section_number}}, {{term}}, {{roster_status}}, {{note}}',
-            'request_verify_email': '{{teacher_first_name}}, {{teacher_last_name}}, {{crn}}, {{highschool}}, {{course_name}}, {{section_number}}, {{term}}', 
-            'request_verify_subject': 'Requesting verification', 
+            'request_verify_email': '{{recipient_first_name}}, please verify the roster for these {{section_count}} class(es): {{section_list}}',
+            'request_verify_subject': 'Requesting roster verification ({{section_count}})',
             'verify_confirmation_email': '{{teacher_first_name}}, {{teacher_last_name}}, {{crn}}, {{highschool}}, {{course_name}}, {{section_number}}, {{term}}, {{roster_status}}', 'verify_confirmation_subject': 'verified', 
             'notify_verify_confirmation_subject': 'roster status changed',
             'verifiers': list(DEFAULT_VERIFIERS),
-            'hsadmin_request_verify_subject': 'Requesting roster verification',
-            'hsadmin_request_verify_email': '{{recipient_first_name}}, please verify the roster for {{course_name}} {{section_number}} ({{class_number}}) at {{highschool}}, {{term}}. Instructor: {{teacher_first_name}} {{teacher_last_name}}',
+            'hsadmin_request_verify_subject': 'Requesting roster verification ({{section_count}})',
+            'hsadmin_request_verify_email': '{{recipient_first_name}}, please verify the roster for these {{section_count}} class(es): {{section_list}}',
         }
 
         Setting.install_defaults(self.key, defaults)
@@ -396,3 +429,10 @@ def roster_registration_statuses(values=None):
     if values is None:
         values = roster_verification.from_db()
     return list(values.get('roster_statuses') or [])
+
+
+def reminder_section_statuses(values=None):
+    """ClassSection statuses the reminder cron includes; [] means every one."""
+    if values is None:
+        values = roster_verification.from_db()
+    return list(values.get('reminder_section_statuses') or [])

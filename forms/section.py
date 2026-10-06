@@ -302,11 +302,15 @@ class BulkRosterStatusChangeForm(forms.Form):
             roster_status=data.get('new_roster_status')
         )
 
+        # One digest per recipient across every selected section.
+        sent_ids = set()
+        if data.get('email_instructors') == '1':
+            sent_ids, _emails = ClassSection.send_roster_verification_digests(list(records))
+
         for record in records:
             note_message = f'Updated roster status to {record.roster_status}'
-            if data.get('email_instructors') == '1':
-                if record.notify_roster_verifiers():
-                    note_message += ' and sent the verification request'
+            if record.pk in sent_ids:
+                note_message += ' and sent the verification request'
 
             record.add_note(request.user, note_message)
 

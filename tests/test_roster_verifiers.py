@@ -177,6 +177,94 @@ class RosterVerifierTests(TestCase):
         self.assertIn('Failed to send 0', summary)
         self.assertIn('ayes@example.com', _flat(send))
 
+    # -- digests ------------------------------------------------------------
+
+    def _second_section(self, teacher=True):
+        return ClassSection.objects.create(
+            course=self.section.course, term=self.section.term, class_number='90003',
+            section_number='003', highschool=self.school,
+            teacher=self.section.teacher if teacher else None)
+
+    def test_one_digest_per_recipient(self):
+        other = self._second_section()
+        settings = {**BASE, 'verifiers': ['instructor', 'highschool_admin'],
+                    'request_verify_subject': 'Verify {{section_count}}',
+                    'request_verify_email': '{{recipient_first_name}}: {{section_list}} [{{class_number}}]',
+                    'hsadmin_request_verify_subject': 'HS {{section_count}}',
+                    'hsadmin_request_verify_email': '{{recipient_first_name}}: {{section_list}}'}
+        with mock.patch(FROM_DB, return_value=settings), mock.patch(SEND) as send:
+            sent, emails = ClassSection.send_roster_verification_digests(
+                [self.section, other, self.no_teacher])
+        self.assertEqual(emails, 2)  # one to the instructor, one to the admin
+        by_to = {tuple(c.args[4]): c for c in send.call_args_list}
+        teacher_mail = by_to[('teach@example.com',)]
+        self.assertEqual(teacher_mail.args[0], 'Verify 2')
+        self.assertIn('90001', teacher_mail.args[2])
+        self.assertIn('90003', teacher_mail.args[2])
+        self.assertIn('[]', teacher_mail.args[1])  # per-class code blank in a multi-class digest
+        admin_mail = by_to[('ayes@example.com',)]
+        self.assertEqual(admin_mail.args[0], 'HS 3')
+        for crn in ('90001', '90002', '90003'):
+            self.assertIn(crn, admin_mail.args[2])
+        self.assertEqual(sent, {self.section.pk, other.pk, self.no_teacher.pk})
+
+    def test_single_class_digest_keeps_the_per_class_codes(self):
+        settings = {**BASE, 'request_verify_email': '{{class_number}} / {{section_count}}'}
+        with mock.patch(FROM_DB, return_value=settings), mock.patch(SEND) as send:
+            ClassSection.send_roster_verification_digests([self.section])
+        self.assertIn('90001 / 1', send.call_args.args[1])
+
+    def test_section_list_escapes_values(self):
+        self.school.name = 'A & <B>'
+        self.school.save()
+        html = ClassSection._roster_section_list([self.section])
+        self.assertIn('A &amp; &lt;B&gt;', html)
+
+    def test_reminder_cron_sends_one_digest_for_many_sections(self):
+        other = self._second_section()
+        ClassSection.objects.filter(pk__in=[self.section.pk, other.pk]).update(
+            roster_status='pending verification')
+        with self._settings(), mock.patch(SEND) as send:
+            summary, log = ClassSection.notify_sections_pending_roster_verification()
+        self.assertEqual(_recipients(send), [['teach@example.com']])
+        self.assertEqual(sorted(log['notified_crn']), ['90001', '90003'])
+        self.assertIn('Sent 1 digest email(s) covering 2 section(s)', summary)
+
+    def test_reminders_skip_class_statuses_not_selected(self):
+        other = self._second_section()
+        ClassSection.objects.filter(pk__in=[self.section.pk, other.pk]).update(
+            roster_status='pending verification')
+        ClassSection.objects.filter(pk=other.pk).update(status='C')
+        with self._settings(reminder_section_statuses=['A']), mock.patch(SEND) as send:
+            _summary, log = ClassSection.notify_sections_pending_roster_verification()
+        self.assertEqual(log['notified_crn'], ['90001'])
+        self.assertNotIn('90003', send.call_args.args[2])
+
+    def test_no_class_status_selected_reminds_every_class(self):
+        other = self._second_section()
+        ClassSection.objects.filter(pk__in=[self.section.pk, other.pk]).update(
+            roster_status='pending verification')
+        ClassSection.objects.filter(pk=other.pk).update(status='C')
+        with self._settings(reminder_section_statuses=[]), mock.patch(SEND):
+            _summary, log = ClassSection.notify_sections_pending_roster_verification()
+        self.assertEqual(sorted(log['notified_crn']), ['90001', '90003'])
+
+    def test_bulk_change_sends_one_digest(self):
+        from django.http import QueryDict
+        from cis.forms.section import BulkRosterStatusChangeForm
+        other = self._second_section()
+        data = QueryDict(mutable=True)
+        data.setlist('record_ids', [str(self.section.pk), str(other.pk)])
+        data.update({'new_roster_status': 'pending verification', 'email_instructors': '1',
+                     'action': 'change_roster_status'})
+        form = BulkRosterStatusChangeForm(data=data)
+        self.assertTrue(form.is_valid(), form.errors)
+        request = RequestFactory().post('/')
+        request.user = self.teacher_user
+        with self._settings(), mock.patch(SEND) as send:
+            form.save(request)
+        self.assertEqual(_recipients(send), [['teach@example.com']])
+
     # -- reporting ----------------------------------------------------------
 
     def _report(self, section, user, answer='1'):

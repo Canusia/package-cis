@@ -771,12 +771,46 @@ class ClassSection(MyCEBaseModel):
         ) or None
 
     def notify_roster_verifiers(self, notif_settings=None):
-        """Send the verification request to whoever may verify this roster.
+        """Send the verification request for this one section (a digest of
+        one); see send_roster_verification_digests. True if any email went."""
+        sent_ids, _emails = ClassSection.send_roster_verification_digests(
+            [self], notif_settings)
+        return self.pk in sent_ids
 
-        The Roster Verification setting decides who that is: the instructor,
-        and/or the high school admins whose role has Verify Class Rosters.
-        Each admin gets the high school admin subject/message, addressed to
-        them. Returns True if at least one email was sent.
+    @staticmethod
+    def _roster_section_list(sections):
+        """HTML table of `sections` for the {{section_list}} short code."""
+        from django.utils.html import format_html, format_html_join
+
+        rows = format_html_join('', (
+            '<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>'
+        ), (
+            (section.course, section.section_number, section.class_number, section.term,
+             section.highschool.name if section.highschool else '',
+             section.teacher or '')
+            for section in sections
+        ))
+        return format_html(
+            '<table border="1" cellpadding="4" cellspacing="0" style="border-collapse:collapse">'
+            '<thead><tr><th>Course</th><th>Section</th><th>CRN</th><th>Term</th>'
+            '<th>High School</th><th>Instructor</th></tr></thead><tbody>{}</tbody></table>',
+            rows)
+
+    @classmethod
+    def send_roster_verification_digests(cls, sections, notif_settings=None):
+        """Send the roster verification request as one digest per recipient.
+
+        Who receives a section follows the Roster Verification setting: its
+        instructor, and/or the high school admins whose role there has Verify
+        Class Rosters. Each recipient gets ONE email listing all of their
+        sections ({{section_list}}, {{section_count}}) -- instructors with the
+        instructor template, admins with the high school admin template. When
+        a digest holds a single section, the per-section short codes
+        ({{class_number}}, {{course_name}}, ...) are filled too, so older
+        templates keep working for it.
+
+        Returns (ids of sections included in at least one sent email, number
+        of emails sent). Those sections get their last-notified date updated.
         """
         from cis.settings.roster_verification import (
             roster_verification as roster_verification_settings, get_verifiers
@@ -785,31 +819,49 @@ class ClassSection(MyCEBaseModel):
             notif_settings = roster_verification_settings.from_db()
         verifiers = get_verifiers(notif_settings)
 
-        sent = False
-        if 'instructor' in verifiers and self.teacher:
-            sent = self._send_roster_email(
-                notif_settings.get('request_verify_subject'),
-                notif_settings.get('request_verify_email'),
-                self._user_addresses(self.teacher.user),
-                self._roster_email_context(recipient=self.teacher.user),
-                notif_settings,
-            ) or sent
+        # (template prefix, user id) -> [user, [sections]]
+        digests = {}
 
-        if 'highschool_admin' in verifiers and self.highschool:
-            admins = self.highschool.administrators_in_highschool(
-                status='can_verify_roster').select_related('user')
-            for admin in admins:
-                sent = self._send_roster_email(
-                    notif_settings.get('hsadmin_request_verify_subject'),
-                    notif_settings.get('hsadmin_request_verify_email'),
-                    self._user_addresses(admin.user),
-                    self._roster_email_context(recipient=admin.user),
-                    notif_settings,
-                ) or sent
+        def add(prefix, user, section):
+            entry = digests.setdefault((prefix, user.pk), [user, []])
+            if section not in entry[1]:
+                entry[1].append(section)
 
-        if sent:
-            self.update_last_notified()
-        return sent
+        for section in sections:
+            if 'instructor' in verifiers and section.teacher:
+                add('', section.teacher.user, section)
+            if 'highschool_admin' in verifiers and section.highschool:
+                admins = section.highschool.administrators_in_highschool(
+                    status='can_verify_roster').select_related('user')
+                for admin in admins:
+                    add('hsadmin_', admin.user, section)
+
+        sent_ids = set()
+        emails = 0
+        for (prefix, _uid), (user, user_sections) in digests.items():
+            if len(user_sections) == 1:
+                context = user_sections[0]._roster_email_context(recipient=user)
+            else:
+                context = {
+                    'recipient_first_name': user.first_name,
+                    'recipient_last_name': user.last_name,
+                }
+            context['section_list'] = cls._roster_section_list(user_sections)
+            context['section_count'] = len(user_sections)
+
+            if cls._send_roster_email(
+                    notif_settings.get(f'{prefix}request_verify_subject'),
+                    notif_settings.get(f'{prefix}request_verify_email'),
+                    cls._user_addresses(user),
+                    context,
+                    notif_settings):
+                emails += 1
+                sent_ids.update(section.pk for section in user_sections)
+
+        for section in sections:
+            if section.pk in sent_ids:
+                section.update_last_notified()
+        return sent_ids, emails
 
     def notify_teacher_on_roster_verification(self, *args, **kwargs):
         """Old name, kept for callers outside cis; the request now goes to
@@ -827,7 +879,8 @@ class ClassSection(MyCEBaseModel):
         }
 
         from cis.settings.roster_verification import (
-            roster_verification as roster_verification_settings
+            roster_verification as roster_verification_settings,
+            reminder_section_statuses,
         )
         notif_settings = roster_verification_settings.from_db()
 
@@ -836,39 +889,38 @@ class ClassSection(MyCEBaseModel):
         pending_verification = scope_to_current_campus(ClassSection.objects.filter(
             roster_status__iexact='pending verification'
         ), 'course__campus')
+        # Only the class statuses chosen in the setting (none chosen = all).
+        section_statuses = reminder_section_statuses(notif_settings)
+        if section_statuses:
+            pending_verification = pending_verification.filter(status__in=section_statuses)
 
         summary += 'Found ' + str(pending_verification.count()) + ' sections marked as pending verification'
 
-        success, failed = 0, 0
+        # Sections due a reminder go out together: one digest per recipient.
+        due = []
         for pending in pending_verification:
-            # No teacher is fine when high school admins verify (#69);
-            # notify_roster_verifiers sends to whoever is enabled.
             detailed_log['pending_crn'].append(
                 str(pending.class_number) + ' - ' + str(pending.last_notified())
             )
-
             if pending.needs_roster_verification_reminder():
+                due.append(pending)
 
-                sent = pending.notify_roster_verifiers(notif_settings)
+        sent_ids, emails = ClassSection.send_roster_verification_digests(due, notif_settings)
 
-                if sent:
-                    success += 1
-                    detailed_log['notified_crn'].append(
-                        pending.class_number
-                    )
-                    detailed_log['notified_teacher'].append(
-                        str(pending.teacher) if pending.teacher else '-'
-                    )
-
-                    pending.add_note(None, 'Sent pending roster verification email')
-                else:
-                    failed += 1
-                    detailed_log['failed_crn'].append(
-                        pending.class_number
-                    )
-
-                    pending.add_note(None, 'Failed to Send pending roster verification email')
-
+        success, failed = 0, 0
+        for pending in due:
+            if pending.pk in sent_ids:
+                success += 1
+                detailed_log['notified_crn'].append(pending.class_number)
+                detailed_log['notified_teacher'].append(
+                    str(pending.teacher) if pending.teacher else '-'
+                )
+                pending.add_note(None, 'Sent pending roster verification email')
+            else:
+                failed += 1
+                detailed_log['failed_crn'].append(pending.class_number)
+                pending.add_note(None, 'Failed to Send pending roster verification email')
+        summary += f"\r\nSent {emails} digest email(s) covering {success} section(s)."
         summary += f"\r\nSuccessfully sent {success}. Failed to send {failed}"
         return (summary, detailed_log)
 
