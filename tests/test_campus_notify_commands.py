@@ -98,7 +98,7 @@ class RosterReminderCampusTests(TestCase):
         sections it considered (teacher stubbed so none is skipped)."""
         considered = []
 
-        def record(section):
+        def record(section, notif_settings=None):
             considered.append((str(section.course.campus_id), section.class_number))
             return False  # no email
 

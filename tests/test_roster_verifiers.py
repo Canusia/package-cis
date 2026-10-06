@@ -434,3 +434,80 @@ class RosterStatusesSettingTests(TestCase):
         field = SettingForm().fields['roster_statuses']
         self.assertEqual(list(field.choices), list(StudentRegistration.STATUS_OPTIONS))
         self.assertFalse(field.required)
+
+
+class PendingRosterVerificationQuerySetTests(TestCase):
+    """ClassSection.objects.pending_roster_verification(): the shared rule for
+    reminders and dashboards (class statuses, terms incl. sub-terms, tenant
+    hook)."""
+
+    def setUp(self):
+        ay = AcademicYear.objects.create(name='2026-2027')
+        self.active = Term.objects.create(academic_year=ay, code='300', label='Fall Quarter')
+        self.sub = Term.objects.create(academic_year=ay, code='290', label='Fall Semester',
+                                       parent=self.active)
+        self.registration = Term.objects.create(academic_year=ay, code='400', label='Spring')
+        self.old = Term.objects.create(academic_year=ay, code='100', label='Last Year')
+        course = Course.objects.create(
+            catalog_number='101', title='Comp',
+            cohort=Cohort.objects.create(name='Eng', designator='ENG'))
+
+        def section(term, crn, status='A'):
+            return ClassSection.objects.create(
+                course=course, term=term, class_number=crn, section_number='001',
+                roster_status='pending verification', status=status)
+
+        self.on_sub = section(self.sub, '1')
+        self.on_registration = section(self.registration, '2')
+        self.on_old = section(self.old, '3')
+        self.cancelled = section(self.sub, '4', status='C')
+        self.verified = section(self.sub, '5')
+        ClassSection.objects.filter(pk=self.verified.pk).update(roster_status='accurate')
+
+        patches = [
+            mock.patch('cis.utils.active_term', return_value=self.active),
+            mock.patch('cis.utils.registration_terms',
+                       return_value=Term.objects.filter(pk=self.registration.pk)),
+        ]
+        for p in patches:
+            p.start()
+            self.addCleanup(p.stop)
+
+    def _crns(self, values):
+        qs = ClassSection.objects.all().pending_roster_verification(values)
+        return sorted(qs.values_list('class_number', flat=True))
+
+    def test_default_is_active_and_registration_terms_with_sub_terms(self):
+        self.assertEqual(self._crns({}), ['1', '2', '4'])
+
+    def test_term_choices(self):
+        self.assertEqual(self._crns({'reminder_terms': 'active'}), ['1', '4'])
+        self.assertEqual(self._crns({'reminder_terms': 'registration'}), ['2'])
+        self.assertEqual(self._crns({'reminder_terms': 'all'}), ['1', '2', '3', '4'])
+
+    def test_class_statuses(self):
+        self.assertEqual(self._crns({'reminder_section_statuses': ['A']}), ['1', '2'])
+
+    def test_no_terms_configured_skips_the_term_limit(self):
+        with mock.patch('cis.utils.active_term', return_value=None), \
+                mock.patch('cis.utils.registration_terms', return_value=None), \
+                self.assertLogs('cis.settings.roster_verification', 'WARNING'):
+            self.assertEqual(self._crns({}), ['1', '2', '3', '4'])
+
+    def test_chains_onto_the_callers_scope(self):
+        qs = ClassSection.objects.filter(class_number='2').pending_roster_verification({})
+        self.assertEqual(list(qs.values_list('class_number', flat=True)), ['2'])
+
+    def test_tenant_hook_narrows(self):
+        def only_registration(queryset, notif_settings):
+            return queryset.filter(term=self.registration)
+
+        with mock.patch('cis.services.tenant_services.get_tenant_override',
+                        return_value=only_registration) as override:
+            self.assertEqual(self._crns({}), ['2'])
+        override.assert_called_with('roster_verification', 'pending_roster_sections')
+
+    def test_setting_offers_the_term_choices_with_the_default(self):
+        field = SettingForm().fields['reminder_terms']
+        self.assertEqual(field.initial, 'active_and_registration')
+        self.assertIn(('all', 'All terms'), list(field.choices))

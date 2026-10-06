@@ -94,10 +94,57 @@ class SectionNumber(models.Model):
         return self.number
 
 from myce.models import MyCEBaseModel
+
+
+class ClassSectionQuerySet(models.QuerySet):
+    def pending_roster_verification(self, notif_settings=None):
+        """Classes whose roster is waiting on verification, per the Roster
+        Verification setting -- the one rule the reminder cron and the
+        instructor / high school admin dashboards share, so emails and
+        dashboards agree.
+
+        Narrows *this* queryset (callers keep their own scope: a teacher's
+        classes, an admin's visible sections, the current campus) to: roster
+        status Pending Verification; the chosen class statuses
+        (reminder_section_statuses, none = all); and the chosen terms
+        (reminder_terms, default the active + registration terms, sub-terms
+        included).
+
+        A tenant may narrow further by defining
+        pending_roster_sections(queryset, notif_settings) in
+        myce_tenant_configs/services/roster_verification.py; it gets this
+        result and returns a subset (it cannot widen the caller's scope).
+        """
+        from cis.services.tenant_services import get_tenant_override
+        from cis.settings.roster_verification import (
+            roster_verification as roster_verification_settings,
+            reminder_section_statuses, reminder_term_ids,
+        )
+        if notif_settings is None:
+            notif_settings = roster_verification_settings.from_db()
+
+        records = self.filter(roster_status__iexact='pending verification')
+
+        section_statuses = reminder_section_statuses(notif_settings)
+        if section_statuses:
+            records = records.filter(status__in=section_statuses)
+
+        term_ids = reminder_term_ids(notif_settings)
+        if term_ids is not None:
+            records = records.filter(term__in=term_ids)
+
+        override = get_tenant_override('roster_verification', 'pending_roster_sections')
+        if override is not None:
+            records = override(records, notif_settings)
+        return records
+
+
 class ClassSection(MyCEBaseModel):
     """
     Class Section model
     """
+    objects = ClassSectionQuerySet.as_manager()
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
     class_number = models.CharField(max_length=50)
@@ -656,14 +703,16 @@ class ClassSection(MyCEBaseModel):
 
         return notifications.get(notif_type) if notifications.get(notif_type) else '11/18/2018'
 
-    def needs_roster_verification_reminder(self):
+    def needs_roster_verification_reminder(self, notif_settings=None):
         if self.roster_status != 'pending verification':
             return False
 
-        from cis.settings.roster_verification import (
-            roster_verification as roster_verification_settings
-        )
-        notif_settings = roster_verification_settings.from_db()
+        # The cron passes the setting in, so it isn't re-read per section.
+        if notif_settings is None:
+            from cis.settings.roster_verification import (
+                roster_verification as roster_verification_settings
+            )
+            notif_settings = roster_verification_settings.from_db()
 
         last_notified = self.last_notified('roster_verification')
         current_date = datetime.datetime.now()
@@ -880,19 +929,15 @@ class ClassSection(MyCEBaseModel):
 
         from cis.settings.roster_verification import (
             roster_verification as roster_verification_settings,
-            reminder_section_statuses,
         )
         notif_settings = roster_verification_settings.from_db()
 
-        # One campus per pass in multi-campus mode (MC-11).
+        # One campus per pass in multi-campus mode (MC-11); the classes are
+        # picked by the rule the dashboards use too.
         from cis.campus_context import scope_to_current_campus
-        pending_verification = scope_to_current_campus(ClassSection.objects.filter(
-            roster_status__iexact='pending verification'
-        ), 'course__campus')
-        # Only the class statuses chosen in the setting (none chosen = all).
-        section_statuses = reminder_section_statuses(notif_settings)
-        if section_statuses:
-            pending_verification = pending_verification.filter(status__in=section_statuses)
+        pending_verification = scope_to_current_campus(
+            ClassSection.objects.all(), 'course__campus',
+        ).pending_roster_verification(notif_settings)
 
         summary += 'Found ' + str(pending_verification.count()) + ' sections marked as pending verification'
 
@@ -902,7 +947,7 @@ class ClassSection(MyCEBaseModel):
             detailed_log['pending_crn'].append(
                 str(pending.class_number) + ' - ' + str(pending.last_notified())
             )
-            if pending.needs_roster_verification_reminder():
+            if pending.needs_roster_verification_reminder(notif_settings):
                 due.append(pending)
 
         sent_ids, emails = ClassSection.send_roster_verification_digests(due, notif_settings)

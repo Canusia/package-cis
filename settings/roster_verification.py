@@ -40,10 +40,19 @@ Change log
     The per-class codes ({{class_number}}, {{course_name}}, ...) are filled
     only when a digest holds one class -- update saved templates to use
     {{section_list}}, or multi-class digests show those codes blank.
-  * "Class section statuses to remind" (`reminder_section_statuses`): the
-    reminder cron only picks classes in these ClassSection statuses (Active,
-    Cancelled). None selected reminds every class pending verification, as
-    before. Read it through reminder_section_statuses().
+  * "Class section statuses included" (`reminder_section_statuses`): only
+    classes in these ClassSection statuses (Active, Cancelled) are reminded
+    or shown as pending. None selected includes every status, as before.
+  * "Terms included" (`reminder_terms`): active + registration terms (the
+    default, also for a setting saved before this), active only,
+    registration only, or all terms. Sub-terms of a chosen term count. If no
+    term is configured the term limit is skipped (logged) rather than
+    silencing every reminder. Previously reminders had no term limit.
+  * The class selection is ClassSection.objects.pending_roster_verification()
+    -- used by the reminder cron and the instructor / high school admin
+    dashboards, so they agree. Tenants may narrow it with
+    pending_roster_sections(queryset, notif_settings) in
+    myce_tenant_configs/services/roster_verification.py.
 """
 import json
 from django import forms
@@ -70,6 +79,14 @@ VERIFIER_CHOICES = (
     ('highschool_admin', 'High School Admin(s)'),
 )
 DEFAULT_VERIFIERS = ['instructor']
+
+REMINDER_TERM_CHOICES = (
+    ('active_and_registration', 'Active term and registration terms'),
+    ('active', 'Active term only'),
+    ('registration', 'Registration terms only'),
+    ('all', 'All terms'),
+)
+DEFAULT_REMINDER_TERMS = 'active_and_registration'
 
 
 class SettingForm(forms.Form):
@@ -135,11 +152,23 @@ class SettingForm(forms.Form):
         choices=ClassSection.CLASS_STATUS,
         widget=forms.CheckboxSelectMultiple,
         required=False,
-        label='Class section statuses to remind',
+        label='Class section statuses included',
         help_text=(
-            'Only classes with these statuses get the repeated reminders (e.g. '
-            'Active, to skip cancelled classes). When none are selected, every '
-            'class pending verification is reminded.'
+            'Only classes with these statuses get the repeated reminders and '
+            'appear as pending on the instructor and high school admin '
+            'dashboards (e.g. Active, to skip cancelled classes). When none '
+            'are selected, every status is included.'
+        ),
+    )
+
+    reminder_terms = forms.ChoiceField(
+        choices=REMINDER_TERM_CHOICES,
+        initial=DEFAULT_REMINDER_TERMS,
+        required=False,
+        label='Terms included',
+        help_text=(
+            'Which terms\' classes get the repeated reminders and appear as '
+            'pending on the dashboards. Sub-terms of a chosen term are included.'
         ),
     )
 
@@ -436,3 +465,38 @@ def reminder_section_statuses(values=None):
     if values is None:
         values = roster_verification.from_db()
     return list(values.get('reminder_section_statuses') or [])
+
+
+def reminder_term_ids(values=None):
+    """Term ids the roster reminders and pending lists cover, sub-terms
+    included; None means no term limit ('All terms', or none configured)."""
+    import logging
+    from cis.services.term_hierarchy import term_with_descendant_ids
+    from cis.utils import TermNotConfigured, active_term, registration_terms
+
+    if values is None:
+        values = roster_verification.from_db()
+    choice = values.get('reminder_terms') or DEFAULT_REMINDER_TERMS
+    if choice == 'all':
+        return None
+
+    roots = []
+    if choice in ('active_and_registration', 'active'):
+        try:
+            term = active_term()
+        except TermNotConfigured:
+            term = None
+        if term is not None:
+            roots.append(term.pk)
+    if choice in ('active_and_registration', 'registration'):
+        roots.extend(term.pk for term in (registration_terms() or []))
+
+    if not roots:
+        logging.getLogger(__name__).warning(
+            'Roster verification: no %s term configured; not limiting by term.', choice)
+        return None
+
+    ids = set()
+    for root in roots:
+        ids |= term_with_descendant_ids(root)
+    return ids
