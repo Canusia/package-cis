@@ -68,14 +68,18 @@
     $(document).ready(function () {
         $('#students .summary-card').on('click', function () {
             var table = $('#tbl_class_registrations').DataTable();
+            // Find Status by its header, not a fixed index: the tenant's column
+            // list decides where it sits (index 3 was Needs Mirroring).
+            var column = $('#tbl_class_registrations thead th[data-name="status"]').index();
             var status = $(this).data('status');
             var isActive = $(this).hasClass('border-primary');
             $('#students .summary-card').removeClass('border-primary border-2').css('border', 'none');
             if (!isActive && status) {
                 $(this).css('border', '2px solid #4e73df').addClass('border-primary border-2');
-                table.column(3).search(status).draw();
+                // Exact match: 'approved' must not also match 'not_approved'.
+                table.column(column).search('^' + status + '$', true, false).draw();
             } else {
-                table.column(3).search('').draw();
+                table.column(column).search('').draw();
             }
         });
     });
