@@ -24,6 +24,8 @@ Change log
     verified for them. {{reporter_first_name}} / {{reporter_last_name}} name
     the admin; {{recipient_first_name}} names whoever receives that copy.
   * "Status to Notify" is a set of checkboxes instead of a multi-select.
+  * "Status to Notify" help text says the staff notification goes to the
+    addresses in "Notification List".
   * "Registration statuses on the roster" (`roster_statuses`): which
     registration statuses the instructor and high school admin rosters list.
     None selected lists every status. The roster PDF follows it when statuses
