@@ -17,6 +17,13 @@ Change log
     {{recipient_first_name}}, {{recipient_last_name}} in the request emails.
   * The confirmation and staff emails honour Debug mode like the request
     email; they previously keyed off Django's DEBUG and a fixed address.
+
+0.1.14a (2026-10-06)
+  * When a high school admin reports a roster, the confirmation also goes to
+    the section's instructor (if it has one), so the instructor knows it was
+    verified for them. {{reporter_first_name}} / {{reporter_last_name}} name
+    the admin; {{recipient_first_name}} names whoever receives that copy.
+  * "Status to Notify" is a set of checkboxes instead of a multi-select.
 """
 import json
 from django import forms
@@ -138,14 +145,14 @@ class SettingForm(forms.Form):
     verify_confirmation_subject = forms.CharField(
         max_length=None,
         help_text='',
-        label="Verification Recv. Confirmation Email Subject (sent to whoever reported)")
+        label="Verification Recv. Confirmation Email Subject (sent to whoever reported, and to the instructor when a high school admin reports)")
 
     verify_confirmation_email = forms.CharField(
         max_length=None,
         widget=forms.Textarea,
         validators=[validate_html_short_code],
-        help_text='Customize with {{reporter_first_name}}, {{reporter_last_name}}, {{teacher_first_name}}, {{teacher_last_name}}, {{crn}}, {{highschool}}, {{course_name}}, {{section_number}}, {{term}}, {{roster_status}}. <a href="#" class="float-right" onClick="do_bulk_action(\'roster_verification\', \'verify_confirmation_email\')" >See Preview</a>',
-        label="Verification Recv. Email Message (sent to whoever reported)")
+        help_text='Customize with {{recipient_first_name}}, {{recipient_last_name}}, {{reporter_first_name}}, {{reporter_last_name}}, {{teacher_first_name}}, {{teacher_last_name}}, {{crn}}, {{highschool}}, {{course_name}}, {{section_number}}, {{term}}, {{roster_status}}. <a href="#" class="float-right" onClick="do_bulk_action(\'roster_verification\', \'verify_confirmation_email\')" >See Preview</a>',
+        label="Verification Recv. Email Message (sent to whoever reported, and to the instructor when a high school admin reports)")
 
     ce_veri_group = FFields.LongLabelField(
         required=False,
@@ -159,6 +166,7 @@ class SettingForm(forms.Form):
 
     notify_status = forms.MultipleChoiceField(
         choices=ClassSection.ROSTER_STATUS,
+        widget=forms.CheckboxSelectMultiple,
         help_text='when should CE office be notified',
         label="Status to Notify",
         required=False

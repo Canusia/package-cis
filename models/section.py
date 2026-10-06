@@ -864,25 +864,34 @@ class ClassSection(MyCEBaseModel):
         return (summary, detailed_log)
 
     def notify_teacher_on_roster_confirmed(self, reporter=None):
-        """Confirm a roster report to whoever reported it.
+        """Confirm a roster report.
 
-        `reporter` is the user who submitted the report through a portal (an
-        instructor or a high school admin); without one -- e.g. a CE edit --
-        the instructor gets it, as before #69.
+        `reporter` is the user who submitted it through a portal. They get
+        the confirmation, and when they are not the section's instructor (a
+        high school admin reported) the instructor gets it too, if the
+        section has one. Without a reporter -- e.g. a CE edit -- only the
+        instructor gets it, as before #69.
         """
         from cis.settings.roster_verification import (
             roster_verification as roster_verification_settings
         )
         notif_settings = roster_verification_settings.from_db()
 
-        recipient = reporter or (self.teacher.user if self.teacher else None)
-        return self._send_roster_email(
-            notif_settings.get('verify_confirmation_subject'),
-            notif_settings.get('verify_confirmation_email'),
-            self._user_addresses(recipient)[:1],
-            self._roster_email_context(recipient=recipient, reporter=reporter),
-            notif_settings,
-        ) or None
+        teacher_user = self.teacher.user if self.teacher else None
+        recipients = [reporter] if reporter else []
+        if teacher_user and teacher_user not in recipients:
+            recipients.append(teacher_user)
+
+        sent = False
+        for recipient in recipients:
+            sent = self._send_roster_email(
+                notif_settings.get('verify_confirmation_subject'),
+                notif_settings.get('verify_confirmation_email'),
+                self._user_addresses(recipient)[:1],
+                self._roster_email_context(recipient=recipient, reporter=reporter),
+                notif_settings,
+            ) or sent
+        return sent or None
 
     @property
     def roster_needs_verification(self):

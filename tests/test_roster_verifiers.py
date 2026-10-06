@@ -189,23 +189,34 @@ class RosterVerifierTests(TestCase):
         self.assertTrue(form.is_valid(), form.errors)
         form.save(section, request)
 
-    def test_hs_admin_report_confirms_to_the_admin(self):
+    def test_hs_admin_report_confirms_to_the_admin_and_the_instructor(self):
         with self._settings(), mock.patch(SEND) as send:
             self._report(self.section, self.admin_user)
         self.section.refresh_from_db()
         self.assertEqual(self.section.roster_status, 'accurate')
         confirmations = [c for c in send.call_args_list if c.args[0] == 'Thanks']
-        self.assertEqual([c.args[4] for c in confirmations], [['ayes@example.com']])
-        self.assertIn('Got it Ayes', confirmations[0].args[1])
+        self.assertEqual([c.args[4] for c in confirmations],
+                         [['ayes@example.com'], ['teach@example.com']])
+        # Both copies name the admin who reported.
+        for call in confirmations:
+            self.assertIn('Got it Ayes', call.args[1])
         staff = [c for c in send.call_args_list if c.args[0] == 'Roster changed']
         self.assertIn('Accurate'.lower(), staff[0].args[1].lower())
         self.assertIn('Admin', staff[0].args[1])
 
-    def test_report_on_a_section_without_a_teacher_does_not_crash(self):
-        with self._settings(), mock.patch(SEND):
+    def test_report_on_a_section_without_a_teacher_confirms_to_the_admin_only(self):
+        with self._settings(), mock.patch(SEND) as send:
             self._report(self.no_teacher, self.admin_user, answer='2')
         self.no_teacher.refresh_from_db()
         self.assertEqual(self.no_teacher.roster_status, 'inaccurate')
+        confirmations = [c.args[4] for c in send.call_args_list if c.args[0] == 'Thanks']
+        self.assertEqual(confirmations, [['ayes@example.com']])
+
+    def test_instructor_report_confirms_once(self):
+        with self._settings(), mock.patch(SEND) as send:
+            self._report(self.section, self.teacher_user)
+        confirmations = [c.args[4] for c in send.call_args_list if c.args[0] == 'Thanks']
+        self.assertEqual(confirmations, [['teach@example.com']])
 
     def test_ce_change_still_confirms_to_the_instructor(self):
         with self._settings(), mock.patch(SEND) as send:
