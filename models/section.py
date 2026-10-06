@@ -366,15 +366,24 @@ class ClassSection(MyCEBaseModel):
         distribution.extend(sorted(counts.items()))
         return distribution
 
+    def roster_registrations(self, highschool_ids=None):
+        """Registrations the class roster lists, per the Roster Verification
+        setting's "Registration statuses on the roster" (none chosen = all)."""
+        from cis.settings.roster_verification import roster_registration_statuses
+        return self.get_students(
+            status=roster_registration_statuses(), highschool_ids=highschool_ids)
+
     def download_roster_pdf(self):
         import pdfkit, datetime
+        from cis.settings.roster_verification import roster_registration_statuses
 
         base_template = 'cis/sections/class_roster.html'
         template = get_template(base_template)
 
+        # The configured roster statuses; Registered only when none are chosen.
         students = StudentRegistration.objects.filter(
             class_section=self,
-            status='registered'
+            status__in=roster_registration_statuses() or ['registered']
         ).order_by('student__user__last_name')
 
         html = template.render({

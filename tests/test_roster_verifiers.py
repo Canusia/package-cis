@@ -278,3 +278,71 @@ class RosterFlagRoleTests(TestCase):
         self.role.refresh_from_db()
         self.assertEqual(self.role.meta['manage_roster_verification'], 'No')
         self.assertFalse(self.admin.can_verify_roster(self.school.id))
+
+
+class RosterStatusesSettingTests(TestCase):
+    """Which registration statuses the rosters list (none chosen = all)."""
+
+    def setUp(self):
+        from cis.models.section import StudentRegistration
+        from cis.models.student import Student
+        CustomUser.objects.get_or_create(username='cron', defaults={'email': 'cron@example.com'})
+        Group.objects.get_or_create(name='student')
+        cohort = Cohort.objects.create(name='Eng', designator='ENG')
+        self.section = ClassSection.objects.create(
+            course=Course.objects.create(catalog_number='101', title='Comp', cohort=cohort),
+            term=Term.objects.create(
+                academic_year=AcademicYear.objects.create(name='2026-2027'),
+                code='F26', label='Fall 2026'),
+            class_number='91001', section_number='001')
+        self.regs = {}
+        for status in ('registered', 'applied', 'dropped'):
+            user = CustomUser.objects.create_user(
+                username=f's_{status}', email=f's_{status}@example.com', password='x')
+            self.regs[status] = StudentRegistration.objects.create(
+                student=Student.objects.create(user=user), class_section=self.section,
+                status=status, status_changed_on={})
+
+    def _statuses(self, statuses):
+        return mock.patch(FROM_DB, return_value={'roster_statuses': statuses})
+
+    def test_none_selected_lists_every_status(self):
+        from cis.settings.roster_verification import roster_registration_statuses
+        with self._statuses([]):
+            self.assertEqual(roster_registration_statuses(), [])
+            self.assertEqual(set(self.section.roster_registrations()), set(self.regs.values()))
+
+    def test_selected_statuses_only(self):
+        with self._statuses(['registered', 'applied']):
+            self.assertEqual(set(self.section.roster_registrations()),
+                             {self.regs['registered'], self.regs['applied']})
+
+    def _pdf_students(self):
+        captured = {}
+
+        class FakeTemplate:
+            def render(self, ctx):
+                captured.update(ctx)
+                return ''
+
+        with mock.patch('cis.models.section.get_template', return_value=FakeTemplate()), \
+                mock.patch.dict('sys.modules', {'pdfkit': mock.MagicMock()}):
+            try:
+                self.section.download_roster_pdf()
+            except Exception:
+                pass
+        return set(captured.get('students') or [])
+
+    def test_pdf_keeps_registered_only_when_none_selected(self):
+        with self._statuses([]):
+            self.assertEqual(self._pdf_students(), {self.regs['registered']})
+
+    def test_pdf_follows_the_selected_statuses(self):
+        with self._statuses(['applied', 'registered']):
+            self.assertEqual(self._pdf_students(), {self.regs['registered'], self.regs['applied']})
+
+    def test_setting_offers_the_registration_statuses(self):
+        from cis.models.section import StudentRegistration
+        field = SettingForm().fields['roster_statuses']
+        self.assertEqual(list(field.choices), list(StudentRegistration.STATUS_OPTIONS))
+        self.assertFalse(field.required)

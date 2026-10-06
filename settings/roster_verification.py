@@ -24,6 +24,11 @@ Change log
     verified for them. {{reporter_first_name}} / {{reporter_last_name}} name
     the admin; {{recipient_first_name}} names whoever receives that copy.
   * "Status to Notify" is a set of checkboxes instead of a multi-select.
+  * "Registration statuses on the roster" (`roster_statuses`): which
+    registration statuses the instructor and high school admin rosters list.
+    None selected lists every status. The roster PDF follows it when statuses
+    are chosen and otherwise keeps listing Registered only. Read it through
+    roster_registration_statuses() / ClassSection.roster_registrations().
 """
 import json
 from django import forms
@@ -82,6 +87,18 @@ class SettingForm(forms.Form):
         ),
     )
 
+
+    roster_statuses = forms.MultipleChoiceField(
+        choices=[],
+        widget=forms.CheckboxSelectMultiple,
+        required=False,
+        label='Registration statuses on the roster',
+        help_text=(
+            'Which student registrations the instructor and high school admin '
+            'rosters list. When none are selected, every status is shown (the '
+            'roster PDF then lists Registered only).'
+        ),
+    )
 
     pending_veri_group = FFields.LongLabelField(
         required=False,
@@ -190,6 +207,8 @@ class SettingForm(forms.Form):
    
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        from ..models.section import StudentRegistration
+        self.fields['roster_statuses'].choices = StudentRegistration.STATUS_OPTIONS
 
     def clean(self):
         cleaned = super().clean()
@@ -368,3 +387,10 @@ def get_verifiers(values=None):
 def can_verify(role, values=None):
     """True if `role` ('instructor' or 'highschool_admin') may verify rosters."""
     return role in get_verifiers(values)
+
+
+def roster_registration_statuses(values=None):
+    """Registration statuses the rosters list; [] means every status."""
+    if values is None:
+        values = roster_verification.from_db()
+    return list(values.get('roster_statuses') or [])
