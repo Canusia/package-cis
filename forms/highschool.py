@@ -23,7 +23,7 @@ from cis.utils import YES_NO_SELECT_OPTIONS
 from cis.models.district import District
 from cis.models.highschool_administrator import (
     HSPosition, HSAdministratorPosition,
-    HSAdministratorAccessRequest, HSAdministrator
+    HSAdministratorAccessRequest, HSAdministrator, normalize_position_flag
 )
 from cis.models.teacher import TeacherCourseCertificate
 from cis.utils import user_has_cis_role, get_movable_reference_choices, move_references
@@ -438,12 +438,15 @@ class HSAdministratorPositionForm(forms.Form):
         )
     )
 
+    # 'No' first and as the initial: an unset flag means No everywhere else,
+    # so the form must not fall back to Yes (#72).
     manage_student_recommendation = forms.ChoiceField(
         label='Manage Student Recommendation',
         choices=[
-            ('Yes', 'Yes'),
             ('No', 'No'),
+            ('Yes', 'Yes'),
         ],
+        initial='No',
         help_text='Setting the status to \'Inactive\' will disable this'
     )
 
@@ -512,7 +515,8 @@ class HSAdministratorPositionForm(forms.Form):
         record.status = data.get('status')
         record.since = data.get('since')
 
-        record.meta['manage_student_recommendation'] = data.get('manage_student_recommendation')
+        record.meta['manage_student_recommendation'] = normalize_position_flag(
+            data.get('manage_student_recommendation'))
         
         if commit:
             record.save()

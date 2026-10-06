@@ -13,7 +13,7 @@ from django.template.loader import get_template, render_to_string
 from mailer import send_mail, send_html_mail
 
 from cis.models.highschool_administrator import (
-    HSAdministratorPosition, HSAdministratorAccessRequest
+    HSAdministratorPosition, HSAdministratorAccessRequest, POSITION_FLAGS
 )
 
 @receiver(post_save, sender=HSAdministratorAccessRequest)
@@ -39,9 +39,10 @@ def hs_position_updated(sender, instance, created, **kwargs):
         hsadmin.user.groups.add(group)
 
     if instance.status.lower() != 'active':
-        meta = {
-            'manage_student_recommendation': 'No'
-        }
+        # Clear the permission flags only; replacing meta wholesale dropped
+        # every other key on the role.
+        meta = dict(instance.meta or {})
+        meta.update({flag: 'No' for flag in POSITION_FLAGS})
 
         HSAdministratorPosition.objects.filter(
             id=instance.id

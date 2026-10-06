@@ -171,8 +171,9 @@ class HSAdministratorAccessRequest(models.Model):
         hs_admin_position.hsadmin = hs_administrator
         hs_admin_position.status = 'Active'
         
-        hs_admin_position.meta = {}        
-        hs_admin_position.meta['manage_student_recommendation'] = form_data.get('manage_student_recommendation')
+        hs_admin_position.meta = {flag: 'No' for flag in POSITION_FLAGS}
+        hs_admin_position.meta['manage_student_recommendation'] = normalize_position_flag(
+            form_data.get('manage_student_recommendation'))
 
         try:
             hs_admin_position.save()
@@ -402,6 +403,17 @@ class HSPosition(models.Model):
             record.save()
         return record
 
+# Per-role permission flags, stored in HSAdministratorPosition.meta as 'Yes' or
+# 'No'. Access checks use meta__<flag>__iexact='yes', so anything else -- a
+# missing key included -- means 'No'; forms and imports must agree (#72).
+POSITION_FLAGS = ('manage_student_recommendation',)
+
+
+def normalize_position_flag(value):
+    """'Yes' for any casing of yes, otherwise 'No' (unset included)."""
+    return 'Yes' if str(value or '').strip().lower() == 'yes' else 'No'
+
+
 class HSAdministratorPosition(models.Model):
     """
     Model to associate hs admin with their position in high schools
@@ -431,7 +443,7 @@ class HSAdministratorPosition(models.Model):
 
     def toggle_student_recommendation(self):
         if self.status == 'Active':
-            if self.meta.get('manage_student_recommendation') == 'Yes':
+            if normalize_position_flag(self.meta.get('manage_student_recommendation')) == 'Yes':
                 self.meta['manage_student_recommendation'] = 'No'
             else:
                 self.meta['manage_student_recommendation'] = 'Yes'
@@ -459,7 +471,8 @@ class HSAdministratorPosition(models.Model):
                 hsadmin=hsadmin,
                 highschool=highschool,
                 position=position,
-                status=status
+                status=status,
+                meta={flag: 'No' for flag in POSITION_FLAGS},
             )
             record.save()
         return record

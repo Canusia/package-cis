@@ -26,7 +26,7 @@ from cis.models.customuser import CustomUser
 from cis.models.highschool import HighSchool
 from cis.models.highschool_administrator import (
     HSAdministrator, HSAdministratorPosition, HSPosition,
-    HSAdministratorAccessRequest
+    HSAdministratorAccessRequest, normalize_position_flag
 )
 
 from cis.forms.utils import EmailForm
@@ -505,7 +505,10 @@ def add_new_role(request):
             initial['status'] = record.status
             initial['position'] = record.position.id
 
-            initial['manage_student_recommendation'] = record.meta.get('manage_student_recommendation')
+            # Stored values may be unset or another casing; show what the
+            # access checks see (#72).
+            initial['manage_student_recommendation'] = normalize_position_flag(
+                record.meta.get('manage_student_recommendation'))
 
             if record.since:
                 initial['since'] = record.since.strftime("%m/%d/%Y")
