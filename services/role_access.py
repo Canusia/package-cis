@@ -94,3 +94,53 @@ def revoke_access(policy, user):
         logger.info('Revoked %s role for user %s', policy.group_name, user.pk)
 
     return True
+
+
+# Reverse one-to-ones on CustomUser that grant no role. Anything NOT listed
+# here counts as a role record, so a package that adds a new one-to-one hides
+# its users from roleless_users() rather than exposing them to a delete.
+NON_ROLE_ONE_TO_ONES = frozenset({'authtoken.Token'})
+
+
+def role_record_relations():
+    """Reverse one-to-one relations from CustomUser to a role record
+    (Student, Teacher, HSAdministrator, TeacherApplicant, ...)."""
+    from cis.models.customuser import CustomUser
+
+    return [
+        rel for rel in CustomUser._meta.related_objects
+        if rel.one_to_one
+        and rel.related_model._meta.label not in NON_ROLE_ONE_TO_ONES
+    ]
+
+
+def roleless_users():
+    """Accounts with no role at all: no auth group AND no role record.
+
+    Both conditions are required. A role record without its group is a
+    dangling account (see dangling_users) and still belongs to someone; a
+    group without a record is the other dangling shape. Superusers are left
+    out -- they need no group to have access.
+
+    Usually these are logins left behind by revoke_access() on the Dangling
+    Accounts tabs, which drops the group and deliberately keeps the account.
+    Listed on the No Role tab of /ce/users/.
+    """
+    from cis.models.customuser import CustomUser
+
+    no_record = {
+        f'{rel.get_accessor_name()}__isnull': True
+        for rel in role_record_relations()
+    }
+    # groups__isnull=True only matches users with no group row at all, so the
+    # m2m join cannot duplicate rows and no distinct() is needed.
+    return CustomUser.objects.filter(
+        groups__isnull=True,
+        is_superuser=False,
+        **no_record,
+    )
+
+
+def is_roleless(user):
+    """Re-check one account right before acting on it."""
+    return roleless_users().filter(pk=user.pk).exists()

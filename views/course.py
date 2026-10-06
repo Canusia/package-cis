@@ -7,7 +7,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
-from django.http import JsonResponse, HttpResponse
+from django.http import Http404, JsonResponse, HttpResponse
 from django.urls import reverse
 from django.views.decorators.clickjacking import xframe_options_exempt
 
@@ -23,6 +23,7 @@ from cis.models.course import (
 )
 from ..models.note import CourseNote
 from ..models.section import ClassSection
+from ..models.teacher import TeacherCourseCertificate
 from myce.component_registry.course import course_tabs
 from cis.services.table_configs import get_table_config
 
@@ -63,7 +64,10 @@ from ..serializers.course import (
 
 from ..serializers.note import CourseNoteSerializer
 from ..serializers.history import HistorySerializer
-from cis.utils import CIS_user_only, INSTRUCTOR_user_only, FACULTY_user_only, user_has_cis_role, get_default_campus
+from cis.utils import (
+    CIS_user_only, INSTRUCTOR_user_only, FACULTY_user_only, user_has_cis_role,
+    user_has_faculty_role, user_has_instructor_role, get_default_campus,
+)
 from cis.campus_gate import scope_queryset_by_campus, campus_gate, get_accessible_campuses, processable_ids, can_process_campus
 
 from cis.views.eager import (
@@ -143,19 +147,69 @@ class CourseNoteViewSet(viewsets.ReadOnlyModelViewSet):
         except:
             return CourseNote.objects.all()
 
+def _administered_course_ids(user):
+    # "Administers" = an active CourseAdministrator row, whatever the role --
+    # the same definition faculty/scope.py::overseen_courses uses for the
+    # Syllabi Templates page, so the page and its feed agree.
+    return CourseAdministrator.objects.filter(
+        user=user, status__iexact='active'
+    ).values('course_id')
+
+
+def _certified_course_ids(user):
+    # The instructor portal's Course Resources page treats every course with a
+    # non-Inactive TeacherCourseCertificate as the teacher's own.
+    return TeacherCourseCertificate.objects.filter(
+        teacher_highschool__teacher__user=user
+    ).exclude(status__iexact='inactive').values('course_id')
+
+
+def manageable_course_uploads(user):
+    """CourseUploads `user` may delete: CE all, faculty their courses' only."""
+    if user_has_cis_role(user):
+        return CourseUpload.objects.all()
+    if user_has_faculty_role(user):
+        return CourseUpload.objects.filter(
+            course_id__in=_administered_course_ids(user))
+    return CourseUpload.objects.none()
+
+
+def visible_course_uploads(user):
+    """CourseUploads `user` may list (and so download).
+
+    CE sees everything. Faculty see the courses they actively administer,
+    instructors the courses they are certified for; a user holding both roles
+    gets the union.
+    """
+    if user_has_cis_role(user):
+        return CourseUpload.objects.all()
+
+    scope = Q(pk__in=[])
+    if user_has_faculty_role(user):
+        scope |= Q(course_id__in=_administered_course_ids(user))
+    if user_has_instructor_role(user):
+        scope |= Q(course_id__in=_certified_course_ids(user))
+    return CourseUpload.objects.filter(scope)
+
+
 @eager_queryset(with_course_upload_related)
 class CourseUploadViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = CourseUploadSerializer
     permission_classes = [CIS_user_only|INSTRUCTOR_user_only|FACULTY_user_only]
 
     def get_queryset(self):
-        course_id = self.request.GET.get('course_id')
+        # Scope first, then narrow: a course_id outside the caller's scope (or
+        # none at all) must not widen what a faculty member or instructor sees.
+        records = visible_course_uploads(self.request.user)
 
+        course_id = self.request.GET.get('course_id')
         if course_id:
-            return CourseUpload.objects.filter(
-                course__id=course_id
-            )
-        return CourseUpload.objects.all()
+            try:
+                uuid.UUID(str(course_id))
+            except (ValueError, AttributeError, TypeError):
+                return CourseUpload.objects.none()
+            records = records.filter(course__id=course_id)
+        return records
 
 @eager_queryset(with_course_related)
 class CourseViewSet(viewsets.ReadOnlyModelViewSet):
@@ -284,6 +338,14 @@ def manage_status(request):
     return render(request, template, context)
 
 
+def _form_error_message(form):
+    """The modal's error handler (action_registry.js) pins each entry of
+    `errors` to the input of the same name, so a form-level (`__all__`) error
+    has nowhere to go and would vanish. Surface it as the alert text instead."""
+    return (' '.join(form.non_field_errors())
+            or 'Please correct the errors and try again.')
+
+
 @course_actions.action('app_req', label='Update Status/Required', icon='fas fa-edit', scope=['bulk_app_req'])
 def update_app_requirements(request):
     template = 'cis/course/bulk_action.html'
@@ -302,7 +364,7 @@ def update_app_requirements(request):
         if form.is_valid():
             form.save(request)
             return JsonResponse({'outcome': 'call', 'fn': 'onBulkActionComplete', 'args': {'message': 'Successfully updated records', 'status': 'success'}})
-        return JsonResponse({'message': 'Please correct the errors and try again.', 'errors': form.errors.as_json()}, status=400)
+        return JsonResponse({'message': _form_error_message(form), 'errors': form.errors.as_json()}, status=400)
 
     form = BulkAppRequirementUpdateForm(ids)
     html = render_to_string(template, {
@@ -390,7 +452,7 @@ def update_course_doc_requirements(request):
         if form.is_valid():
             form.save(request)
             return JsonResponse({'outcome': 'call', 'fn': 'onBulkActionComplete', 'args': {'message': 'Successfully updated records', 'status': 'success'}})
-        return JsonResponse({'message': 'Please correct the errors and try again.', 'errors': form.errors.as_json()}, status=400)
+        return JsonResponse({'message': _form_error_message(form), 'errors': form.errors.as_json()}, status=400)
 
     form = BulkCourseDocumentRequirementUpdateForm(ids)
     html = render_to_string(template, {
@@ -565,8 +627,16 @@ def update_course_registration_eligibility(request):
 def delete_course_upload(request):
     upload_id = request.GET.get('upload_id')
 
+    # Non-UUID guard: a malformed id would otherwise raise ValidationError
+    # (500). Out-of-scope and missing ids get the same 404, so the response
+    # does not reveal whether someone else's upload exists.
+    try:
+        uuid.UUID(str(upload_id))
+    except (ValueError, AttributeError, TypeError):
+        raise Http404('No CourseUpload matches the given query.')
+
     upload = get_object_or_404(
-        CourseUpload,
+        manageable_course_uploads(request.user),
         pk=upload_id
     )
 

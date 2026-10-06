@@ -22,11 +22,33 @@ from cis.utils import export_to_excel
 
 logger = logging.getLogger(__name__)
 
+# Never copied into cis_historicalcustomuser (package-cis#64): the password
+# hash and SSN must not live in an audit table every CE user can read, and
+# last_login changes on every sign-in. Removing a name here re-adds the column.
+USER_HISTORY_EXCLUDED_FIELDS = ['password', 'ssn', 'last_login']
+
+
+class UserHistoricalRecords(HistoricalRecords):
+    """
+    HistoricalRecords that writes no row for a save touching only excluded
+    fields. ``excluded_fields`` alone stops the copy, not the row: Django's
+    ``update_last_login`` saves ``update_fields=['last_login']`` on every
+    sign-in, and each of those would still add an identical history row.
+    """
+
+    def post_save(self, instance, created, using=None, **kwargs):
+        update_fields = kwargs.get('update_fields')
+        if (not created and update_fields
+                and set(update_fields) <= set(self.excluded_fields)):
+            return
+        super().post_save(instance, created, using=using, **kwargs)
+
+
 class CustomUser(AbstractUser):
     """
     Base user model
     """
-    history = HistoricalRecords()
+    history = UserHistoricalRecords(excluded_fields=USER_HISTORY_EXCLUDED_FIELDS)
 
     middle_name = models.CharField(max_length=128, blank=True, null=True)
     suffix = models.CharField(max_length=128, blank=True, null=True)

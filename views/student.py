@@ -98,7 +98,7 @@ from ..serializers.student import (
 from cis.utils import CIS_user_only, FACULTY_user_only, INSTRUCTOR_user_only, STUDENT_user_only, user_has_student_role, HSADMIN_user_only
 
 from ..serializers.note import StudentNoteSerializer
-from ..serializers.history import HistorySerializer
+from ..serializers.history import HistorySerializer, visible_history_changes
 from cis.models.customuser import CustomUser, no_login_password_q
 
 from cis.views.eager import (
@@ -2642,8 +2642,7 @@ def _history_diffs(history_manager, since):
         prior = rec.prev_record
         if prior is None:
             continue
-        delta = rec.diff_against(prior)
-        for change in delta.changes:
+        for change in visible_history_changes(rec, prior):
             out.append({
                 'history_date': rec.history_date,
                 'field': change.field,

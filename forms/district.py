@@ -7,7 +7,7 @@ from cis.models.district import (
     District, DistrictPosition,
     DistrictAdministrator, DistrictAdministratorPosition)
 
-from cis.utils import user_has_cis_role, get_foreign_key_references, get_foreign_key_reference_models
+from cis.utils import user_has_cis_role, get_movable_reference_choices, move_references
 
 class MigrateForm(forms.Form):
     
@@ -53,31 +53,15 @@ class MigrateForm(forms.Form):
             id=record.id
         )
 
-        # Names only -- loading every referencing row timed out large records.
-        self.fields['move_items'].choices = [
-            (name, name) for name in get_foreign_key_reference_models(record)
-        ]
+        # EXISTS only -- loading every referencing row timed out large records.
+        self.fields['move_items'].choices = get_movable_reference_choices(record)
 
     def save(self, request, record):
         data = self.cleaned_data
-        references = get_foreign_key_references(record)
-
-        success, message = True, []
-        for model_name, obj in references:
-
-            if model_name in data.get('move_items'):
-                try:
-                    obj.district = data.get('destination_record')
-                    obj.save()
-
-                    message.append(
-                        f'Successfully moved {model_name} - {obj}'
-                    )
-                except Exception as e:
-                    success = False
-                    message.append(
-                        f'Failed to move {model_name} - {obj} {e}. Please edit/delete this record manually'
-                    )
+        # Sets each row's matched field (not a fixed attribute) and saves
+        # it once, keeping signals and history (issue #70).
+        success, message = move_references(
+            record, data.get('destination_record'), data.get('move_items'))
 
         return (success, message)
 

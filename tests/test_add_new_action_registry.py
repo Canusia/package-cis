@@ -29,7 +29,6 @@ CIS_ONLY_SLUGS = [
     'teachercoursecertificate',
     'delete_teacher_upload',
     'course_administrator',
-    'delete_course_upload',
     'faculty_course_administrator',
     'facultycoursecoordinator',
     'classsection',
@@ -44,6 +43,10 @@ CIS_ONLY_SLUGS = [
 ]
 
 HS_ADMIN_SLUGS = ['hsadministratorrole']
+
+# CE, or faculty -- the handler then scopes to the courses they administer
+# (see test_course_upload_scope.py).
+CIS_OR_FACULTY_SLUGS = ['delete_course_upload']
 
 
 def make_user(email, roles=()):
@@ -64,7 +67,7 @@ class RegistryCoverageTests(TestCase):
         for group in add_new_actions._groups.values():
             registered.update(group['actions'].keys())
 
-        for slug in CIS_ONLY_SLUGS + HS_ADMIN_SLUGS:
+        for slug in CIS_ONLY_SLUGS + HS_ADMIN_SLUGS + CIS_OR_FACULTY_SLUGS:
             with self.subTest(slug=slug):
                 self.assertIn(slug, registered)
 
@@ -98,25 +101,32 @@ class PermissionEnforcementTests(TestCase):
 
     def test_student_is_refused_every_cis_only_slug(self):
         user = make_user('student@example.com', roles=['student'])
-        for slug in CIS_ONLY_SLUGS:
+        for slug in CIS_ONLY_SLUGS + CIS_OR_FACULTY_SLUGS:
             with self.subTest(slug=slug):
                 self.assertEqual(self._dispatch(slug, user).status_code, 403)
 
     def test_hs_admin_is_refused_every_cis_only_slug(self):
         user = make_user('hsadmin@example.com', roles=['highschool_admin'])
-        for slug in CIS_ONLY_SLUGS:
+        for slug in CIS_ONLY_SLUGS + CIS_OR_FACULTY_SLUGS:
             with self.subTest(slug=slug):
                 self.assertEqual(self._dispatch(slug, user).status_code, 403)
 
     def test_instructor_is_refused_every_cis_only_slug(self):
         user = make_user('instructor@example.com', roles=['instructor'])
+        for slug in CIS_ONLY_SLUGS + CIS_OR_FACULTY_SLUGS:
+            with self.subTest(slug=slug):
+                self.assertEqual(self._dispatch(slug, user).status_code, 403)
+
+    def test_faculty_is_refused_every_cis_only_slug(self):
+        # Opening delete_course_upload to faculty must not open anything else.
+        user = make_user('faculty@example.com', roles=['faculty'])
         for slug in CIS_ONLY_SLUGS:
             with self.subTest(slug=slug):
                 self.assertEqual(self._dispatch(slug, user).status_code, 403)
 
     def test_roleless_user_is_refused(self):
         user = make_user('noroles@example.com', roles=[])
-        for slug in CIS_ONLY_SLUGS + HS_ADMIN_SLUGS:
+        for slug in CIS_ONLY_SLUGS + HS_ADMIN_SLUGS + CIS_OR_FACULTY_SLUGS:
             with self.subTest(slug=slug):
                 self.assertEqual(self._dispatch(slug, user).status_code, 403)
 

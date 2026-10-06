@@ -5,11 +5,15 @@ sits inside the modal body with its own close button (cis/logged-base.html).
 The confirm form carries class="frm_ajax", so ActionRegistry submits it and
 handles the response envelope; users_table.js only gates the button on the
 typed word.
+
+Also rendered by do_roleless_bulk_action (action=preview_delete) for the No
+Role tab, which overrides form_id, confirm_action, skipped_note and
+empty_note; the defaults below are the staff-account wording.
 {% endcomment %}
 <h5 class="mb-3">Delete Accounts</h5>
 
 {% if not plans %}
-  <p>None of the selected rows can be deleted: you cannot delete your own account.</p>
+  <p>{{ empty_note|default:"None of the selected rows can be deleted: you cannot delete your own account." }}</p>
 {% endif %}
 
 {% for plan in plans %}
@@ -41,11 +45,11 @@ typed word.
 {% endfor %}
 
 {% if skipped %}
-  <p class="small text-muted mt-2">{{ skipped }} selected row(s) skipped (your own account, or not a staff account).</p>
+  <p class="small text-muted mt-2">{{ skipped }} selected row(s) skipped ({{ skipped_note|default:"your own account, or not a staff account" }}).</p>
 {% endif %}
 
 {% if deletable_ids %}
-<form id="users_delete_confirm" action="{{ bulk_actions_url }}" method="post"
+<form id="{{ form_id|default:"users_delete_confirm" }}" action="{{ bulk_actions_url }}" method="post"
       class="frm_ajax mt-3">
   {% csrf_token %}
   <p class="small">
@@ -54,7 +58,7 @@ typed word.
     deletion log entry. Type <code>DELETE</code> to confirm.
   </p>
   {% for id in deletable_ids %}<input type="hidden" name="ids[]" value="{{ id }}">{% endfor %}
-  <input type="hidden" name="action" value="delete">
+  <input type="hidden" name="action" value="{{ confirm_action|default:"delete" }}">
   <div class="form-row">
     <div class="col">
       <input type="text" class="form-control" name="confirm_text" autocomplete="off"

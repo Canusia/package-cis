@@ -1,6 +1,26 @@
 import json
 from rest_framework import serializers
 
+# Fields never shown by a Change History endpoint, on any tracked model
+# (package-cis#64). CustomUser no longer stores the first three in its history
+# table; this is the second line, for older rows on tenants that have not
+# migrated yet and for any model that later adds a field of the same name.
+SENSITIVE_HISTORY_FIELDS = frozenset({
+    'password',
+    'ssn',
+    'last_login',
+})
+
+
+def history_field_is_hidden(name):
+    return name in SENSITIVE_HISTORY_FIELDS
+
+
+def visible_history_changes(record, prev):
+    """``record.diff_against(prev).changes`` minus the sensitive fields."""
+    delta = record.diff_against(prev, excluded_fields=SENSITIVE_HISTORY_FIELDS)
+    return [c for c in delta.changes if not history_field_is_hidden(c.field)]
+
 
 class HistorySerializer(serializers.Serializer):
     history_date = serializers.DateTimeField(format='%Y-%m-%dT%H:%M:%S')
@@ -34,9 +54,8 @@ class HistorySerializer(serializers.Serializer):
             # otherwise render blank. Label it instead.
             return 'Initial recorded version'
 
-        delta = obj.diff_against(prev)
         parts = []
-        for change in delta.changes:
+        for change in visible_history_changes(obj, prev):
             parts.append(f"{change.field}: \"{change.old}\" \u2192 \"{change.new}\"")
         return '; '.join(parts) if parts else 'No field changes'
 
@@ -45,5 +64,9 @@ class HistorySerializer(serializers.Serializer):
 
     def get_value(self, obj):
         exclude = {'history_id', 'history_date', 'history_type', 'history_user_id', 'history_change_reason'}
-        data = {k: str(v) for k, v in obj.__dict__.items() if not k.startswith('_') and k not in exclude}
+        data = {
+            k: str(v) for k, v in obj.__dict__.items()
+            if not k.startswith('_') and k not in exclude
+            and not history_field_is_hidden(k)
+        }
         return json.dumps(data, indent=2)

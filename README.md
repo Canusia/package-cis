@@ -122,6 +122,7 @@ falls back to a plain list.
 | Module | New in | Also ship | Without it |
 |---|---|---|---|
 | `document_types_table.py` (`build_config(*, variant, api_url, details_prefix='')`, profile `document_types_index`) | v0.0.42 | `templates/myce_tenant_configs/_document_types_table.html`, `staticfiles/js/document_types_table.js` | `/ce/document_types/` shows a plain, unsortable list; system check `cis.W002` warns |
+| `roleless_users_table.py` (`build_config(*, variant, api_url, bulk_actions=None, bulk_actions_url=None)`, profile `roleless_users_index`) | #71 | `templates/myce_tenant_configs/users/_roleless_table.html`, `staticfiles/js/roleless_users_table.js` | `/ce/users/` shows only the CE Users table (no No Role tab); system check `cis.W005` warns |
 
 Copy all three files from `Canusia/ewu` (`webapp/myce_tenant_configs/`) when adopting
 v0.0.42.

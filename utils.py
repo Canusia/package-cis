@@ -729,6 +729,159 @@ def get_foreign_key_reference_models(instance):
 
     return names
 
+def _is_history_model(model):
+    """True for simple_history's Historical<Model> audit tables."""
+    try:
+        from simple_history.models import HistoricalChanges
+    except ImportError:  # pragma: no cover - simple_history is a cis dependency
+        return False
+    return issubclass(model, HistoricalChanges)
+
+
+def get_movable_reference_fields(instance):
+    """(model_class, field_name) for every relation the migrate tabs may move.
+
+    Only concrete forward foreign keys and one-to-ones pointing at
+    `instance`'s model qualify: those are the rows that store the reference,
+    so setting that field to the destination moves them. Reverse relations
+    (e.g. a term's own AcademicYear), many-to-many fields, multi-table
+    inheritance parent links, proxy models, simple_history audit tables and
+    _UNMOVABLE_REFERENCES are left out. No queries.
+    """
+    from django.apps import apps
+
+    target = instance._meta.concrete_model
+    pairs = []
+    for model_class in apps.get_models():
+        if model_class._meta.proxy or _is_history_model(model_class):
+            continue
+        for field in model_class._meta.get_fields():
+            if not (field.is_relation and field.concrete):
+                continue
+            if not (field.many_to_one or field.one_to_one):
+                continue
+            if field.related_model is None or field.related_model._meta.concrete_model is not target:
+                continue
+            if getattr(field.remote_field, 'parent_link', False):
+                continue
+            if (model_class._meta.label_lower, field.name) in _UNMOVABLE_REFERENCES:
+                continue
+            pairs.append((model_class, field.name))
+    return pairs
+
+
+def get_movable_references(instance):
+    """[(key, label, model_class, field_name)] for the migrate tabs.
+
+    The key is the model name when the model has one field pointing at the
+    record ("StudentAgreement"), "Model.field" when it has several
+    ("ClassSection.term" / label "ClassSection (term)"), and the app-qualified
+    label when two apps define a model of the same name
+    ("future_sections.FutureCourse"). A lone field not named after the record
+    keeps the bare key but shows the field ("Student (profile_last_reviewed)").
+    Keys depend only on the schema, never on
+    which rows exist, so a choice keeps its key between GET and POST.
+    """
+    pairs = get_movable_reference_fields(instance)
+    target_name = instance._meta.concrete_model._meta.model_name
+
+    names = {}
+    fields_per_model = {}
+    for model_class, _field_name in pairs:
+        names.setdefault(model_class.__name__, set()).add(model_class)
+        fields_per_model[model_class] = fields_per_model.get(model_class, 0) + 1
+
+    references = []
+    for model_class, field_name in pairs:
+        base = model_class.__name__
+        if len(names[base]) > 1:
+            base = model_class._meta.label
+        if fields_per_model[model_class] > 1:
+            key, label = f'{base}.{field_name}', f'{base} ({field_name})'
+        elif field_name.replace('_', '') != target_name:
+            # One field, but not named after the record (Student's term is
+            # profile_last_reviewed): keep the bare key, name the field.
+            key, label = base, f'{base} ({field_name})'
+        else:
+            key, label = base, base
+        references.append((key, label, model_class, field_name))
+    return references
+
+
+def get_movable_reference_choices(instance):
+    """Migrate-tab choices: references with at least one row, EXISTS only.
+
+    One EXISTS query per (model, field); no referencing row is loaded (large
+    terms timed the page out when every section and history row was loaded).
+    """
+    choices = []
+    for key, label, model_class, field_name in get_movable_references(instance):
+        try:
+            if model_class._default_manager.filter(**{field_name: instance}).exists():
+                choices.append((key, label))
+        except Exception:
+            # A broken table must not blank the whole tab or the detail page.
+            logger.exception('migrate scan failed for %s.%s', model_class._meta.label, field_name)
+    return choices
+
+
+def move_references(instance, destination, keys):
+    """Point the chosen references at `destination`. Returns (success, messages).
+
+    `keys` are values from get_movable_reference_choices. Each matching row
+    has *its matched field* set (ClassSection.registration_term moves
+    registration_term, never term) and is saved once with save(), so signals
+    and simple_history still record the change. A row matched through several
+    chosen fields of the same model is loaded and saved once with all of them
+    set. Each save runs in its own savepoint: a failing row (e.g. a unique
+    constraint at the destination) is reported and the rest still move.
+    """
+    from django.db import transaction
+    from django.db.models import Q
+
+    keys = set(keys or [])
+    by_model = {}
+    for key, _label, model_class, field_name in get_movable_references(instance):
+        if key in keys:
+            by_model.setdefault(model_class, []).append(model_class._meta.get_field(field_name))
+
+    success, message = True, []
+    for model_class, fields in by_model.items():
+        match = Q()
+        for field in fields:
+            match |= Q(**{field.name: instance})
+
+        for obj in model_class._default_manager.filter(match).order_by('pk'):
+            name = model_class.__name__
+            if model_class._meta.concrete_model is destination._meta.concrete_model \
+                    and obj.pk == destination.pk:
+                success = False
+                message.append(
+                    f'Skipped {name} - {obj}: it is the destination record and cannot reference itself')
+                continue
+
+            moved = []
+            for field in fields:
+                current = getattr(obj, field.attname)
+                if current is not None and current == getattr(instance, field.target_field.attname):
+                    setattr(obj, field.name, destination)
+                    moved.append(field.name)
+            if not moved:
+                continue
+
+            label = f'{name} ({", ".join(moved)})' if len(fields) > 1 else name
+            try:
+                with transaction.atomic():
+                    obj.save()
+                message.append(f'Successfully moved {label} - {obj}')
+            except Exception as e:
+                success = False
+                message.append(
+                    f'Failed to move {label} - {obj} {e}. Please edit/delete this record manually')
+
+    return (success, message)
+
+
 def password_reset_email_template():
     from cis.settings.password_reset import password_reset
 

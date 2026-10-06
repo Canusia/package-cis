@@ -23,7 +23,9 @@ from django.http import JsonResponse
 
 from cis.actions.registry import add_new_actions
 
-from cis.utils import user_has_cis_role, user_has_highschool_admin_role
+from cis.utils import (
+    user_has_cis_role, user_has_faculty_role, user_has_highschool_admin_role,
+)
 
 GROUP = 'add_new'
 
@@ -34,6 +36,11 @@ def _cis_only(user):
 
 def _cis_or_hs_admin(user):
     return user_has_cis_role(user) or user_has_highschool_admin_role(user)
+
+
+def _cis_or_faculty(user):
+    # user_has_faculty_role is already True for CE.
+    return user_has_faculty_role(user)
 
 
 def _denied(message='You are not authorized to perform this action.'):
@@ -174,9 +181,15 @@ def course_administrator(request):
     return manage_course_administrator_role(request)
 
 
-@_register('delete_course_upload', 'Delete Course Upload')
+@_register('delete_course_upload', 'Delete Course Upload',
+           permission=_cis_or_faculty)
 def delete_course_upload(request):
-    # Same shape as delete_teacher_upload.
+    """
+    CE deletes any CourseUpload; faculty delete from the courses they actively
+    administer (the faculty Syllabi Templates modal). The role gate is here;
+    the handler looks the upload up through manageable_course_uploads(), so a
+    faculty member gets 404 for a colleague's course.
+    """
     from cis.views.course import delete_course_upload as handler
     return handler(request)
 

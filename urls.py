@@ -352,8 +352,9 @@ from cis.views.users import (
     add_new as user_add_new,
     locked_index as locked_users,
     do_locked_bulk_action,
+    do_roleless_bulk_action,
     do_users_bulk_action,
-    StaffUserViewSet, LockedUserViewSet
+    StaffUserViewSet, LockedUserViewSet, RolelessUserViewSet
 )
 
 from cis.views.ajax import (
@@ -461,6 +462,7 @@ router_viewsets = {
 
     'user': StaffUserViewSet,
     'locked-user': LockedUserViewSet,
+    'user-roleless': RolelessUserViewSet,
 }
 
 for router_key in router_viewsets.keys():
@@ -789,6 +791,10 @@ urlpatterns = [
         'users/locked/bulk_actions',
         user_passes_test(user_has_cis_role, login_url='/')(do_locked_bulk_action),
         name='locked_users_bulk_action'),
+    path(
+        'users/no_role/bulk_actions',
+        user_passes_test(user_has_cis_role, login_url='/')(do_roleless_bulk_action),
+        name='roleless_users_bulk_action'),
     path(
         'users/bulk_actions',
         user_passes_test(user_has_cis_role, login_url='/')(do_users_bulk_action),

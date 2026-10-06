@@ -26,6 +26,18 @@
 
         <div class="table-responsive">
             {% include "cis/messages.html" with messages=messages %}
+            {% if roleless_users_table %}
+            <ul class="nav nav-tabs" role="tablist">
+                <li class="nav-item">
+                    <a class="nav-link active" data-toggle="tab" href="#staff" role="tab">CE Users</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" data-toggle="tab" href="#no_role" role="tab">No Role</a>
+                </li>
+            </ul>
+            <div class="tab-content">
+            <div class="tab-pane active" id="staff" role="tabpanel">
+            {% endif %}
             <div class="card border-top-0">
                 <div class="card-body">
 
@@ -55,6 +67,31 @@
 
                 </div>
             </div>
+            {% if roleless_users_table %}
+            </div>
+            {% comment %} end tab #staff {% endcomment %}
+
+            <div class="tab-pane" id="no_role" role="tabpanel">
+                <div class="card border-top-0">
+                    <div class="card-body">
+                        <p class="text-muted">
+                            Accounts with no role at all &mdash; no group and no student,
+                            instructor, high school administrator or other role record.
+                            Usually logins left behind after a role was removed from a
+                            Dangling Accounts tab, but an account created by a first
+                            single sign-on that has not been given a role yet also appears
+                            here, so check <strong>Created On</strong> before deleting.
+                            Deleting is permanent: notes and records the account created
+                            are reassigned to you, and the preview lists anything that
+                            blocks the delete.
+                        </p>
+                        {% include roleless_users_table.partial_template with config=roleless_users_table %}
+                    </div>
+                </div>
+            </div>
+            {% comment %} end tab #no_role {% endcomment %}
+            </div>
+            {% endif %}
         </div>
     </div>
 </main>

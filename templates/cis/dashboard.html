@@ -612,14 +612,7 @@
                                   var title = $(this).text();
                                   $(this).html( '<input type="text" class="form-control" placeholder="Search '+title+'" />' );
                           
-                                  $( 'input', this ).on( 'keyup change', function () {
-                                      if ( table.column(i).search() !== this.value ) {
-                                          table
-                                              .column(i)
-                                              .search( this.value )
-                                              .draw();
-                                      }
-                                  } );
+                                  MyceTableSearch.wireColumnInput(table.column(i), $( 'input', this ).get(0));
                               }
                           } ); 
                       });

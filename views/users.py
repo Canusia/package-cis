@@ -2,11 +2,14 @@
 Staff User Views
 """
 import inspect
+import logging
 
-from django.db import IntegrityError
+from django.conf import settings
+from django.db import IntegrityError, transaction
 from django.contrib import messages
 from django.shortcuts import get_object_or_404, redirect, render
 from django.http import JsonResponse
+from django.template.loader import render_to_string
 from django.urls import reverse
 
 from django_login_history.models import Login
@@ -16,7 +19,11 @@ from rest_framework import viewsets
 from cis.actions.user import registered_slugs, user_actions
 from cis.menu import draw_menu, cis_menu
 from cis.models.customuser import CustomUser
-from cis.serializers.user import StaffUserSerializer, LockedUserSerializer
+from cis.serializers.user import (
+    StaffUserSerializer, LockedUserSerializer, RolelessUserSerializer,
+)
+from cis.services import user_deletion
+from cis.services.role_access import is_roleless, roleless_users
 from cis.services.table_configs import get_table_config
 from cis.utils import CIS_user_only
 
@@ -24,6 +31,8 @@ from cis.forms.user import UserForm
 
 build_users_table_config = get_table_config('users_table').build_config
 build_locked_users_table_config = get_table_config('locked_users_table').build_config
+
+logger = logging.getLogger(__name__)
 
 
 def _supported_kwargs(build_config, kwargs):
@@ -54,6 +63,23 @@ LOCKED_BULK_ACTIONS = {
         'method': 'POST',
     },
 }
+
+# The No Role tab of /ce/users/. The button only previews: `preview_delete`
+# answers with the per-account preflight in a modal, whose confirm form posts
+# `delete_account` back to do_roleless_bulk_action. Deliberately not named
+# `delete_preflight`/`delete` -- those are the superuser-only staff-account
+# slugs on cis.actions.user, and this tab renders for every can_edit_users
+# user.
+ROLELESS_BULK_ACTIONS = {
+    'preview_delete': {
+        'label': 'Delete Selected Accounts',
+        'icon': 'fas fa-trash-alt',
+        'btn_class': 'btn-danger',
+        'method': 'POST',
+    },
+}
+ROLELESS_ACTIONS = ('preview_delete', 'delete_account')
+ROLELESS_API_URL = '/ce/api/user-roleless?format=datatables'
 
 
 class StaffUserViewSet(viewsets.ReadOnlyModelViewSet):
@@ -106,6 +132,50 @@ class LockedUserViewSet(viewsets.ReadOnlyModelViewSet):
         return CustomUser.objects.filter(
             CustomUser.active_lock_q()
         ).prefetch_related('groups').order_by('last_name', 'first_name')
+
+
+class RolelessUserViewSet(viewsets.ReadOnlyModelViewSet):
+    """Accounts with no group and no role record, behind the No Role tab of
+    /ce/users/ (cis.services.role_access.roleless_users).
+
+    Gated like LockedUserViewSet: CIS role via the permission class, plus
+    `can_edit_users` on the queryset. do_roleless_bulk_action repeats the
+    check, since the feed being empty does not stop a forged POST.
+    """
+    serializer_class = RolelessUserSerializer
+    permission_classes = [CIS_user_only]
+
+    def get_queryset(self):
+        if not self.request.user.can_edit_users:
+            return CustomUser.objects.none()
+        return roleless_users().order_by('last_name', 'first_name')
+
+
+def _roleless_users_table_config():
+    """The tenant's No Role table config, or None if it doesn't ship one yet.
+
+    Resolved per request, not at import time: get_table_config() is a bare
+    import, and a module-level call would turn a tenant that has not added
+    roleless_users_table.py into an ImportError for the whole cis URLconf.
+    Without it the tab is simply not rendered (system check cis.W005); the
+    feed and the bulk endpoint do not depend on it.
+
+    Only the module being absent means "not adopted". An ImportError raised
+    from inside a tenant module that does exist is a real breakage and
+    propagates, as in cis.services.tenant_services.get_tenant_override.
+    """
+    try:
+        module = get_table_config('roleless_users_table')
+    except ModuleNotFoundError as exc:
+        if exc.name == f'{settings.TABLE_CONFIGS_APP}.services.roleless_users_table':
+            return None
+        raise
+    return module.build_config(
+        variant='roleless_users_index',
+        api_url=ROLELESS_API_URL,
+        bulk_actions=ROLELESS_BULK_ACTIONS,
+        bulk_actions_url=reverse('cis:roleless_users_bulk_action'),
+    )
 
 
 def locked_index(request):
@@ -202,6 +272,148 @@ def do_locked_bulk_action(request):
             f'{skipped} skipped (not locked or not found).'
         ),
     })
+
+
+def _selected_roleless(request, ids):
+    """Resolve ids[] to accounts that are roleless right now.
+
+    Returns (users, skipped). The requester's own account is never included,
+    and neither is any account that is no longer roleless -- it gained a group
+    or a role record since the page loaded, or is a superuser.
+    """
+    valid_ids = set()
+    for record_id in ids:
+        try:
+            valid_ids.add(int(record_id))
+        except (ValueError, TypeError):
+            continue
+
+    users = list(
+        roleless_users()
+        .filter(id__in=valid_ids)
+        .exclude(pk=request.user.pk)
+        .order_by('last_name', 'first_name')
+    )
+    return users, len(ids) - len(users)
+
+
+def _delete_if_still_roleless(user, acting_user):
+    """Delete `user` through user_deletion, re-checking is_roleless() first.
+
+    The re-check and the delete share one transaction, with the account row
+    locked, so a role granted between the preview and the confirm click is
+    seen and the account kept. Returns True if deleted, False if it gained a
+    role or is already gone; raises UserDeletionBlocked if preflight finds a
+    blocker.
+    """
+    with transaction.atomic():
+        user = CustomUser.objects.select_for_update().filter(pk=user.pk).first()
+        if user is None or not is_roleless(user):
+            return False
+        user_deletion.delete_user(user, acting_user=acting_user)
+    return True
+
+
+def _roleless_complete(message):
+    return JsonResponse({
+        'outcome': 'call',
+        'fn': 'onBulkActionComplete',
+        'args': {'title': 'Done', 'message': message, 'status': 'success'},
+    })
+
+
+def do_roleless_bulk_action(request):
+    """Bulk delete for the No Role tab of /ce/users/.
+
+    Two steps, like the staff-account delete in cis.actions.user:
+
+      preview_delete  read-only; a modal listing what deleting each selected
+                      account would do (cis.services.user_deletion.preflight)
+                      or why it is refused, with a confirm form.
+      delete_account  posted by that form; deletes through
+                      user_deletion.delete_user(), which reassigns authorship
+                      to the requester, clears "assigned to" fields, writes a
+                      deletion LogEntry, and refuses any blocker.
+
+    Guard order matches do_locked_bulk_action: unknown action (400), then
+    POST-only (405), then `can_edit_users` (403) -- the page gate is not
+    enough for a permanent delete.
+
+    Every account is re-checked twice: when the ids are resolved (only
+    currently roleless accounts, never the requester's own) and again inside
+    the delete transaction, so one that gained a role after the page or the
+    preview loaded is skipped, never deleted.
+
+    Responses use the ActionRegistry envelope (`modal` / `call`), so the
+    tenant table JS dispatches through window.ActionRegistry.doBulkAction.
+    """
+    action = request.POST.get('action') or request.GET.get('action')
+
+    if action not in ROLELESS_ACTIONS:
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Unknown action.',
+        }, status=400)
+
+    if request.method != 'POST':
+        return JsonResponse({
+            'status': 'error',
+            'message': 'This action requires POST.',
+        }, status=405)
+
+    if not request.user.can_edit_users:
+        return JsonResponse({
+            'status': 'error',
+            'message': 'You do not have permission to delete accounts.',
+        }, status=403)
+
+    users, skipped = _selected_roleless(request, request.POST.getlist('ids[]'))
+
+    if action == 'preview_delete':
+        plans = [user_deletion.preflight(user) for user in users]
+        return JsonResponse({
+            'outcome': 'modal',
+            'html': render_to_string('cis/users/delete_preflight.html', {
+                'plans': plans,
+                'skipped': skipped,
+                'skipped_note': 'your own account, or the account now has a role',
+                'empty_note': ('None of the selected accounts can be deleted: '
+                               'each is your own account or now has a role.'),
+                'deletable_ids': [p.user.pk for p in plans if p.deletable],
+                'bulk_actions_url': reverse('cis:roleless_users_bulk_action'),
+                'confirm_action': 'delete_account',
+                'form_id': 'roleless_delete_confirm',
+                'strategy_verbs': {
+                    user_deletion.REASSIGN: 'reassigned to you',
+                    user_deletion.NULLIFY: 'cleared',
+                    user_deletion.DELETE: 'removed',
+                    'audit': 'removed (kept in the deletion log)',
+                },
+            }, request=request),
+        })
+
+    deleted = blocked = errored = 0
+    for user in users:
+        try:
+            if _delete_if_still_roleless(user, request.user):
+                deleted += 1
+            else:
+                skipped += 1
+        except user_deletion.UserDeletionBlocked:
+            blocked += 1
+        except Exception:
+            # delete_user() is atomic, so nothing is half-applied; keep going
+            # so one bad row does not strand the rest of the selection.
+            logger.exception('Unexpected error deleting roleless user %s', user.pk)
+            errored += 1
+
+    message = (
+        f'{deleted} account(s) deleted, {blocked} blocked, {skipped} skipped '
+        '(your own account, now holds a role, or not found).'
+    )
+    if errored:
+        message += f' {errored} failed unexpectedly; see the server log.'
+    return _roleless_complete(message)
 
 
 def do_users_bulk_action(request):
@@ -426,4 +638,7 @@ def index(request):
                     'bulk_actions_url': reverse('cis:users_bulk_action'),
                 }),
             ),
+            # None when the tenant has not adopted the No Role tab yet; the
+            # template then renders the staff table alone, as before.
+            'roleless_users_table': _roleless_users_table_config(),
         })

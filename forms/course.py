@@ -21,7 +21,7 @@ from ..utils import YES_NO_SELECT_OPTIONS, user_has_instructor_role
 from ..models.customuser import CustomUser
 from ..models.note import CourseNote
 
-from cis.utils import get_foreign_key_references, get_foreign_key_reference_models
+from cis.utils import get_movable_reference_choices, move_references
 
 from cis.models.tech_center_staff import TechCenterStaff
 from cis.models.teacher import TeacherCourseCertificate
@@ -147,31 +147,15 @@ class MigrateForm(forms.Form):
             id=record.id
         )
 
-        # Names only -- loading every referencing row timed out large records.
-        self.fields['move_items'].choices = [
-            (name, name) for name in get_foreign_key_reference_models(record)
-        ]
+        # EXISTS only -- loading every referencing row timed out large records.
+        self.fields['move_items'].choices = get_movable_reference_choices(record)
 
     def save(self, request, record):
         data = self.cleaned_data
-        references = get_foreign_key_references(record)
-
-        success, message = True, []
-        for model_name, obj in references:
-
-            if model_name in data.get('move_items'):
-                try:
-                    obj.course = data.get('destination_record')
-                    obj.save()
-
-                    message.append(
-                        f'Successfully moved {model_name} - {obj}'
-                    )
-                except Exception as e:
-                    success = False
-                    message.append(
-                        f'Failed to move {model_name} - {obj} {e}. Please edit/delete this record manually'
-                    )
+        # Sets each row's matched field (not a fixed attribute) and saves
+        # it once, keeping signals and history (issue #70).
+        success, message = move_references(
+            record, data.get('destination_record'), data.get('move_items'))
 
         return (success, message)
 
@@ -219,31 +203,15 @@ class MigrateCohortForm(forms.Form):
             id=record.id
         )
 
-        # Names only -- loading every referencing row timed out large records.
-        self.fields['move_items'].choices = [
-            (name, name) for name in get_foreign_key_reference_models(record)
-        ]
+        # EXISTS only -- loading every referencing row timed out large records.
+        self.fields['move_items'].choices = get_movable_reference_choices(record)
 
     def save(self, request, record):
         data = self.cleaned_data
-        references = get_foreign_key_references(record)
-
-        success, message = True, []
-        for model_name, obj in references:
-
-            if model_name in data.get('move_items'):
-                try:
-                    obj.cohort = data.get('destination_record')
-                    obj.save()
-
-                    message.append(
-                        f'Successfully moved {model_name} - {obj}'
-                    )
-                except Exception as e:
-                    success = False
-                    message.append(
-                        f'Failed to move {model_name} - {obj} {e}. Please edit/delete this record manually'
-                    )
+        # Sets each row's matched field (not a fixed attribute) and saves
+        # it once, keeping signals and history (issue #70).
+        success, message = move_references(
+            record, data.get('destination_record'), data.get('move_items'))
 
         return (success, message)
     
@@ -760,6 +728,28 @@ class CourseAdministratorForm(ModelForm):
             self.fields['role'].disabled = True
 
 
+# Bulk "Update Status/Required" (#58): every field is optional and starts on
+# "Keep current", so a CE user can change one column without silently
+# resetting the other (STATUS_OPTIONS has no blank, so a required status field
+# used to default every selected row to Active).
+KEEP_CURRENT = ('', 'Keep current')
+NOTHING_TO_UPDATE = 'Choose at least one field to update.'
+
+
+def _keep_current_choices(options):
+    """`options` minus any blank placeholder, behind a "Keep current" blank."""
+    return [KEEP_CURRENT] + [(k, v) for k, v in options if k != '']
+
+
+def _chosen_changes(cleaned_data, field_map):
+    """{model_field: value} for each form field the user actually chose."""
+    return {
+        model_field: cleaned_data[form_field]
+        for form_field, model_field in field_map.items()
+        if cleaned_data.get(form_field)
+    }
+
+
 class BulkAppRequirementUpdateForm(forms.Form):
     record_ids = forms.MultipleChoiceField(
         required=False,
@@ -769,15 +759,15 @@ class BulkAppRequirementUpdateForm(forms.Form):
     )
 
     new_status = forms.ChoiceField(
-        required=True,
+        required=False,
         label='New Status',
-        choices=CourseAppRequirement.STATUS_OPTIONS
+        choices=_keep_current_choices(CourseAppRequirement.STATUS_OPTIONS),
     )
 
     new_required = forms.ChoiceField(
-        required=True,
+        required=False,
         label='Required',
-        choices=YES_NO_SELECT_OPTIONS
+        choices=_keep_current_choices(YES_NO_SELECT_OPTIONS),
     )
 
     action = forms.CharField(
@@ -802,10 +792,20 @@ class BulkAppRequirementUpdateForm(forms.Form):
             self.fields['record_ids'].choices = record_choices
             self.fields['record_ids'].required = False
 
+    UPDATE_FIELDS = {'new_status': 'status', 'new_required': 'required'}
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if not _chosen_changes(cleaned_data, self.UPDATE_FIELDS):
+            raise forms.ValidationError(NOTHING_TO_UPDATE, code='nothing_to_update')
+        return cleaned_data
+
     def save(self, request=None):
         data = self.cleaned_data
         records = CourseAppRequirement.objects.filter(id__in=data.get('record_ids'))
-        records.update(status=data.get('new_status'), required=data.get('new_required'))
+        changes = _chosen_changes(data, self.UPDATE_FIELDS)
+        if changes:
+            records.update(**changes)
         return records
 
 
@@ -818,21 +818,21 @@ class BulkCourseDocumentRequirementUpdateForm(forms.Form):
     )
 
     new_status = forms.ChoiceField(
-        required=True,
+        required=False,
         label='New Status',
-        choices=CourseDocumentRequirement.STATUS_OPTIONS
+        choices=_keep_current_choices(CourseDocumentRequirement.STATUS_OPTIONS),
     )
 
     new_required = forms.ChoiceField(
-        required=True,
+        required=False,
         label='Required',
-        choices=YES_NO_SELECT_OPTIONS
+        choices=_keep_current_choices(YES_NO_SELECT_OPTIONS),
     )
 
     new_recurrence = forms.ChoiceField(
         required=False,
         label='Recurrence',
-        choices=[('', 'Keep current')] + list(
+        choices=_keep_current_choices(
             CourseDocumentRequirement.RECURRENCE_OPTIONS),
     )
 
@@ -858,16 +858,24 @@ class BulkCourseDocumentRequirementUpdateForm(forms.Form):
             self.fields['record_ids'].choices = record_choices
             self.fields['record_ids'].required = False
 
+    UPDATE_FIELDS = {
+        'new_status': 'status',
+        'new_required': 'required',
+        'new_recurrence': 'recurrence',
+    }
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if not _chosen_changes(cleaned_data, self.UPDATE_FIELDS):
+            raise forms.ValidationError(NOTHING_TO_UPDATE, code='nothing_to_update')
+        return cleaned_data
+
     def save(self, request=None):
         data = self.cleaned_data
         records = CourseDocumentRequirement.objects.filter(id__in=data.get('record_ids'))
-        changes = {
-            'status': data.get('new_status'),
-            'required': data.get('new_required'),
-        }
-        if data.get('new_recurrence'):
-            changes['recurrence'] = data['new_recurrence']
-        records.update(**changes)
+        changes = _chosen_changes(data, self.UPDATE_FIELDS)
+        if changes:
+            records.update(**changes)
         return records
 
 

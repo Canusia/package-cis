@@ -88,6 +88,32 @@ def hs_uploads_table_check(app_configs, **kwargs):
 
 
 @register()
+def roleless_users_table_check(app_configs, **kwargs):
+    """W005 (package-cis #71): the No Role tab's table config on /ce/users/."""
+    app = getattr(settings, 'TABLE_CONFIGS_APP', 'myce_tenant_configs')
+    module = f'{app}.services.roleless_users_table'
+    try:
+        found = importlib.util.find_spec(module) is not None
+    except ModuleNotFoundError:
+        found = False
+    if found:
+        return []
+    return [
+        CheckWarning(
+            f'{module} is missing.',
+            hint=(
+                'cis expects the tenant to ship roleless_users_table.py, '
+                'users/_roleless_table.html and js/roleless_users_table.js for the '
+                'No Role tab on /ce/users/ (copy them from Canusia/ewu). Without '
+                'them /ce/users/ shows only the CE Users table, with no tab for '
+                'accounts that hold no role.'
+            ),
+            id='cis.W005',
+        )
+    ]
+
+
+@register()
 def branding_check(app_configs, **kwargs):
     """E001-E003, W004 (package-cis #61): the tenant's per-campus branding map
     (``services/branding.py``'s ``BRANDS``) -- every asset must exist, every key

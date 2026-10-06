@@ -70,3 +70,37 @@ class LockedUserSerializer(serializers.ModelSerializer):
 
     def get_roles(self, obj):
         return obj.get_roles()
+
+
+class RolelessUserSerializer(serializers.ModelSerializer):
+    """Rows for the No Role tab of /ce/users/
+    (cis.services.role_access.roleless_users).
+
+    Flat CustomUser rows like the two serializers above. There is no roles
+    column -- by definition there are none -- and created_at is shown instead,
+    so an account a first SSO sign-in created minutes ago is easy to tell
+    from a login abandoned years ago.
+    """
+    last_login = serializers.DateTimeField(
+        format='%m/%d/%Y %I:%M %p',
+        read_only=True
+    )
+    created_at = serializers.DateTimeField(
+        format='%m/%d/%Y %I:%M %p',
+        read_only=True
+    )
+
+    class Meta:
+        model = get_user_model()
+        fields = [
+            'id',
+            'first_name',
+            'last_name',
+            'email',
+            'psid',
+            'primary_phone',
+            'is_active',
+            'last_login',
+            'created_at',
+        ]
+        datatables_always_serialize = ['id']

@@ -20,7 +20,10 @@ from cis.models import CustomUser
 from cis.models.course import Cohort, Course
 from cis.models.section import ClassSection
 from cis.models.term import AcademicYear, Term
-from cis.utils import get_foreign_key_reference_models, get_foreign_key_references
+from cis.utils import (
+    get_foreign_key_reference_models, get_foreign_key_references,
+    get_movable_reference_choices,
+)
 
 
 def _ordered_names(references):
@@ -74,11 +77,12 @@ class ForeignKeyReferenceModelsTests(TestCase):
 
     def test_migrate_term_form_choices_avoid_the_full_scan(self):
         self._add_sections(2)
-        expected = _ordered_names(get_foreign_key_references(self.term))
-        with mock.patch('cis.forms.term.get_foreign_key_references',
-                        side_effect=AssertionError('full scan on GET')):
+        expected = [key for key, _l in get_movable_reference_choices(self.term)]
+        with mock.patch.object(
+                ClassSection, '__init__', side_effect=AssertionError('row loaded')):
             form = MigrateTermForm(record=self.term)
         self.assertEqual([v for v, _l in form.fields['move_items'].choices], expected)
+        self.assertIn('ClassSection.term', expected)
 
 
 class TermDetailMigrateScanTests(TestCase):
@@ -96,8 +100,10 @@ class TermDetailMigrateScanTests(TestCase):
             academic_year=AcademicYear.objects.create(name='2025-2026'))
 
     def test_term_detail_get_never_runs_the_full_scan(self):
-        with mock.patch('cis.forms.term.get_foreign_key_references',
-                        side_effect=AssertionError('full scan on GET')):
+        with mock.patch('cis.utils.get_foreign_key_references',
+                        side_effect=AssertionError('full scan on GET')), \
+                mock.patch('cis.forms.term.move_references',
+                           side_effect=AssertionError('move on GET')):
             resp = self.client.get(reverse('cis:term', args=[self.term.id]))
         self.assertEqual(resp.status_code, 200)
 
