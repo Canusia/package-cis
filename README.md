@@ -119,6 +119,7 @@ before deploying, or `/student/start_request/` fails to resolve the form.
 | Module | May export | Default | Used by |
 |---|---|---|---|
 | `roster_status_form.py` | `ClassSectionRosterStatusForm` | `cis.forms.section.DefaultClassSectionRosterStatusForm` | "Is the roster accurate?" in the instructor and HS admin portals (#69); import it as `from cis.forms.section import ClassSectionRosterStatusForm` |
+| `roster_verification.py` | `pending_roster_sections(queryset, notif_settings)` | no extra narrowing | `ClassSection.objects.pending_roster_verification()`: which pending rosters get reminders and show on the instructor / HS admin dashboards. Receives the default result and returns a subset. |
 
 ### Tenant table-config modules
 
