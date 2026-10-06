@@ -150,6 +150,88 @@ class StudentClassChangeForm(forms.Form):
             except Exception as e:
                 ...
 
+class DefaultClassSectionRosterStatusForm(forms.Form):
+    """"Is the roster accurate?" form, for instructors and high school admins.
+
+    Moved from each tenant's instructor app (#69). Import it as
+    `from cis.forms.section import ClassSectionRosterStatusForm`: a tenant
+    may replace it by defining ClassSectionRosterStatusForm in
+    myce_tenant_configs/services/roster_status_form.py (opt-in; without the
+    module this default is used).
+
+    Callers decide who may submit (roster_verification.can_verify and the
+    section scope); save() records the reporter so the confirmation email
+    goes to them.
+    """
+    id = forms.CharField(
+        widget=forms.HiddenInput,
+        required=True
+    )
+
+    roster_status = forms.CharField(
+        label='Is the roster accurate?',
+        widget=forms.Select(
+            choices=YES_NO_SELECT_OPTIONS,
+            attrs={
+                'class': 'col-md-3'
+            }
+        )
+    )
+
+    message = forms.CharField(
+        label='Please submit correction(s) below',
+        widget=forms.Textarea,
+        required=False
+    )
+
+    action = forms.CharField(
+        widget=forms.HiddenInput,
+        required=True
+    )
+
+    def __init__(self, class_section, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.fields['id'].initial = class_section.id
+        self.fields['action'].initial = 'submit_roster_status'
+
+    def save(self, class_section, request):
+        from cis.models.note import ClassSectionNote
+
+        data = self.cleaned_data
+
+        if data['id'] != str(class_section.id):
+            return
+
+        class_section.roster_status = 'inaccurate' if data['roster_status'] == '2' else 'accurate'
+
+        if not class_section.notifications:
+            class_section.notifications = {}
+        class_section.notifications['roster_verification_note'] = data.get('message', '')
+        # Read by the roster status signal to confirm to the reporter.
+        class_section._roster_reported_by = request.user
+        class_section.save()
+
+        # Add roster status as note
+        note = ClassSectionNote()
+        note.class_section = class_section
+        note.createdby = request.user
+        note.note = 'Class roster reported as ' + class_section.roster_status.capitalize()
+        note.meta = {
+            'type': 'public'
+        }
+        note.save()
+
+        if data.get('message'):
+            # add a note to class section
+            note = ClassSectionNote()
+            note.class_section = class_section
+            note.createdby = request.user
+            note.note = data['message']
+            note.meta = {'type': 'public'}
+            note.save()
+
+
 class BulkRosterStatusChangeForm(forms.Form):
     record_ids = forms.MultipleChoiceField(
         required=False,
@@ -166,9 +248,12 @@ class BulkRosterStatusChangeForm(forms.Form):
     
     email_instructors = forms.ChoiceField(
         required=False,
-        label='Do you want to send an email to the instructor(s)',
+        label='Send the verification request email?',
         choices=YES_NO_SELECT_OPTIONS,
-        help_text=''
+        help_text=(
+            'Goes to whoever can verify rosters (Roster Verification setting): '
+            'the instructor and/or the high school admins.'
+        )
     )
 
     action = forms.CharField(
@@ -220,8 +305,8 @@ class BulkRosterStatusChangeForm(forms.Form):
         for record in records:
             note_message = f'Updated roster status to {record.roster_status}'
             if data.get('email_instructors') == '1':
-                record.notify_teacher_on_roster_verification()
-                note_message += ' and sent email'
+                if record.notify_roster_verifiers():
+                    note_message += ' and sent the verification request'
 
             record.add_note(request.user, note_message)
 
@@ -786,4 +871,9 @@ def __getattr__(name):
     if name == 'EditStudentRegistration':
         from cis.services.tenant_services import get_tenant_service
         return get_tenant_service('registration_form').EditStudentRegistration
+    if name == 'ClassSectionRosterStatusForm':
+        # Opt-in: the tenant's form if it ships one, else the cis default (#69).
+        from cis.services.tenant_services import get_tenant_override
+        return (get_tenant_override('roster_status_form', 'ClassSectionRosterStatusForm')
+                or DefaultClassSectionRosterStatusForm)
     raise AttributeError(f'module {__name__!r} has no attribute {name!r}')

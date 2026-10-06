@@ -509,6 +509,8 @@ def add_new_role(request):
             # access checks see (#72).
             initial['manage_student_recommendation'] = normalize_position_flag(
                 record.meta.get('manage_student_recommendation'))
+            initial['manage_roster_verification'] = normalize_position_flag(
+                record.meta.get('manage_roster_verification'))
 
             if record.since:
                 initial['since'] = record.since.strftime("%m/%d/%Y")

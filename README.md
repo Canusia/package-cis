@@ -111,6 +111,15 @@ first use:
 `verify_email_form.py` is **new in v0.0.3** — a tenant upgrading from v0.0.2 must add it
 before deploying, or `/student/start_request/` fails to resolve the form.
 
+### Optional tenant service modules
+
+`cis` ships a working default for these; a tenant overrides it only by shipping the module
+(resolved with `get_tenant_override`, so a missing module is not an error):
+
+| Module | May export | Default | Used by |
+|---|---|---|---|
+| `roster_status_form.py` | `ClassSectionRosterStatusForm` | `cis.forms.section.DefaultClassSectionRosterStatusForm` | "Is the roster accurate?" in the instructor and HS admin portals (#69); import it as `from cis.forms.section import ClassSectionRosterStatusForm` |
+
 ### Tenant table-config modules
 
 CE index pages get their DataTable columns from `<TABLE_CONFIGS_APP>.services.<name>_table`

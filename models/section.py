@@ -672,122 +672,66 @@ class ClassSection(MyCEBaseModel):
 
         return True if self.roster_status in notif_settings.get('notify_status', []) else False
 
-    def notify_ce_staff_on_roster_change(self):
-        from cis.settings.roster_verification import (
-            roster_verification as roster_verification_settings
-        )
-        notif_settings = roster_verification_settings.from_db()
+    # Roster verification emails (package-cis#69). Every send goes through
+    # _send_roster_email so the Debug-mode redirect, the empty-template guard
+    # and sections with no teacher are handled the same way for each email.
 
-        email_subject = notif_settings.get('notify_verify_confirmation_subject')
-        if not email_subject:
-            return None
-
-        email_text = notif_settings.get('notify_verify_email')
-
-        send_to = notif_settings.get('notify_address').split(',')
-
-        if getattr(settings, 'DEBUG', True):
-            send_to = ['kadaji@gmail.com']
-        
-        message = Template(email_text)
-        context = Context({
-            'teacher_first_name': self.teacher.user.first_name,
-            'teacher_last_name': self.teacher.user.last_name,
+    def _roster_email_context(self, recipient=None, reporter=None, roster_status=None):
+        teacher_user = self.teacher.user if self.teacher else None
+        return {
+            'teacher_first_name': teacher_user.first_name if teacher_user else '',
+            'teacher_last_name': teacher_user.last_name if teacher_user else '',
+            'recipient_first_name': recipient.first_name if recipient else '',
+            'recipient_last_name': recipient.last_name if recipient else '',
+            'reporter_first_name': reporter.first_name if reporter else '',
+            'reporter_last_name': reporter.last_name if reporter else '',
+            'class_number': self.class_number,
             'crn': self.class_number,
             'highschool': self.highschool.name if self.highschool else '',
             'course_name': self.course,
             'section_number': self.section_number,
             'term': self.term,
-            'roster_status': self.roster_status,
-            'note': self.notifications.get('roster_verification_note', '') if self.notifications else ''
-        })
+            'roster_status': roster_status if roster_status is not None else self.roster_status_pretty,
+            'note': self.notifications.get('roster_verification_note', '') if self.notifications else '',
+        }
 
-        text_body = message.render(context)
-
-        template = get_template('cis/email.html')
-        html_body = template.render({
-            'message': text_body
-        })
-
-        send_html_mail(
-            email_subject,
-            text_body,
-            html_body,
-            settings.DEFAULT_FROM_EMAIL,
-            send_to
-        )
-        return True
-
-    def notify_teacher_on_roster_verification(
-        self,
-        email_subject=None,
-        email_message=None,
-        send_mode='active',
-        debug_list=None
-    ):
+    @staticmethod
+    def _user_addresses(user):
         from cis.utils import is_valid_email
+
+        if not user:
+            return []
+        addresses = [user.email]
+        if getattr(user, 'secondary_email', None):
+            addresses.append(user.secondary_email)
+        return [address for address in addresses if address and is_valid_email(address)]
+
+    @staticmethod
+    def _send_roster_email(subject, message, send_to, context, notif_settings):
+        """Render and send one roster email; True if it went out.
+
+        Debug mode -- the setting's, or Django DEBUG -- sends to the
+        Notification List instead of the real recipients.
         """
-        Send roster verification request
-        """
-        if not self.teacher:
-            return
-        
-        if not email_subject:
-            from cis.settings.roster_verification import (
-                roster_verification as roster_verification_settings
-            )
-            notif_settings = roster_verification_settings.from_db()
+        from cis.utils import is_valid_email
 
-            email_subject = notif_settings.get('request_verify_subject')
-            email_message = notif_settings.get('request_verify_email')
-            send_mode = notif_settings.get('mode', 'debug')
-            debug_list = notif_settings.get('notify_address', 'kadaji@gmail.come').split(',')
+        if not subject or not message:
+            return False
 
-        email_subject = email_subject
+        if notif_settings.get('mode', 'debug') == 'debug' or getattr(settings, 'DEBUG', False):
+            send_to = [
+                address.strip()
+                for address in (notif_settings.get('notify_address') or '').split(',')
+                if address.strip() and is_valid_email(address.strip())
+            ]
 
-        email_subject = Template(email_subject)
-        context = Context({
-            'class_number': self.class_number,
-            'highschool': self.highschool.name if self.highschool else '',
-            'course_name': self.course,
-            'section_number': self.section_number,
-            'term': self.term
-        })
-        email_subject = email_subject.render(context)
+        if not send_to:
+            return False
 
-        email_text = email_message
-
-        send_to = []
-        if is_valid_email(self.teacher.user.email):
-            send_to.append(self.teacher.user.email)
-            
-        if self.teacher.user.secondary_email and is_valid_email(self.teacher.user.secondary_email):
-            send_to.append(self.teacher.user.secondary_email)
-
-        if send_mode == 'debug':
-            if not debug_list:
-                debug_list = ['kadaji@gmail.com']
-
-            send_to = debug_list
-        
-        message = Template(email_text)
-        context = Context({
-            'teacher_first_name': self.teacher.user.first_name,
-            'teacher_last_name': self.teacher.user.last_name,
-            'class_number': self.class_number,
-            'highschool': self.highschool.name if self.highschool else '',
-            'course_name': self.course,
-            'section_number': self.section_number,
-            'term': self.term,
-            'note': self.notifications.get('roster_verification_note', '') if self.notifications else ''
-        })
-
-        text_body = message.render(context)
-
-        template = get_template('cis/email.html')
-        html_body = template.render({
-            'message': text_body
-        })
+        context = Context(context)
+        email_subject = Template(subject).render(context)
+        text_body = Template(message).render(context)
+        html_body = get_template('cis/email.html').render({'message': text_body})
 
         send_html_mail(
             email_subject,
@@ -796,9 +740,73 @@ class ClassSection(MyCEBaseModel):
             settings.DEFAULT_FROM_EMAIL,
             send_to
         )
-
-        self.update_last_notified()
         return True
+
+    def notify_ce_staff_on_roster_change(self, reporter=None):
+        from cis.settings.roster_verification import (
+            roster_verification as roster_verification_settings
+        )
+        notif_settings = roster_verification_settings.from_db()
+
+        send_to = [
+            address.strip()
+            for address in (notif_settings.get('notify_address') or '').split(',')
+            if address.strip()
+        ]
+        return self._send_roster_email(
+            notif_settings.get('notify_verify_confirmation_subject'),
+            notif_settings.get('notify_verify_email'),
+            send_to,
+            self._roster_email_context(reporter=reporter, roster_status=self.roster_status),
+            notif_settings,
+        ) or None
+
+    def notify_roster_verifiers(self, notif_settings=None):
+        """Send the verification request to whoever may verify this roster.
+
+        The Roster Verification setting decides who that is: the instructor,
+        and/or the high school admins whose role has Verify Class Rosters.
+        Each admin gets the high school admin subject/message, addressed to
+        them. Returns True if at least one email was sent.
+        """
+        from cis.settings.roster_verification import (
+            roster_verification as roster_verification_settings, get_verifiers
+        )
+        if notif_settings is None:
+            notif_settings = roster_verification_settings.from_db()
+        verifiers = get_verifiers(notif_settings)
+
+        sent = False
+        if 'instructor' in verifiers and self.teacher:
+            sent = self._send_roster_email(
+                notif_settings.get('request_verify_subject'),
+                notif_settings.get('request_verify_email'),
+                self._user_addresses(self.teacher.user),
+                self._roster_email_context(recipient=self.teacher.user),
+                notif_settings,
+            ) or sent
+
+        if 'highschool_admin' in verifiers and self.highschool:
+            admins = self.highschool.administrators_in_highschool(
+                status='can_verify_roster').select_related('user')
+            for admin in admins:
+                sent = self._send_roster_email(
+                    notif_settings.get('hsadmin_request_verify_subject'),
+                    notif_settings.get('hsadmin_request_verify_email'),
+                    self._user_addresses(admin.user),
+                    self._roster_email_context(recipient=admin.user),
+                    notif_settings,
+                ) or sent
+
+        if sent:
+            self.update_last_notified()
+        return sent
+
+    def notify_teacher_on_roster_verification(self, *args, **kwargs):
+        """Old name, kept for callers outside cis; the request now goes to
+        every enabled verifier (see notify_roster_verifiers)."""
+        return self.notify_roster_verifiers()
+
     @classmethod
     def notify_sections_pending_roster_verification(cls, *args, **kwargs):
         summary = ''
@@ -824,21 +832,15 @@ class ClassSection(MyCEBaseModel):
 
         success, failed = 0, 0
         for pending in pending_verification:
-            if not pending.teacher:
-                continue
-            
+            # No teacher is fine when high school admins verify (#69);
+            # notify_roster_verifiers sends to whoever is enabled.
             detailed_log['pending_crn'].append(
                 str(pending.class_number) + ' - ' + str(pending.last_notified())
             )
 
             if pending.needs_roster_verification_reminder():
-                
-                sent = pending.notify_teacher_on_roster_verification(
-                    notif_settings.get('request_verify_subject'),
-                    notif_settings.get('request_verify_email'),
-                    notif_settings.get('mode', 'debug'),
-                    notif_settings.get('notify_address', 'kadaji@gmail.come').split(',')
-                )
+
+                sent = pending.notify_roster_verifiers(notif_settings)
 
                 if sent:
                     success += 1
@@ -846,7 +848,7 @@ class ClassSection(MyCEBaseModel):
                         pending.class_number
                     )
                     detailed_log['notified_teacher'].append(
-                        str(pending.teacher)
+                        str(pending.teacher) if pending.teacher else '-'
                     )
 
                     pending.add_note(None, 'Sent pending roster verification email')
@@ -858,53 +860,29 @@ class ClassSection(MyCEBaseModel):
 
                     pending.add_note(None, 'Failed to Send pending roster verification email')
 
-        summary += f"\r\nSuccessfully sent {success}. Failed to send {{failed}}"
+        summary += f"\r\nSuccessfully sent {success}. Failed to send {failed}"
         return (summary, detailed_log)
 
-    def notify_teacher_on_roster_confirmed(self):
+    def notify_teacher_on_roster_confirmed(self, reporter=None):
+        """Confirm a roster report to whoever reported it.
+
+        `reporter` is the user who submitted the report through a portal (an
+        instructor or a high school admin); without one -- e.g. a CE edit --
+        the instructor gets it, as before #69.
+        """
         from cis.settings.roster_verification import (
             roster_verification as roster_verification_settings
         )
         notif_settings = roster_verification_settings.from_db()
 
-        email_subject = notif_settings.get('verify_confirmation_subject')
-        if not email_subject:
-            return None
-
-        email_text = notif_settings.get('verify_confirmation_email')
-
-        send_to = [self.teacher.user.email]
-
-        if getattr(settings, 'DEBUG', True):
-            send_to = ['kadaji@gmail.com']
-        
-        message = Template(email_text)
-        context = Context({
-            'teacher_first_name': self.teacher.user.first_name,
-            'teacher_last_name': self.teacher.user.last_name,
-            'crn': self.class_number,
-            'highschool': self.highschool.name if self.highschool else '',
-            'course_name': self.course,
-            'section_number': self.section_number,
-            'term': self.term,
-            'roster_status': self.roster_status_pretty
-        })
-
-        text_body = message.render(context)
-
-        template = get_template('cis/email.html')
-        html_body = template.render({
-            'message': text_body
-        })
-
-        send_html_mail(
-            email_subject,
-            text_body,
-            html_body,
-            settings.DEFAULT_FROM_EMAIL,
-            send_to
-        )
-        return True
+        recipient = reporter or (self.teacher.user if self.teacher else None)
+        return self._send_roster_email(
+            notif_settings.get('verify_confirmation_subject'),
+            notif_settings.get('verify_confirmation_email'),
+            self._user_addresses(recipient)[:1],
+            self._roster_email_context(recipient=recipient, reporter=reporter),
+            notif_settings,
+        ) or None
 
     @property
     def roster_needs_verification(self):

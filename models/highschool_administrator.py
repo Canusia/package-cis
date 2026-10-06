@@ -263,6 +263,35 @@ class HSAdministrator(models.Model):
             hsadmin=self
         ).exists()
 
+    def can_verify_roster(self, highschool_id):
+        """True if this admin's Active role at the school has Verify Class
+        Rosters. Whether high school admins may verify at all is the Roster
+        Verification setting's call (roster_verification.can_verify); check
+        both (#69)."""
+        from cis.models.highschool_administrator import HSAdministratorPosition
+
+        if not highschool_id:
+            return False
+
+        return HSAdministratorPosition.objects.filter(
+            highschool__id=highschool_id,
+            status='Active',
+            meta__manage_roster_verification__iexact='yes',
+            hsadmin=self
+        ).exists()
+
+    def get_roster_highschools(self):
+        """Queryset counterpart to can_verify_roster(), for filtering lists."""
+        from cis.models.highschool_administrator import HSAdministratorPosition
+
+        highschool_ids = HSAdministratorPosition.objects.filter(
+            hsadmin__id=self.id,
+            status='Active',
+            meta__manage_roster_verification__iexact='yes',
+        ).values_list('highschool', flat=True)
+
+        return HighSchool.objects.filter(id__in=highschool_ids)
+
     def get_recommendation_highschools(self):
         """High schools where this admin may manage student recommendations.
 
@@ -406,7 +435,7 @@ class HSPosition(models.Model):
 # Per-role permission flags, stored in HSAdministratorPosition.meta as 'Yes' or
 # 'No'. Access checks use meta__<flag>__iexact='yes', so anything else -- a
 # missing key included -- means 'No'; forms and imports must agree (#72).
-POSITION_FLAGS = ('manage_student_recommendation',)
+POSITION_FLAGS = ('manage_student_recommendation', 'manage_roster_verification')
 
 
 def normalize_position_flag(value):

@@ -114,9 +114,13 @@ def roster_status_updated(sender, instance, **kwargs):
 
     if previous_status != current_status:
 
-        # if status is pending_request email instructor
+        # Set by the roster status form when an instructor or high school
+        # admin reports through a portal; None for CE edits (#69).
+        reporter = getattr(instance, '_roster_reported_by', None)
+
+        # pending verification: ask whoever may verify (instructor and/or HS admins)
         if instance.roster_status == 'pending verification':
-            instance.notify_teacher_on_roster_verification()
+            instance.notify_roster_verifiers()
             if current_request():
                 user = current_request().user
             else:
@@ -127,10 +131,10 @@ def roster_status_updated(sender, instance, **kwargs):
                 'Changed roster status. Sent pending roster verification email'
             )
         
-        # notify teacher that roster status was changed
+        # confirm the report to whoever made it
         if instance.roster_status in ['accurate', 'inaccurate']:
-            instance.notify_teacher_on_roster_confirmed()
+            instance.notify_teacher_on_roster_confirmed(reporter=reporter)
 
         # notify CE admins if status is in one of the selected status
         if instance.needs_ce_notificaton_on_roster_change():
-            instance.notify_ce_staff_on_roster_change()
+            instance.notify_ce_staff_on_roster_change(reporter=reporter)

@@ -369,6 +369,12 @@ class HighSchool(models.Model):
                 status__iexact='active',
                 meta__manage_student_recommendation__iexact='yes'
             )
+        elif status == 'can_verify_roster':
+            admin_positions = HSAdministratorPosition.objects.filter(
+                highschool=self.id,
+                status__iexact='active',
+                meta__manage_roster_verification__iexact='yes'
+            )
         else:
             admin_positions = HSAdministratorPosition.objects.filter(
                 highschool=self.id,

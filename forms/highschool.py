@@ -450,6 +450,19 @@ class HSAdministratorPositionForm(forms.Form):
         help_text='Setting the status to \'Inactive\' will disable this'
     )
 
+    manage_roster_verification = forms.ChoiceField(
+        label='Verify Class Rosters',
+        choices=[
+            ('No', 'No'),
+            ('Yes', 'Yes'),
+        ],
+        initial='No',
+        help_text=(
+            'Applies when the Roster Verification setting lets high school '
+            'admins verify. Setting the status to \'Inactive\' will disable this'
+        )
+    )
+
     hs_admin = forms.CharField(
         required=True,
         widget=forms.HiddenInput
@@ -517,6 +530,8 @@ class HSAdministratorPositionForm(forms.Form):
 
         record.meta['manage_student_recommendation'] = normalize_position_flag(
             data.get('manage_student_recommendation'))
+        record.meta['manage_roster_verification'] = normalize_position_flag(
+            data.get('manage_roster_verification'))
         
         if commit:
             record.save()
@@ -902,6 +917,16 @@ class BulkRoleEditForm(forms.Form):
         )
     )
 
+    manage_roster_verification = forms.ChoiceField(
+        required=False,
+        label='Verify Class Rosters',
+        choices=[],
+        help_text=(
+            'Only takes effect while the role is Active and the Roster '
+            'Verification setting lets high school admins verify.'
+        )
+    )
+
     note = forms.CharField(
         required=False,
         label='Note',
@@ -923,6 +948,9 @@ class BulkRoleEditForm(forms.Form):
             [(UNCHANGED, UNCHANGED_LABEL)] + list(HSAdministratorPosition.STATUS_OPTIONS)
         )
         self.fields['manage_student_recommendation'].choices = [
+            (UNCHANGED, UNCHANGED_LABEL), ('Yes', 'Yes'), ('No', 'No'),
+        ]
+        self.fields['manage_roster_verification'].choices = [
             (UNCHANGED, UNCHANGED_LABEL), ('Yes', 'Yes'), ('No', 'No'),
         ]
 
@@ -958,9 +986,11 @@ class BulkRoleEditForm(forms.Form):
         """
         cleaned = super().clean()
 
-        if not cleaned.get('status') and not cleaned.get('manage_student_recommendation'):
+        if not (cleaned.get('status')
+                or cleaned.get('manage_student_recommendation')
+                or cleaned.get('manage_roster_verification')):
             raise forms.ValidationError(
-                'Choose a status or a student-recommendation value to apply.'
+                'Choose a status, a student-recommendation or a roster-verification value to apply.'
             )
 
         return cleaned
@@ -979,6 +1009,7 @@ class BulkRoleEditForm(forms.Form):
         data = self.cleaned_data
         status = data.get('status')
         recommendation = data.get('manage_student_recommendation')
+        roster_verification = data.get('manage_roster_verification')
         note_text = (data.get('note') or '').strip()
 
         records = HSAdministratorPosition.objects.filter(
@@ -992,6 +1023,8 @@ class BulkRoleEditForm(forms.Form):
                 record.status = status
             if recommendation:
                 record.meta['manage_student_recommendation'] = recommendation
+            if roster_verification:
+                record.meta['manage_roster_verification'] = roster_verification
             record.save()
             updated += 1
             per_admin.setdefault(record.hsadmin, []).append(
@@ -1003,6 +1036,8 @@ class BulkRoleEditForm(forms.Form):
             changes.append(f'Status set to {status}')
         if recommendation:
             changes.append(f'Manage student recommendation set to {recommendation}')
+        if roster_verification:
+            changes.append(f'Verify class rosters set to {roster_verification}')
         summary = '; '.join(changes)
 
         notes_created = 0

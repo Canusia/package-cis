@@ -1,3 +1,23 @@
+"""Roster Verification settings (key: cis.settings.roster_verification).
+
+Change log
+----------
+0.1.13a (2026-10-06) -- package-cis#69
+  * "Who can verify a class roster?" (`verifiers`): the instructor and/or
+    high school admins. A setting saved before this has no `verifiers` key
+    and keeps the old behaviour, instructor only; use get_verifiers() /
+    can_verify(), never the raw key.
+  * High school admins whose role has "Verify Class Rosters" set to Yes get
+    the verification request and reminders, through their own subject and
+    message (`hsadmin_request_verify_subject` / `hsadmin_request_verify_email`).
+    Sections with no instructor are now notified when admins can verify.
+  * The confirmation email goes to whoever reported the roster (instructor
+    or high school admin); a CE change still confirms to the instructor.
+    New short codes: {{reporter_first_name}}, {{reporter_last_name}}, and
+    {{recipient_first_name}}, {{recipient_last_name}} in the request emails.
+  * The confirmation and staff emails honour Debug mode like the request
+    email; they previously keyed off Django's DEBUG and a fixed address.
+"""
 import json
 from django import forms
 from django.conf import settings
@@ -18,6 +38,13 @@ from ..models.settings import Setting
 
 from ..validators import validate_cron, validate_email_list, validate_html_short_code
 
+VERIFIER_CHOICES = (
+    ('instructor', 'Instructor'),
+    ('highschool_admin', 'High School Admin(s)'),
+)
+DEFAULT_VERIFIERS = ['instructor']
+
+
 class SettingForm(forms.Form):
 
     mode = forms.ChoiceField(
@@ -36,6 +63,17 @@ class SettingForm(forms.Form):
         widget=forms.Textarea,
         help_text='Displayed at the top in Instructor roster verification page. <a href="#" class="float-right" onClick="do_bulk_action(\'roster_verification\', \'intro\')" >See Preview</a>',
         label="Intro.")
+
+    verifiers = forms.MultipleChoiceField(
+        choices=VERIFIER_CHOICES,
+        initial=DEFAULT_VERIFIERS,
+        widget=forms.CheckboxSelectMultiple,
+        label='Who can verify a class roster?',
+        help_text=(
+            'High school admins also need "Verify Class Rosters" set to Yes on '
+            'their role at the section\'s high school.'
+        ),
+    )
 
 
     pending_veri_group = FFields.LongLabelField(
@@ -72,6 +110,20 @@ class SettingForm(forms.Form):
         validators=[validate_html_short_code],
         help_text='Customize with {{teacher_first_name}}, {{teacher_last_name}}, {{class_number}}, {{section_number}}, {{course_name}}, {{highschool}}, {{term}}. <a href="#" class="float-right" onClick="do_bulk_action(\'roster_verification\', \'request_verify_email\')" >See Preview</a>',
         label="Verification Request Email Message")
+
+    hsadmin_request_verify_subject = forms.CharField(
+        max_length=None,
+        required=False,
+        help_text='Sent to high school admins when they can verify. Customize with {{class_number}}, {{section_number}}, {{course_name}}, {{term}}',
+        label="Verification Request Email Subject (High School Admins)")
+
+    hsadmin_request_verify_email = forms.CharField(
+        max_length=None,
+        required=False,
+        widget=forms.Textarea,
+        validators=[validate_html_short_code],
+        help_text='Customize with {{recipient_first_name}}, {{recipient_last_name}}, {{teacher_first_name}}, {{teacher_last_name}}, {{class_number}}, {{section_number}}, {{course_name}}, {{highschool}}, {{term}}. <a href="#" class="float-right" onClick="do_bulk_action(\'roster_verification\', \'hsadmin_request_verify_email\')" >See Preview</a>',
+        label="Verification Request Email Message (High School Admins)")
    
     action_veri_group = FFields.LongLabelField(
         required=False,
@@ -86,14 +138,14 @@ class SettingForm(forms.Form):
     verify_confirmation_subject = forms.CharField(
         max_length=None,
         help_text='',
-        label="Verification Recv. Confirmation Email Subject (sent to Instructor)")
+        label="Verification Recv. Confirmation Email Subject (sent to whoever reported)")
 
     verify_confirmation_email = forms.CharField(
         max_length=None,
         widget=forms.Textarea,
         validators=[validate_html_short_code],
-        help_text='Customize with {{teacher_first_name}}, {{teacher_last_name}}, {{crn}}, {{highschool}}, {{course_name}}, {{section_number}}, {{term}}, {{roster_status}}. <a href="#" class="float-right" onClick="do_bulk_action(\'roster_verification\', \'verify_confirmation_email\')" >See Preview</a>',
-        label="Verification Recv. Email Message (sent to Instructor)")
+        help_text='Customize with {{reporter_first_name}}, {{reporter_last_name}}, {{teacher_first_name}}, {{teacher_last_name}}, {{crn}}, {{highschool}}, {{course_name}}, {{section_number}}, {{term}}, {{roster_status}}. <a href="#" class="float-right" onClick="do_bulk_action(\'roster_verification\', \'verify_confirmation_email\')" >See Preview</a>',
+        label="Verification Recv. Email Message (sent to whoever reported)")
 
     ce_veri_group = FFields.LongLabelField(
         required=False,
@@ -127,6 +179,15 @@ class SettingForm(forms.Form):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+    def clean(self):
+        cleaned = super().clean()
+        if 'highschool_admin' in (cleaned.get('verifiers') or []):
+            for name in ('hsadmin_request_verify_subject', 'hsadmin_request_verify_email'):
+                if not cleaned.get(name):
+                    self.add_error(
+                        name, 'Required when high school admins can verify rosters.')
+        return cleaned
+
     def _to_python(self):
         """
         Return dict of form elements from $_POST
@@ -154,14 +215,6 @@ class roster_verification(SettingForm):
         from django.template.loader import get_template, render_to_string
         from django.template import Context, Template
         from django.shortcuts import render, get_object_or_404
-
-        from cis.models.student import Student
-        from cis.forms.student import StudentForm
-        
-        from instructor.forms.section import (
-            ClassSectionScheduleForm,
-            ClassSectionRosterStatusForm
-        )
 
         from cis.settings.registration_email import registration_email
         from cis.settings.instructor_portal import instructor_portal as portal_lang
@@ -191,6 +244,9 @@ class roster_verification(SettingForm):
         if field_name in ['request_verify_email' ]:
             subject = email_settings.get('request_verify_subject')
             email = email_settings.get('request_verify_email')
+        elif field_name == 'hsadmin_request_verify_email':
+            subject = email_settings.get('hsadmin_request_verify_subject')
+            email = email_settings.get('hsadmin_request_verify_email')
         elif field_name == 'verify_confirmation_email':
             subject = email_settings.get('verify_confirmation_subject')
             email = email_settings.get('verify_confirmation_email')
@@ -210,6 +266,11 @@ class roster_verification(SettingForm):
             'class_sections': "ACC 101",
             'teacher_last_name': "Smith",
             'teacher_first_name': "Dale",
+            'recipient_first_name': "Pat",
+            'recipient_last_name': "Jones",
+            'reporter_first_name': "Pat",
+            'reporter_last_name': "Jones",
+            'class_number': "12345",
             'section_list': mark_safe("<br>".join(['ACC 101', 'ACC 102'])),
             'term': "Fall 2020",
             'pre_visit_note': 'Private Note',
@@ -250,7 +311,10 @@ class roster_verification(SettingForm):
             'request_verify_email': '{{teacher_first_name}}, {{teacher_last_name}}, {{crn}}, {{highschool}}, {{course_name}}, {{section_number}}, {{term}}', 
             'request_verify_subject': 'Requesting verification', 
             'verify_confirmation_email': '{{teacher_first_name}}, {{teacher_last_name}}, {{crn}}, {{highschool}}, {{course_name}}, {{section_number}}, {{term}}, {{roster_status}}', 'verify_confirmation_subject': 'verified', 
-            'notify_verify_confirmation_subject': 'roster status changed'
+            'notify_verify_confirmation_subject': 'roster status changed',
+            'verifiers': list(DEFAULT_VERIFIERS),
+            'hsadmin_request_verify_subject': 'Requesting roster verification',
+            'hsadmin_request_verify_email': '{{recipient_first_name}}, please verify the roster for {{course_name}} {{section_number}} ({{class_number}}) at {{highschool}}, {{term}}. Instructor: {{teacher_first_name}} {{teacher_last_name}}',
         }
 
         Setting.install_defaults(self.key, defaults)
@@ -276,3 +340,19 @@ class roster_verification(SettingForm):
         return JsonResponse({
             'message': 'Successfully saved settings',
             'status': 'success'})
+
+
+def get_verifiers(values=None):
+    """Roles that may verify a roster: a subset of 'instructor' and
+    'highschool_admin'. A setting saved before #69 has no `verifiers` key and
+    means instructor only -- read it through here, not from the raw dict."""
+    if values is None:
+        values = roster_verification.from_db()
+    allowed = dict(VERIFIER_CHOICES)
+    verifiers = [v for v in (values.get('verifiers') or []) if v in allowed]
+    return verifiers or list(DEFAULT_VERIFIERS)
+
+
+def can_verify(role, values=None):
+    """True if `role` ('instructor' or 'highschool_admin') may verify rosters."""
+    return role in get_verifiers(values)
