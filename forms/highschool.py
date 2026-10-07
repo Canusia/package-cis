@@ -294,20 +294,28 @@ class HSTranscriptUploadForm(forms.ModelForm):
                 f'This file is larger than the {limit // (1024 * 1024)} MB limit.')
         return media
 
+class HSAdminPermissionField(forms.ModelMultipleChoiceField):
+    """Checkboxes over the nine HS admin permissions, labelled by name."""
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault('required', False)
+        kwargs.setdefault('widget', forms.CheckboxSelectMultiple)
+        super().__init__(queryset=hsadmin_permission_objects(HSAdminPerm.ALL), **kwargs)
+
+    def label_from_instance(self, obj):
+        return obj.name
+
+
 class HSAdminAccessRequestModelForm(ModelForm):
     captcha = ReCaptchaField(
         label=''
     )
   
-    manage_student_recommendation = forms.ChoiceField(
-        label='Manage Student Recommendation',
-        choices=[
-            ('', 'Select'),
-            ('No', 'No'),
-            ('Yes', 'Yes'),
-        ],
-        help_text='If access approved, then select'
-    )
+    permissions = HSAdminPermissionField(
+        label='Permissions (applied if approved)',
+        help_text=('Leave all unchecked to approve with no permissions; '
+                   'they can be granted later on the role.'))
+
     class Meta:
         model = HSAdministratorAccessRequest
         fields = [
@@ -351,15 +359,26 @@ class HSAdminAccessRequestModelForm(ModelForm):
         
         if not user_has_cis_role(self.request.user):
             del self.fields['status']
-            del self.fields['manage_student_recommendation']
+            del self.fields['permissions']
         else:
             del self.fields['captcha']
 
             instance = kwargs.get('instance')
             if instance and instance.status.lower() != 'submitted':
-                
-                # del self.fields['manage_student_recommendation']
-                
+                # Show what the approved role holds now, not what was ticked
+                # at approval; hide the field when no such role exists.
+                role = HSAdministratorPosition.objects.filter(
+                    hsadmin__user__email__iexact=instance.email,
+                    highschool=instance.highschool,
+                    position__name__iexact=instance.role,
+                ).first()
+                if role is None:
+                    del self.fields['permissions']
+                else:
+                    self.initial['permissions'] = list(
+                        hsadmin_permission_objects(role.codenames())
+                        .values_list('pk', flat=True))
+
                 for field_name, field in self.fields.items():
                     field.disabled = True
                     field.widget.attrs['readonly'] = True
@@ -424,18 +443,6 @@ class HighSchoolOfferingLookupForm(forms.Form):
         super().__init__(*args, **kwargs)
 
         self.fields['highschool'].queryset = picker_queryset()
-
-class HSAdminPermissionField(forms.ModelMultipleChoiceField):
-    """Checkboxes over the nine HS admin permissions, labelled by name."""
-
-    def __init__(self, **kwargs):
-        kwargs.setdefault('required', False)
-        kwargs.setdefault('widget', forms.CheckboxSelectMultiple)
-        super().__init__(queryset=hsadmin_permission_objects(HSAdminPerm.ALL), **kwargs)
-
-    def label_from_instance(self, obj):
-        return obj.name
-
 
 class HSAdministratorPositionForm(forms.Form):
     highschool = forms.ModelChoiceField(queryset=None)

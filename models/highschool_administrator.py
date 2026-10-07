@@ -3,7 +3,7 @@ import uuid
 
 from django.conf import settings
 from django.urls import reverse_lazy
-from django.db import models, IntegrityError
+from django.db import models, IntegrityError, transaction
 from django.contrib.auth.models import Group
 
 from mailer import send_mail, send_html_mail
@@ -170,16 +170,17 @@ class HSAdministratorAccessRequest(models.Model):
         hs_admin_position.position = position
         hs_admin_position.hsadmin = hs_administrator
         hs_admin_position.status = 'Active'
-        
-        hs_admin_position.meta = {flag: 'No' for flag in POSITION_FLAGS}
-        hs_admin_position.meta['manage_student_recommendation'] = normalize_position_flag(
-            form_data.get('manage_student_recommendation'))
 
         try:
-            hs_admin_position.save()
-            return True
+            # Savepoint: the duplicate-role IntegrityError must not poison the
+            # surrounding transaction (TestCase, or ATOMIC_REQUESTS).
+            with transaction.atomic():
+                hs_admin_position.save()
         except IntegrityError:
             return False
+        hs_admin_position.set_perms(
+            [p.codename for p in form_data.get('permissions') or []])
+        return True
 
 class HSAdministrator(models.Model):
     """
@@ -308,7 +309,10 @@ class HSAdministrator(models.Model):
             
         record = HSAdministrator(user=user)
         try:
-            record.save()
+            # Savepoint, so an existing admin does not poison an enclosing
+            # transaction before the lookup below.
+            with transaction.atomic():
+                record.save()
         except IntegrityError:
             record = HSAdministrator.objects.get(
                 user=user

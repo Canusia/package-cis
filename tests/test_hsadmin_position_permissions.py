@@ -10,7 +10,8 @@ from django.test import RequestFactory, TestCase
 
 from cis.models.highschool import HighSchool
 from cis.models.highschool_administrator import (
-    HSAdminPerm, HSAdministratorPosition, hsadmin_permission_objects)
+    HSAdminPerm, HSAdministratorAccessRequest, HSAdministratorPosition,
+    hsadmin_permission_objects)
 from cis.tests.test_hs_admin_roles_tab import HsAdminRoleFixtureMixin
 
 
@@ -228,3 +229,86 @@ class RoleFormPermissionTests(HsAdminRoleFixtureMixin, TestCase):
             form = HSAdministratorPositionForm(id='-1', initial={'id': '-1'})
         self.assertFalse(form['permissions'].value())
         self.assertFalse(form.fields['permissions'].required)
+
+
+class AccessRequestPermissionTests(HsAdminRoleFixtureMixin, TestCase):
+    def setUp(self):
+        self.build_fixture()
+        self.req = HSAdministratorAccessRequest.objects.create(
+            name='Cara Gamma', email='cara@example.com', phone='1',
+            highschool=self.central, role='Registrar', status='Submitted')
+        patcher = mock.patch('cis.forms.highschool.picker_queryset',
+                             return_value=HighSchool.objects.all())
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def tearDown(self):
+        self.tear_down_fixture()
+
+    def _form(self, user, **kwargs):
+        from cis.forms.highschool import HSAdminAccessRequestModelForm
+        request = RequestFactory().get('/')
+        request.user = user
+        return HSAdminAccessRequestModelForm(request=request, **kwargs)
+
+    def _approve(self, codenames):
+        data = {'name': self.req.name, 'email': self.req.email, 'phone': self.req.phone,
+                'highschool': str(self.central.id), 'role': self.req.role,
+                'status': 'Approved',
+                'permissions': [str(p.pk) for p in hsadmin_permission_objects(codenames)]}
+        form = self._form(self.staff, data=data, instance=self.req)
+        self.assertTrue(form.is_valid(), form.errors)
+        record = form.save()
+        return record.grant_access(form.cleaned_data)
+
+    def _new_role(self):
+        return HSAdministratorPosition.objects.get(
+            hsadmin__user__email='cara@example.com', highschool=self.central)
+
+    def test_ce_sees_permissions_and_no_recommendation_select(self):
+        form = self._form(self.staff, instance=self.req)
+        self.assertIn('permissions', form.fields)
+        self.assertNotIn('manage_student_recommendation', form.fields)
+        self.assertFalse(form['permissions'].value())
+
+    def test_public_form_has_no_permissions(self):
+        from django.contrib.auth.models import AnonymousUser
+        form = self._form(AnonymousUser())
+        self.assertNotIn('permissions', form.fields)
+
+    def test_approval_grants_exactly_the_ticked(self):
+        self.assertTrue(self._approve([HSAdminPerm.BULK_ENROLL, HSAdminPerm.VERIFY_ROSTER]))
+        self.assertEqual(self._new_role().codenames(),
+                         {HSAdminPerm.BULK_ENROLL, HSAdminPerm.VERIFY_ROSTER})
+        self.assertNotIn('manage_student_recommendation', self._new_role().meta)
+
+    def test_approval_with_nothing_ticked_grants_nothing(self):
+        self.assertTrue(self._approve([]))
+        self.assertEqual(self._new_role().codenames(), set())
+
+    def test_existing_role_is_not_changed(self):
+        from cis.models.highschool_administrator import HSPosition
+        self.assertTrue(self._approve([HSAdminPerm.BULK_ENROLL]))
+        self.req.refresh_from_db()
+        self.req.status = 'Submitted'
+        self.req.save()
+        self.assertFalse(self._approve([HSAdminPerm.SUBMIT_GRADES]))  # IntegrityError path
+        self.assertEqual(self._new_role().codenames(), {HSAdminPerm.BULK_ENROLL})
+        self.assertEqual(HSPosition.objects.filter(name__iexact='Registrar').count(), 1)
+
+    def test_processed_request_shows_current_role_permissions_read_only(self):
+        self._approve([HSAdminPerm.BULK_ENROLL])
+        self._new_role().grant(HSAdminPerm.SUBMIT_GRADES)
+        self.req.refresh_from_db()
+        form = self._form(self.staff, instance=self.req)
+        self.assertTrue(form.fields['permissions'].disabled)
+        self.assertEqual(
+            {str(v) for v in form['permissions'].value()},
+            {str(pk) for pk in hsadmin_permission_objects(
+                [HSAdminPerm.BULK_ENROLL, HSAdminPerm.SUBMIT_GRADES]).values_list('pk', flat=True)})
+
+    def test_processed_request_without_a_role_hides_the_field(self):
+        HSAdministratorAccessRequest.objects.filter(pk=self.req.pk).update(status='Denied')
+        self.req.refresh_from_db()
+        form = self._form(self.staff, instance=self.req)
+        self.assertNotIn('permissions', form.fields)
