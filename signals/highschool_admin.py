@@ -13,7 +13,7 @@ from django.template.loader import get_template, render_to_string
 from mailer import send_mail, send_html_mail
 
 from cis.models.highschool_administrator import (
-    HSAdministratorPosition, HSAdministratorAccessRequest, POSITION_FLAGS
+    HSAdministratorPosition, HSAdministratorAccessRequest
 )
 
 @receiver(post_save, sender=HSAdministratorAccessRequest)
@@ -38,14 +38,6 @@ def hs_position_updated(sender, instance, created, **kwargs):
     else:
         hsadmin.user.groups.add(group)
 
-    if instance.status.lower() != 'active':
-        # Clear the permission flags only; replacing meta wholesale dropped
-        # every other key on the role.
-        meta = dict(instance.meta or {})
-        meta.update({flag: 'No' for flag in POSITION_FLAGS})
-
-        HSAdministratorPosition.objects.filter(
-            id=instance.id
-        ).update(
-            meta=meta
-        )
+    # Permissions are kept when a role goes inactive: every check requires
+    # status 'Active', and a reactivated role should come back with what CE
+    # granted (spec: hsadmin-position-permissions, Deactivation).

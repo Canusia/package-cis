@@ -136,3 +136,34 @@ class AdministratorPermissionTests(HsAdminRoleFixtureMixin, TestCase):
         self.assertTrue(self.role_a1.has_perm(HSAdminPerm.MANAGE_STUDENT_RECOMMENDATION))
         self.role_a1.toggle_student_recommendation()
         self.assertFalse(self.role_a1.has_perm(HSAdminPerm.MANAGE_STUDENT_RECOMMENDATION))
+
+
+class LifecycleTests(HsAdminRoleFixtureMixin, TestCase):
+    def setUp(self):
+        self.build_fixture()
+
+    def tearDown(self):
+        self.tear_down_fixture()
+
+    def test_deactivation_keeps_permissions_and_meta(self):
+        self.role_a1.meta = {'other': 'kept'}
+        self.role_a1.save()
+        self.role_a1.grant(HSAdminPerm.BULK_ENROLL)
+        self.role_a1.status = 'Inactive'
+        self.role_a1.save()
+        self.role_a1.refresh_from_db()
+        self.assertEqual(self.role_a1.codenames(), {HSAdminPerm.BULK_ENROLL})
+        self.assertFalse(self.role_a1.has_perm(HSAdminPerm.BULK_ENROLL))
+        self.assertEqual(self.role_a1.meta, {'other': 'kept'})
+
+    def test_reactivation_restores_access(self):
+        self.role_a1.grant(HSAdminPerm.BULK_ENROLL)
+        self.role_a1.toggle_status()
+        self.role_a1.toggle_status()
+        self.assertTrue(self.admin_a.has_school_perm(HSAdminPerm.BULK_ENROLL, self.central.id))
+
+    def test_get_or_add_creates_with_no_permissions_and_no_flags(self):
+        role = HSAdministratorPosition.get_or_add(
+            self.admin_b, self.north, self.principal, 'Active')
+        self.assertEqual(role.codenames(), set())
+        self.assertEqual(role.meta, {})

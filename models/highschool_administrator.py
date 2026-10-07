@@ -566,7 +566,6 @@ class HSAdministratorPosition(models.Model):
                 highschool=highschool,
                 position=position,
                 status=status,
-                meta={flag: 'No' for flag in POSITION_FLAGS},
             )
             record.save()
         return record
