@@ -5,7 +5,7 @@ from django.urls import reverse
 
 from cis.models import CustomUser
 from cis.models.highschool_administrator import (
-    HSAdministrator, HSAdministratorPosition)
+    HSAdminPerm, HSAdministrator, HSAdministratorPosition, hsadmin_permission_objects)
 from cis.models.note import HSAdministratorNote
 from cis.tests.test_hs_admin_roles_tab import HsAdminRoleFixtureMixin
 
@@ -18,6 +18,9 @@ class BulkEditStatusTests(HsAdminRoleFixtureMixin, TestCase):
     def tearDown(self):
         self.tear_down_fixture()
 
+    def _ids(self, *codenames):
+        return [str(p.pk) for p in hsadmin_permission_objects(codenames)]
+
     def test_get_renders_the_modal_form(self):
         resp = self.client.get(self.url, {
             'action': 'edit',
@@ -26,7 +29,8 @@ class BulkEditStatusTests(HsAdminRoleFixtureMixin, TestCase):
         self.assertEqual(resp.status_code, 200)
         body = resp.content.decode()
         self.assertIn('name="status"', body)
-        self.assertIn('name="manage_student_recommendation"', body)
+        self.assertIn('name="grant"', body)
+        self.assertIn('name="revoke"', body)
         self.assertIn('name="note"', body)
         self.assertIn('Central High', body)
         self.assertIn('frm_bulk_action', body)
@@ -98,80 +102,65 @@ class BulkEditStatusTests(HsAdminRoleFixtureMixin, TestCase):
             HSAdministratorPosition.objects.filter(status='Inactive').count(), 1)
 
 
-    def test_sets_the_student_recommendation_flag(self):
+    def test_grant_adds_without_touching_others(self):
+        self.role_a1.grant(HSAdminPerm.SUBMIT_GRADES)
         resp = self.client.post(self.url, {
-            'action': 'edit',
-            'record_ids': [str(self.role_a1.id)],
-            'status': '',
-            'manage_student_recommendation': 'Yes',
-            'note': '',
+            'action': 'edit', 'record_ids': [str(self.role_a1.id), str(self.role_a2.id)],
+            'status': '', 'grant': self._ids(HSAdminPerm.BULK_ENROLL), 'note': '',
         })
         self.assertEqual(resp.status_code, 200)
+        self.assertEqual(self.role_a1.codenames(),
+                         {HSAdminPerm.SUBMIT_GRADES, HSAdminPerm.BULK_ENROLL})
+        self.assertEqual(self.role_a2.codenames(), {HSAdminPerm.BULK_ENROLL})
         self.role_a1.refresh_from_db()
-        self.assertEqual(
-            self.role_a1.meta.get('manage_student_recommendation'), 'Yes')
         self.assertEqual(self.role_a1.status, 'Active')  # untouched
 
-    def test_leaving_a_field_unchanged_does_not_overwrite_it(self):
-        """Editing only the status must not wipe the student-recommendation
-        flag on every selected row."""
-        self.role_a1.meta['manage_student_recommendation'] = 'Yes'
-        self.role_a1.save()
-
+    def test_revoke_removes_only_those(self):
+        self.role_a1.grant(HSAdminPerm.SUBMIT_GRADES, HSAdminPerm.BULK_ENROLL)
         self.client.post(self.url, {
-            'action': 'edit',
-            'record_ids': [str(self.role_a1.id)],
-            'status': 'Active',
-            'manage_student_recommendation': '',
-            'note': '',
+            'action': 'edit', 'record_ids': [str(self.role_a1.id)],
+            'status': '', 'revoke': self._ids(HSAdminPerm.SUBMIT_GRADES), 'note': '',
         })
-        self.role_a1.refresh_from_db()
-        self.assertEqual(self.role_a1.status, 'Active')
-        self.assertEqual(
-            self.role_a1.meta.get('manage_student_recommendation'), 'Yes')
+        self.assertEqual(self.role_a1.codenames(), {HSAdminPerm.BULK_ENROLL})
 
-    def test_going_inactive_clears_the_flag_via_the_signal(self):
-        """Pre-existing behaviour, asserted so the combined form does not look
-        like the cause: the post_save receiver in cis/signals/highschool_admin.py
-        forces manage_student_recommendation to 'No' for any non-Active role."""
-        self.role_a1.meta['manage_student_recommendation'] = 'Yes'
-        self.role_a1.save()
-
+    def test_status_only_leaves_permissions(self):
+        self.role_a1.grant(HSAdminPerm.BULK_ENROLL)
         self.client.post(self.url, {
-            'action': 'edit',
-            'record_ids': [str(self.role_a1.id)],
-            'status': 'Inactive',
-            'manage_student_recommendation': '',
-            'note': '',
+            'action': 'edit', 'record_ids': [str(self.role_a1.id)],
+            'status': 'Inactive', 'note': '',
         })
         self.role_a1.refresh_from_db()
         self.assertEqual(self.role_a1.status, 'Inactive')
-        self.assertEqual(
-            self.role_a1.meta.get('manage_student_recommendation'), 'No')
+        self.assertEqual(self.role_a1.codenames(), {HSAdminPerm.BULK_ENROLL})
 
     def test_changing_nothing_is_rejected(self):
-        """Both selects left on 'leave unchanged' would otherwise report
-        success while writing nothing."""
         resp = self.client.post(self.url, {
-            'action': 'edit',
-            'record_ids': [str(self.role_a1.id)],
-            'status': '',
-            'manage_student_recommendation': '',
-            'note': '',
+            'action': 'edit', 'record_ids': [str(self.role_a1.id)],
+            'status': '', 'note': '',
         })
         self.assertEqual(resp.status_code, 400)
 
-    def test_note_records_both_changes(self):
+    def test_same_permission_in_grant_and_revoke_is_rejected(self):
+        ids = self._ids(HSAdminPerm.BULK_ENROLL)
+        resp = self.client.post(self.url, {
+            'action': 'edit', 'record_ids': [str(self.role_a1.id)],
+            'status': '', 'grant': ids, 'revoke': ids, 'note': '',
+        })
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(self.role_a1.codenames(), set())
+
+    def test_note_records_status_grants_and_revokes(self):
         self.client.post(self.url, {
-            'action': 'edit',
-            'record_ids': [str(self.role_a1.id)],
+            'action': 'edit', 'record_ids': [str(self.role_a1.id)],
             'status': 'Inactive',
-            'manage_student_recommendation': 'No',
+            'grant': self._ids(HSAdminPerm.BULK_ENROLL),
+            'revoke': self._ids(HSAdminPerm.SUBMIT_GRADES),
             'note': 'End of year.',
         })
         note = HSAdministratorNote.objects.get(hsadmin=self.admin_a)
         self.assertIn('Status set to Inactive', note.note)
-        self.assertIn('Manage student recommendation set to No', note.note)
+        self.assertIn('Granted: Can bulk enroll', note.note)
+        self.assertIn('Revoked: Can submit grades', note.note)
         self.assertIn('End of year.', note.note)
 
 

@@ -873,11 +873,12 @@ class BulkRoleEditForm(forms.Form):
 
     Combines what used to be two separate bulk actions - 'edit_status' and the
     'toggle_student_recommendation' toggle - into a single 'edit' form, so
-    staff set both attributes (and record a note) in one round trip.
+    staff set the status, grant and revoke permissions (and record a note) in
+    one round trip.
 
-    Each attribute defaults to 'leave unchanged'. A bulk edit that always wrote
-    every field would silently overwrite the student-recommendation flag on
-    every selected row whenever someone only meant to change status.
+    Status defaults to 'leave unchanged', and only the permissions ticked under
+    Grant or Revoke change; every other permission on every selected row is
+    left as it is.
 
     Mirrors BulkPasswordChangeForm: instantiated with a list of record ids for
     the GET (modal render) pass, and with `data` for the POST (apply) pass.
@@ -895,25 +896,14 @@ class BulkRoleEditForm(forms.Form):
         choices=[]
     )
 
-    manage_student_recommendation = forms.ChoiceField(
-        required=False,
-        label='Manage Student Recommendation',
-        choices=[],
-        help_text=(
-            'Only takes effect while the role is Active. Setting the status to '
-            'Inactive clears this automatically.'
-        )
-    )
+    grant = HSAdminPermissionField(
+        label='Grant permissions',
+        help_text=('Added to every selected role. Permissions apply only while '
+                   'the role is Active.'))
 
-    manage_roster_verification = forms.ChoiceField(
-        required=False,
-        label='Verify Class Rosters',
-        choices=[],
-        help_text=(
-            'Only takes effect while the role is Active and the Roster '
-            'Verification setting lets high school admins verify.'
-        )
-    )
+    revoke = HSAdminPermissionField(
+        label='Revoke permissions',
+        help_text='Removed from every selected role.')
 
     note = forms.CharField(
         required=False,
@@ -935,12 +925,6 @@ class BulkRoleEditForm(forms.Form):
         self.fields['status'].choices = (
             [(UNCHANGED, UNCHANGED_LABEL)] + list(HSAdministratorPosition.STATUS_OPTIONS)
         )
-        self.fields['manage_student_recommendation'].choices = [
-            (UNCHANGED, UNCHANGED_LABEL), ('Yes', 'Yes'), ('No', 'No'),
-        ]
-        self.fields['manage_roster_verification'].choices = [
-            (UNCHANGED, UNCHANGED_LABEL), ('Yes', 'Yes'), ('No', 'No'),
-        ]
 
         if record_ids is None and kwargs.get('data') is not None:
             record_ids = kwargs['data'].getlist('record_ids')
@@ -966,20 +950,25 @@ class BulkRoleEditForm(forms.Form):
         self.fields['record_ids'].initial = initial
 
     def clean(self):
-        """At least one attribute must actually change.
+        """Something must change, and a permission cannot be granted and
+        revoked in the same edit.
 
-        Without this, submitting the form with both selects left on
-        'leave unchanged' would report "Successfully updated N record(s)"
-        while writing nothing.
+        Without the first check, submitting with nothing chosen would report
+        "Successfully updated N record(s)" while writing nothing.
         """
         cleaned = super().clean()
+        grant = set(cleaned.get('grant') or [])
+        revoke = set(cleaned.get('revoke') or [])
 
-        if not (cleaned.get('status')
-                or cleaned.get('manage_student_recommendation')
-                or cleaned.get('manage_roster_verification')):
+        if not (cleaned.get('status') or grant or revoke):
             raise forms.ValidationError(
-                'Choose a status, a student-recommendation or a roster-verification value to apply.'
-            )
+                'Choose a status, or a permission to grant or revoke.')
+
+        both = grant & revoke
+        if both:
+            raise forms.ValidationError(
+                'Cannot grant and revoke the same permission: '
+                + ', '.join(sorted(p.name for p in both)))
 
         return cleaned
 
@@ -996,8 +985,8 @@ class BulkRoleEditForm(forms.Form):
 
         data = self.cleaned_data
         status = data.get('status')
-        recommendation = data.get('manage_student_recommendation')
-        roster_verification = data.get('manage_roster_verification')
+        grant = [p.codename for p in data.get('grant') or []]
+        revoke = [p.codename for p in data.get('revoke') or []]
         note_text = (data.get('note') or '').strip()
 
         records = HSAdministratorPosition.objects.filter(
@@ -1009,11 +998,11 @@ class BulkRoleEditForm(forms.Form):
         for record in records:
             if status:
                 record.status = status
-            if recommendation:
-                record.meta['manage_student_recommendation'] = recommendation
-            if roster_verification:
-                record.meta['manage_roster_verification'] = roster_verification
             record.save()
+            if grant:
+                record.grant(*grant)
+            if revoke:
+                record.revoke(*revoke)
             updated += 1
             per_admin.setdefault(record.hsadmin, []).append(
                 f"{record.highschool.name} ({record.position.name})"
@@ -1022,10 +1011,10 @@ class BulkRoleEditForm(forms.Form):
         changes = []
         if status:
             changes.append(f'Status set to {status}')
-        if recommendation:
-            changes.append(f'Manage student recommendation set to {recommendation}')
-        if roster_verification:
-            changes.append(f'Verify class rosters set to {roster_verification}')
+        if grant:
+            changes.append('Granted: ' + ', '.join(HSAdminPerm.LABELS[c] for c in grant))
+        if revoke:
+            changes.append('Revoked: ' + ', '.join(HSAdminPerm.LABELS[c] for c in revoke))
         summary = '; '.join(changes)
 
         notes_created = 0
