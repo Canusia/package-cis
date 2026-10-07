@@ -349,7 +349,7 @@ FROZEN_PATHS = {
         'highschool.name', 'hsadmin.id', 'hsadmin.user.email',
         'hsadmin.user.first_name', 'hsadmin.user.last_login',
         'hsadmin.user.last_name', 'hsadmin.user.primary_phone',
-        'id', 'position.name', 'status',
+        'id', 'permissions', 'position.name', 'status',
     ],
     '/ce/highschool_admin/access_requests': [
         'email', 'highschool.name', 'id', 'name', 'status',
@@ -457,7 +457,7 @@ FROZEN_PATHS = {
     'hs admin detail > roles': [
         'highschool.name', 'hsadmin.id', 'hsadmin.user.email',
         'hsadmin.user.first_name', 'hsadmin.user.last_name',
-        'hsadmin.user.primary_phone', 'id', 'position.name',
+        'hsadmin.user.primary_phone', 'id', 'permissions', 'position.name',
         'since', 'status',
     ],
     '/ce/students/ dirty': [
@@ -557,12 +557,9 @@ FROZEN_PATHS = {
 #   profiles, and ce_url on hs_student_detail -- that one deliberately, since
 #   the profile omits the Edit action because it links into /ce/, which HS
 #   admins may not reach.
-#
-#   absent from the fixture -- meta.manage_student_recommendation is served
-#   (the whole `meta` JSONField is), but the fixture row's dict is empty.
 KNOWN_UNANSWERED = {
     '/ce/highschool_admins/': [
-        'meta.manage_student_recommendation', 'since',
+        'since',
     ],
     '/ce/instructors/': [
         'course.name', 'teacher.ce_url', 'teacher.user.email',
@@ -585,9 +582,6 @@ KNOWN_UNANSWERED = {
     'student detail > files': [
         'student.ce_url', 'student.user.first_name',
         'student.user.last_name',
-    ],
-    'hs admin detail > roles': [
-        'meta.manage_student_recommendation',
     ],
     '/ce/students/ dirty': [
         'account_verified',
