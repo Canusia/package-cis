@@ -19,7 +19,7 @@ from django.test import TestCase
 from cis.models.customuser import CustomUser
 from cis.models.highschool import HighSchool
 from cis.models.highschool_administrator import (
-    HSAdministrator, HSAdministratorPosition, HSPosition,
+    HSAdminPerm, HSAdministrator, HSAdministratorPosition, HSPosition,
 )
 
 
@@ -32,10 +32,11 @@ class PositionStatusCasingTests(TestCase):
         self.position = HSPosition.objects.create(name='Counselor')
 
     def _position(self, status):
-        return HSAdministratorPosition.objects.create(
+        position = HSAdministratorPosition.objects.create(
             hsadmin=self.admin, highschool=self.hs, position=self.position,
-            status=status, meta={'manage_student_recommendation': 'Yes'},
-        )
+            status=status)
+        position.grant(HSAdminPerm.MANAGE_STUDENT_RECOMMENDATION)
+        return position
 
     def test_active_position_grants_both(self):
         self._position('Active')

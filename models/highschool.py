@@ -360,21 +360,17 @@ class HighSchool(models.Model):
         Returns a queryset of HSAdministrator in the high school.
         '''
         from cis.models.highschool_administrator import (
-            HSAdministrator, HSAdministratorPosition
+            HSAdminPerm, HSAdministrator, HSAdministratorPosition
         )
 
         if status == 'can_manage_student_recommendation':
             admin_positions = HSAdministratorPosition.objects.filter(
-                highschool=self.id,
-                status__iexact='active',
-                meta__manage_student_recommendation__iexact='yes'
-            )
+                highschool=self.id
+            ).with_perm(HSAdminPerm.MANAGE_STUDENT_RECOMMENDATION)
         elif status == 'can_verify_roster':
             admin_positions = HSAdministratorPosition.objects.filter(
-                highschool=self.id,
-                status__iexact='active',
-                meta__manage_roster_verification__iexact='yes'
-            )
+                highschool=self.id
+            ).with_perm(HSAdminPerm.VERIFY_ROSTER)
         else:
             admin_positions = HSAdministratorPosition.objects.filter(
                 highschool=self.id,

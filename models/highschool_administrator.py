@@ -219,13 +219,31 @@ class HSAdministrator(models.Model):
             'record_id': self.id})
 
     def can_manage_student_student_recommendation(self, highschool_id):
+        # Deprecated duplicate of can_manage_student_recommendation.
+        return self.can_manage_student_recommendation(highschool_id)
+
+    def has_school_perm(self, codename, highschool_id):
+        """True if an Active position of this admin at `highschool_id` holds
+        `codename` (an HSAdminPerm constant).
+
+        A student with no high school yields highschool_id=None; refuse it
+        explicitly so a future filter change cannot turn a missing high
+        school into a match."""
+        if not highschool_id:
+            return False
         return HSAdministratorPosition.objects.filter(
-            hsadmin=self,
-            status__iexact='active',
-            meta__manage_student_recommendation__iexact='yes',
-            highschool__id=highschool_id
-        ).exists()
-    
+            hsadmin=self, highschool__id=highschool_id,
+        ).with_perm(codename).exists()
+
+    def highschools_with_perm(self, codename):
+        """HighSchool queryset where has_school_perm(codename, ...) is True.
+
+        Exact 'Active', matching get_highschools(): an admin listed here but
+        excluded there is shown pending work whose page then 404s."""
+        highschool_ids = HSAdministratorPosition.objects.filter(
+            hsadmin__id=self.id).with_perm(codename).values_list('highschool', flat=True)
+        return HighSchool.objects.filter(id__in=highschool_ids)
+
     def get_highschools(self, status='Active'):
         """
         Return a HighSchool queryset for highschool_admin. If status is 
@@ -242,62 +260,26 @@ class HSAdministrator(models.Model):
             return []
 
     def can_manage_student_recommendation(self, highschool_id):
-        from cis.models.highschool_administrator import HSAdministratorPosition
-
-        # A student with no high school yields highschool_id=None. The filter
-        # below would return False for it anyway, but only by accident; make
-        # the refusal explicit so a future filter change cannot turn a missing
-        # high school into a match.
-        if not highschool_id:
-            return False
-
-        return HSAdministratorPosition.objects.filter(
-            highschool__id=highschool_id,
-            # Exact 'Active', matching get_highschools(). These three predicates
-            # are a set: an admin listed by get_recommendation_highschools() but
-            # excluded by get_highschools() is shown pending work whose student
-            # page then 404s. `status` is choices-constrained and toggle_status()
-            # writes 'Active', so only an import can produce another casing.
-            status='Active',
-            meta__manage_student_recommendation__iexact='yes',
-            hsadmin=self
-        ).exists()
+        return self.has_school_perm(
+            HSAdminPerm.MANAGE_STUDENT_RECOMMENDATION, highschool_id)
 
     def can_verify_roster(self, highschool_id):
         """True if this admin's Active role at the school has Verify Class
         Rosters. Whether high school admins may verify at all is the Roster
         Verification setting's call (roster_verification.can_verify); check
         both (#69)."""
-        from cis.models.highschool_administrator import HSAdministratorPosition
-
-        if not highschool_id:
-            return False
-
-        return HSAdministratorPosition.objects.filter(
-            highschool__id=highschool_id,
-            status='Active',
-            meta__manage_roster_verification__iexact='yes',
-            hsadmin=self
-        ).exists()
+        return self.has_school_perm(HSAdminPerm.VERIFY_ROSTER, highschool_id)
 
     def get_roster_highschools(self):
         """Queryset counterpart to can_verify_roster(), for filtering lists."""
-        from cis.models.highschool_administrator import HSAdministratorPosition
-
-        highschool_ids = HSAdministratorPosition.objects.filter(
-            hsadmin__id=self.id,
-            status='Active',
-            meta__manage_roster_verification__iexact='yes',
-        ).values_list('highschool', flat=True)
-
-        return HighSchool.objects.filter(id__in=highschool_ids)
+        return self.highschools_with_perm(HSAdminPerm.VERIFY_ROSTER)
 
     def get_recommendation_highschools(self):
         """High schools where this admin may manage student recommendations.
 
         Queryset counterpart to can_manage_student_recommendation(), for
         filtering lists. The two must agree, so both key off the same active
-        position plus the manage_student_recommendation meta flag. Callers that
+        position plus the can_manage_student_recommendation permission. Callers that
         show pending-recommendation work should use this rather than
         get_highschools(), which is every school the admin holds any position
         at.
@@ -306,15 +288,7 @@ class HSAdministrator(models.Model):
         also agree with get_highschools(), or this returns a school that one
         excludes and the admin is shown work they cannot open.
         """
-        from cis.models.highschool_administrator import HSAdministratorPosition
-
-        highschool_ids = HSAdministratorPosition.objects.filter(
-            hsadmin__id=self.id,
-            status='Active',
-            meta__manage_student_recommendation__iexact='yes',
-        ).values_list('highschool', flat=True)
-
-        return HighSchool.objects.filter(id__in=highschool_ids)
+        return self.highschools_with_perm(HSAdminPerm.MANAGE_STUDENT_RECOMMENDATION)
 
     @classmethod
     def create_new(cls, first_name, last_name, email, primary_phone='', **kwargs):
@@ -563,10 +537,10 @@ class HSAdministratorPosition(models.Model):
 
     def toggle_student_recommendation(self):
         if self.status == 'Active':
-            if normalize_position_flag(self.meta.get('manage_student_recommendation')) == 'Yes':
-                self.meta['manage_student_recommendation'] = 'No'
+            if self.has_perm(HSAdminPerm.MANAGE_STUDENT_RECOMMENDATION):
+                self.revoke(HSAdminPerm.MANAGE_STUDENT_RECOMMENDATION)
             else:
-                self.meta['manage_student_recommendation'] = 'Yes'
+                self.grant(HSAdminPerm.MANAGE_STUDENT_RECOMMENDATION)
         
         self.save()
 

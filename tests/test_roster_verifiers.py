@@ -15,7 +15,7 @@ from cis.models import CustomUser
 from cis.models.course import Cohort, Course
 from cis.models.highschool import HighSchool
 from cis.models.highschool_administrator import (
-    HSAdministrator, HSAdministratorPosition, HSPosition)
+    HSAdminPerm, HSAdministrator, HSAdministratorPosition, HSPosition)
 from cis.models.section import ClassSection
 from cis.models.teacher import Teacher
 from cis.models.term import AcademicYear, Term
@@ -84,9 +84,10 @@ class RosterVerifierTests(TestCase):
                 username=name, email=f'{name}@example.com', password='x',
                 first_name=name.title(), last_name='Admin')
             hsadmin = HSAdministrator.objects.create(user=user)
-            HSAdministratorPosition.objects.create(
-                hsadmin=hsadmin, highschool=school, position=position,
-                status=status, meta={'manage_roster_verification': flag})
+            role = HSAdministratorPosition.objects.create(
+                hsadmin=hsadmin, highschool=school, position=position, status=status)
+            if flag == 'Yes':
+                role.grant(HSAdminPerm.VERIFY_ROSTER)
             return user
 
         self.admin_yes = admin('ayes', self.school)
@@ -348,15 +349,8 @@ class RosterFlagRoleTests(TestCase):
         self.admin = HSAdministrator.objects.create(user=user)
         self.role = HSAdministratorPosition.objects.create(
             hsadmin=self.admin, highschool=self.school,
-            position=HSPosition.objects.create(name='Principal'), status='Active',
-            meta={'manage_roster_verification': 'Yes'})
-
-    def test_role_form_defaults_to_no(self):
-        from cis.forms.highschool import HSAdministratorPositionForm
-        field = HSAdministratorPositionForm(id='-1', initial={'id': '-1'}).fields[
-            'manage_roster_verification']
-        self.assertEqual(field.initial, 'No')
-        self.assertEqual(field.choices[0][0], 'No')
+            position=HSPosition.objects.create(name='Principal'), status='Active')
+        self.role.grant(HSAdminPerm.VERIFY_ROSTER)
 
     def test_can_verify_roster_follows_the_flag_and_status(self):
         self.assertTrue(self.admin.can_verify_roster(self.school.id))
@@ -364,7 +358,7 @@ class RosterFlagRoleTests(TestCase):
         self.role.status = 'Inactive'
         self.role.save()
         self.role.refresh_from_db()
-        self.assertEqual(self.role.meta['manage_roster_verification'], 'No')
+        self.assertEqual(self.role.codenames(), {HSAdminPerm.VERIFY_ROSTER})  # kept while Inactive
         self.assertFalse(self.admin.can_verify_roster(self.school.id))
 
 

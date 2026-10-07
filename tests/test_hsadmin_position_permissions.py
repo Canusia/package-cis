@@ -6,6 +6,7 @@ from django.contrib.auth.models import Permission
 from django.contrib.contenttypes.models import ContentType
 from django.test import TestCase
 
+from cis.models.highschool import HighSchool  # noqa: F401  (used by later tests)
 from cis.models.highschool_administrator import (
     HSAdminPerm, HSAdministratorPosition, hsadmin_permission_objects)
 from cis.tests.test_hs_admin_roles_tab import HsAdminRoleFixtureMixin
@@ -77,3 +78,61 @@ class PositionPermissionApiTests(HsAdminRoleFixtureMixin, TestCase):
         self.assertEqual(role.codenames(), {HSAdminPerm.BULK_ENROLL})
         role.set_perms([HSAdminPerm.SUBMIT_GRADES])
         self.assertEqual(role.codenames(), {HSAdminPerm.SUBMIT_GRADES})
+
+
+class AdministratorPermissionTests(HsAdminRoleFixtureMixin, TestCase):
+    """role_a1 = admin_a @ Central (Active), role_a2 = admin_a @ North (Active),
+    role_b1 = admin_b @ Central (Inactive)."""
+
+    def setUp(self):
+        self.build_fixture()
+
+    def tearDown(self):
+        self.tear_down_fixture()
+
+    def test_has_school_perm_is_per_school(self):
+        self.role_a1.grant(HSAdminPerm.SUBMIT_GRADES)
+        self.assertTrue(self.admin_a.has_school_perm(HSAdminPerm.SUBMIT_GRADES, self.central.id))
+        self.assertFalse(self.admin_a.has_school_perm(HSAdminPerm.SUBMIT_GRADES, self.north.id))
+        self.assertEqual(list(self.admin_a.highschools_with_perm(HSAdminPerm.SUBMIT_GRADES)),
+                         [self.central])
+
+    def test_falsy_school_is_refused(self):
+        self.role_a1.grant(HSAdminPerm.SUBMIT_GRADES)
+        for value in (None, ''):
+            self.assertFalse(self.admin_a.has_school_perm(HSAdminPerm.SUBMIT_GRADES, value))
+
+    def test_inactive_and_lowercase_status_grant_nothing(self):
+        self.role_b1.grant(HSAdminPerm.VERIFY_ROSTER)
+        self.assertFalse(self.admin_b.can_verify_roster(self.central.id))
+        HSAdministratorPosition.objects.filter(pk=self.role_b1.pk).update(status='active')
+        self.assertFalse(self.admin_b.can_verify_roster(self.central.id))
+        self.assertFalse(self.central.administrators_in_highschool(
+            status='can_verify_roster').exists())
+
+    def test_wrappers_follow_permissions(self):
+        self.role_a1.grant(HSAdminPerm.MANAGE_STUDENT_RECOMMENDATION, HSAdminPerm.VERIFY_ROSTER)
+        self.assertTrue(self.admin_a.can_manage_student_recommendation(self.central.id))
+        self.assertTrue(self.admin_a.can_manage_student_student_recommendation(self.central.id))
+        self.assertTrue(self.admin_a.can_verify_roster(self.central.id))
+        self.assertEqual(list(self.admin_a.get_recommendation_highschools()), [self.central])
+        self.assertEqual(list(self.admin_a.get_roster_highschools()), [self.central])
+        self.assertEqual(
+            list(self.central.administrators_in_highschool(status='can_verify_roster')),
+            [self.admin_a])
+        self.assertEqual(
+            list(self.central.administrators_in_highschool(
+                status='can_manage_student_recommendation')),
+            [self.admin_a])
+
+    def test_meta_flags_are_no_longer_read(self):
+        HSAdministratorPosition.objects.filter(pk=self.role_a1.pk).update(
+            meta={'manage_student_recommendation': 'Yes', 'manage_roster_verification': 'Yes'})
+        self.assertFalse(self.admin_a.can_manage_student_recommendation(self.central.id))
+        self.assertFalse(self.admin_a.can_verify_roster(self.central.id))
+
+    def test_toggle_student_recommendation(self):
+        self.role_a1.toggle_student_recommendation()
+        self.assertTrue(self.role_a1.has_perm(HSAdminPerm.MANAGE_STUDENT_RECOMMENDATION))
+        self.role_a1.toggle_student_recommendation()
+        self.assertFalse(self.role_a1.has_perm(HSAdminPerm.MANAGE_STUDENT_RECOMMENDATION))
