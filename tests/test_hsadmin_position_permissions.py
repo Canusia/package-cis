@@ -2,11 +2,13 @@
 
 Spec: docs/superpowers/specs/2026-10-07-hsadmin-position-permissions-design.md
 """
+from unittest import mock
+
 from django.contrib.auth.models import Permission
 from django.contrib.contenttypes.models import ContentType
-from django.test import TestCase
+from django.test import RequestFactory, TestCase
 
-from cis.models.highschool import HighSchool  # noqa: F401  (used by later tests)
+from cis.models.highschool import HighSchool
 from cis.models.highschool_administrator import (
     HSAdminPerm, HSAdministratorPosition, hsadmin_permission_objects)
 from cis.tests.test_hs_admin_roles_tab import HsAdminRoleFixtureMixin
@@ -167,3 +169,62 @@ class LifecycleTests(HsAdminRoleFixtureMixin, TestCase):
             self.admin_b, self.north, self.principal, 'Active')
         self.assertEqual(role.codenames(), set())
         self.assertEqual(role.meta, {})
+
+
+class RoleFormPermissionTests(HsAdminRoleFixtureMixin, TestCase):
+    def setUp(self):
+        self.build_fixture()
+
+    def tearDown(self):
+        self.tear_down_fixture()
+
+    def _render_edit(self, role):
+        from cis.views.hs_administrator import add_new_role
+        request = RequestFactory().get('/', {
+            'id': str(role.id), 'parent': str(role.hsadmin_id), 'ajax': '1'})
+        request.user = self.staff
+        return add_new_role(request).content.decode()
+
+    def _edit(self, role, permission_ids):
+        from cis.forms.highschool import HSAdministratorPositionForm
+        data = {
+            'id': str(role.id), 'hs_admin': str(role.hsadmin_id), 'ajax': '1',
+            'highschool': str(role.highschool_id), 'position': str(role.position_id),
+            'status': 'Active', 'note': 'n', 'permissions': permission_ids,
+        }
+        form = HSAdministratorPositionForm(id=str(role.id), data=data)
+        self.assertTrue(form.is_valid(), form.errors)
+        request = RequestFactory().post('/')
+        request.user = self.staff
+        return form.save(request)
+
+    def _ids(self, *codenames):
+        return [str(p.pk) for p in hsadmin_permission_objects(codenames)]
+
+    def test_renders_nine_checkboxes_with_current_ticked(self):
+        self.role_a1.grant(HSAdminPerm.BULK_ENROLL)
+        body = self._render_edit(self.role_a1)
+        self.assertEqual(body.count('name="permissions"'), 9)
+        self.assertIn('Can bulk enroll', body)
+        self.assertNotIn('name="manage_student_recommendation"', body)
+        checked = hsadmin_permission_objects([HSAdminPerm.BULK_ENROLL]).get()
+        self.assertRegex(body, rf'value="{checked.pk}"[^>]*checked')
+
+    def test_edit_sets_exactly_the_ticked_permissions(self):
+        self.role_a1.grant(HSAdminPerm.SUBMIT_GRADES)
+        self._edit(self.role_a1, self._ids(HSAdminPerm.BULK_ENROLL, HSAdminPerm.VERIFY_ROSTER))
+        self.assertEqual(self.role_a1.codenames(),
+                         {HSAdminPerm.BULK_ENROLL, HSAdminPerm.VERIFY_ROSTER})
+
+    def test_edit_with_nothing_ticked_clears(self):
+        self.role_a1.grant(HSAdminPerm.SUBMIT_GRADES)
+        self._edit(self.role_a1, [])
+        self.assertEqual(self.role_a1.codenames(), set())
+
+    def test_new_role_defaults_to_nothing_ticked(self):
+        from cis.forms.highschool import HSAdministratorPositionForm
+        with mock.patch('cis.forms.highschool.picker_queryset',
+                        return_value=HighSchool.objects.all()):
+            form = HSAdministratorPositionForm(id='-1', initial={'id': '-1'})
+        self.assertFalse(form['permissions'].value())
+        self.assertFalse(form.fields['permissions'].required)
