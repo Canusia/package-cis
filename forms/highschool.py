@@ -29,6 +29,7 @@ from cis.models.highschool_administrator import (
 from cis.models.teacher import TeacherCourseCertificate
 from cis.utils import user_has_cis_role, get_movable_reference_choices, move_references
 from cis.highschool_scope import picker_queryset
+from cis.forms.widgets import DualListSelectMultiple
 
 from cis.validators import validate_html_short_code
 
@@ -295,11 +296,13 @@ class HSTranscriptUploadForm(forms.ModelForm):
         return media
 
 class HSAdminPermissionField(forms.ModelMultipleChoiceField):
-    """Checkboxes over the nine HS admin permissions, labelled by name."""
+    """The nine HS admin permissions as Available / Chosen lists (like Django
+    admin's group permissions), labelled by name."""
 
-    def __init__(self, **kwargs):
+    def __init__(self, chosen_label='Chosen permissions', **kwargs):
         kwargs.setdefault('required', False)
-        kwargs.setdefault('widget', forms.CheckboxSelectMultiple)
+        kwargs.setdefault('widget', DualListSelectMultiple(
+            available_label='Available permissions', chosen_label=chosen_label, size=9))
         super().__init__(queryset=hsadmin_permission_objects(HSAdminPerm.ALL), **kwargs)
 
     def label_from_instance(self, obj):
@@ -916,11 +919,13 @@ class BulkRoleEditForm(forms.Form):
     )
 
     grant = HSAdminPermissionField(
+        chosen_label='Grant to selected roles',
         label='Grant permissions',
         help_text=('Added to every selected role. Permissions apply only while '
                    'the role is Active.'))
 
     revoke = HSAdminPermissionField(
+        chosen_label='Revoke from selected roles',
         label='Revoke permissions',
         help_text='Removed from every selected role.')
 

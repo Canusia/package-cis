@@ -1,0 +1,80 @@
+{% with wid=widget.attrs.id|default:widget.name %}
+<div class="duallist" id="{{ wid }}_duallist" data-duallist>
+  <select name="{{ widget.name }}" multiple hidden{% if widget.attrs.id %} id="{{ widget.attrs.id }}"{% endif %}{% if widget.disabled %} disabled{% endif %}>{% for group_name, group_choices, group_index in widget.optgroups %}{% for option in group_choices %}
+    <option value="{{ option.value|stringformat:'s' }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>{% endfor %}{% endfor %}
+  </select>
+  {% if widget.disabled %}
+  <ul class="list-unstyled mb-0">{% for group_name, group_choices, group_index in widget.optgroups %}{% for option in group_choices %}{% if option.selected %}
+    <li><i class="fas fa-check text-success mr-1"></i>{{ option.label }}</li>{% endif %}{% endfor %}{% endfor %}
+  </ul>
+  {% else %}
+  <div class="form-row align-items-center">
+    <div class="col">
+      <div class="small font-weight-bold mb-1">{{ widget.available_label }}</div>
+      <input type="text" class="form-control form-control-sm mb-1" placeholder="Filter" data-dl-filter="available" aria-label="Filter {{ widget.available_label|lower }}">
+      <select multiple class="form-control" size="{{ widget.size }}" data-dl-list="available" aria-label="{{ widget.available_label }}"></select>
+      <button type="button" class="btn btn-link btn-sm px-0" data-dl-add-all>Choose all &raquo;</button>
+    </div>
+    <div class="col-auto d-flex flex-column">
+      <button type="button" class="btn btn-outline-secondary btn-sm mb-1" data-dl-add title="Choose" aria-label="Choose selected">&rarr;</button>
+      <button type="button" class="btn btn-outline-secondary btn-sm" data-dl-remove title="Remove" aria-label="Remove selected">&larr;</button>
+    </div>
+    <div class="col">
+      <div class="small font-weight-bold mb-1">{{ widget.chosen_label }}</div>
+      <input type="text" class="form-control form-control-sm mb-1" placeholder="Filter" data-dl-filter="chosen" aria-label="Filter {{ widget.chosen_label|lower }}">
+      <select multiple class="form-control" size="{{ widget.size }}" data-dl-list="chosen" aria-label="{{ widget.chosen_label }}"></select>
+      <button type="button" class="btn btn-link btn-sm px-0" data-dl-remove-all>&laquo; Remove all</button>
+    </div>
+  </div>
+  <script>
+  (function () {
+    var root = document.getElementById('{{ wid|escapejs }}_duallist');
+    if (!root || root.dataset.dlReady) { return; }
+    root.dataset.dlReady = '1';
+    var source = root.querySelector('select[name]');
+    var lists = {
+      available: root.querySelector('[data-dl-list="available"]'),
+      chosen: root.querySelector('[data-dl-list="chosen"]')
+    };
+    var filters = {
+      available: root.querySelector('[data-dl-filter="available"]'),
+      chosen: root.querySelector('[data-dl-filter="chosen"]')
+    };
+
+    function render() {
+      ['available', 'chosen'].forEach(function (side) {
+        var term = filters[side].value.trim().toLowerCase();
+        lists[side].innerHTML = '';
+        Array.prototype.forEach.call(source.options, function (opt) {
+          if (opt.selected !== (side === 'chosen')) { return; }
+          if (term && opt.text.toLowerCase().indexOf(term) === -1) { return; }
+          lists[side].appendChild(new Option(opt.text, opt.value));
+        });
+      });
+    }
+
+    function move(side, all) {
+      var values = Array.prototype.filter.call(lists[side].options, function (o) {
+        return all || o.selected;
+      }).map(function (o) { return o.value; });
+      Array.prototype.forEach.call(source.options, function (opt) {
+        if (values.indexOf(opt.value) !== -1) { opt.selected = (side === 'available'); }
+      });
+      render();
+      source.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    root.querySelector('[data-dl-add]').addEventListener('click', function () { move('available', false); });
+    root.querySelector('[data-dl-remove]').addEventListener('click', function () { move('chosen', false); });
+    root.querySelector('[data-dl-add-all]').addEventListener('click', function () { move('available', true); });
+    root.querySelector('[data-dl-remove-all]').addEventListener('click', function () { move('chosen', true); });
+    lists.available.addEventListener('dblclick', function () { move('available', false); });
+    lists.chosen.addEventListener('dblclick', function () { move('chosen', false); });
+    filters.available.addEventListener('input', render);
+    filters.chosen.addEventListener('input', render);
+    render();
+  })();
+  </script>
+  {% endif %}
+</div>
+{% endwith %}

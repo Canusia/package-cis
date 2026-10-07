@@ -202,14 +202,18 @@ class RoleFormPermissionTests(HsAdminRoleFixtureMixin, TestCase):
     def _ids(self, *codenames):
         return [str(p.pk) for p in hsadmin_permission_objects(codenames)]
 
-    def test_renders_nine_checkboxes_with_current_ticked(self):
+    def test_renders_a_dual_list_with_current_chosen(self):
         self.role_a1.grant(HSAdminPerm.BULK_ENROLL)
         body = self._render_edit(self.role_a1)
-        self.assertEqual(body.count('name="permissions"'), 9)
+        self.assertIn('id="id_permissions_duallist"', body)
+        self.assertEqual(body.count('name="permissions"'), 1)
+        start = body.index('id="id_permissions_duallist"')
+        source = body[start:body.index('</select>', start)]
+        self.assertEqual(source.count('<option value='), 9)
         self.assertIn('Can bulk enroll', body)
         self.assertNotIn('name="manage_student_recommendation"', body)
-        checked = hsadmin_permission_objects([HSAdminPerm.BULK_ENROLL]).get()
-        self.assertRegex(body, rf'value="{checked.pk}"[^>]*checked')
+        chosen = hsadmin_permission_objects([HSAdminPerm.BULK_ENROLL]).get()
+        self.assertRegex(body, rf'<option value="{chosen.pk}"[^>]*selected')
 
     def test_edit_sets_exactly_the_ticked_permissions(self):
         self.role_a1.grant(HSAdminPerm.SUBMIT_GRADES)

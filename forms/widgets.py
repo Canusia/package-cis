@@ -168,3 +168,33 @@ def graduation_widget(css_class=None, empty_label=GRADUATION_EMPTY_LABELS):
         empty_label=empty_label,
         years=graduation_years(),
     )
+
+
+class DualListSelectMultiple(forms.SelectMultiple):
+    """Django-admin-style "Available / Chosen" lists with move buttons.
+
+    Renders the real ``<select multiple>`` hidden and two visible lists that
+    keep it in sync, so the form posts exactly what a plain SelectMultiple
+    posts. The inline script initialises its own instance when it runs, which
+    is what lets it work inside modals inserted with jQuery ``.html()`` —
+    Django admin's FilteredSelectMultiple only initialises on window load.
+    A disabled field renders the chosen items read-only.
+    """
+    template_name = 'cis/widgets/dual_list.html'
+
+    def __init__(self, attrs=None, choices=(), available_label='Available',
+                 chosen_label='Chosen', size=8):
+        super().__init__(attrs, choices)
+        self.available_label = available_label
+        self.chosen_label = chosen_label
+        self.size = size
+
+    def get_context(self, name, value, attrs):
+        context = super().get_context(name, value, attrs)
+        context['widget'].update({
+            'available_label': self.available_label,
+            'chosen_label': self.chosen_label,
+            'size': self.size,
+            'disabled': bool(context['widget']['attrs'].get('disabled')),
+        })
+        return context
