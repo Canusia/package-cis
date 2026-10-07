@@ -475,8 +475,13 @@ class HSAdministratorPositionForm(forms.Form):
         widget=forms.HiddenInput
     )
 
-    def __init__(self, id, *args, **kwargs):
+    def __init__(self, id, *args, can_grant=True, **kwargs):
         super().__init__(*args, **kwargs)
+
+        # The HS admin portal's personnel modal uses this form too; only CE
+        # grants permissions, so it never sees (or posts) the field.
+        if not can_grant:
+            del self.fields['permissions']
 
         initial = kwargs.get('initial', kwargs.get('data', {'id':'-1'}))
         if id != '-1':
@@ -529,7 +534,8 @@ class HSAdministratorPositionForm(forms.Form):
 
         if commit:
             record.save()
-            record.set_perms([p.codename for p in data.get('permissions') or []])
+            if 'permissions' in self.fields:
+                record.set_perms([p.codename for p in data.get('permissions') or []])
 
         return record
 

@@ -222,6 +222,30 @@ class RoleFormPermissionTests(HsAdminRoleFixtureMixin, TestCase):
         self._edit(self.role_a1, [])
         self.assertEqual(self.role_a1.codenames(), set())
 
+    def test_hs_admin_does_not_see_permissions(self):
+        """The HS admin portal's personnel 'Update Status' modal uses this
+        form; only CE grants permissions (spec: Defaults)."""
+        from cis.views.hs_administrator import add_new_role
+        request = RequestFactory().get('/', {
+            'id': str(self.role_a1.id), 'parent': str(self.role_a1.hsadmin_id), 'ajax': '1'})
+        request.user = self.user_a
+        body = add_new_role(request).content.decode()
+        self.assertIn('name="status"', body)
+        self.assertNotIn('name="permissions"', body)
+
+    def test_hs_admin_post_cannot_change_permissions(self):
+        from cis.views.hs_administrator import add_new_role
+        self.role_a1.grant(HSAdminPerm.SUBMIT_GRADES)
+        request = RequestFactory().post('/?ajax=1', {
+            'id': str(self.role_a1.id), 'hs_admin': str(self.role_a1.hsadmin_id),
+            'ajax': '1', 'highschool': str(self.central.id),
+            'position': str(self.role_a1.position_id), 'status': 'Active', 'note': 'n',
+            'permissions': self._ids(HSAdminPerm.BULK_ENROLL, HSAdminPerm.VERIFY_ROSTER),
+        })
+        request.user = self.user_a
+        add_new_role(request)
+        self.assertEqual(self.role_a1.codenames(), {HSAdminPerm.SUBMIT_GRADES})
+
     def test_new_role_defaults_to_nothing_ticked(self):
         from cis.forms.highschool import HSAdministratorPositionForm
         with mock.patch('cis.forms.highschool.picker_queryset',

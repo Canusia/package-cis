@@ -457,7 +457,8 @@ def add_new_role(request):
         
         form = HSAdministratorPositionForm(
             id=request.POST.get('id'),
-            data=request.POST
+            data=request.POST,
+            can_grant=user_has_cis_role(request.user),
         )
 
         if form.is_valid():
@@ -513,7 +514,8 @@ def add_new_role(request):
 
         form = HSAdministratorPositionForm(
             id=request.GET.get('id'),
-            initial=initial
+            initial=initial,
+            can_grant=user_has_cis_role(request.user),
         )
 
     if not user_has_cis_role(request.user):
