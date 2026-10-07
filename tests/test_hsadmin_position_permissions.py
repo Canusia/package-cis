@@ -312,3 +312,35 @@ class AccessRequestPermissionTests(HsAdminRoleFixtureMixin, TestCase):
         self.req.refresh_from_db()
         form = self._form(self.staff, instance=self.req)
         self.assertNotIn('permissions', form.fields)
+
+
+class SerializerTests(HsAdminRoleFixtureMixin, TestCase):
+    def setUp(self):
+        self.build_fixture()
+
+    def tearDown(self):
+        self.tear_down_fixture()
+
+    def test_permissions_serialize_as_codenames(self):
+        from cis.serializers.highschool import HighSchoolAdministratorSerializer
+        self.role_a1.grant(HSAdminPerm.SUBMIT_GRADES, HSAdminPerm.BULK_ENROLL)
+        data = HighSchoolAdministratorSerializer(self.role_a1).data
+        self.assertEqual(data['permissions'],
+                         [HSAdminPerm.BULK_ENROLL, HSAdminPerm.SUBMIT_GRADES])
+
+    def test_eager_queryset_prefetches_permissions(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        from cis.serializers.highschool import HighSchoolAdministratorSerializer
+        from cis.views.eager import with_highschool_administrator_related
+        for role in (self.role_a1, self.role_a2, self.role_b1):
+            role.grant(HSAdminPerm.BULK_ENROLL)
+
+        def count(n):
+            qs = with_highschool_administrator_related(
+                HSAdministratorPosition.objects.order_by('id'))[:n]
+            with CaptureQueriesContext(connection) as ctx:
+                HighSchoolAdministratorSerializer(qs, many=True).data
+            return len(ctx.captured_queries)
+
+        self.assertEqual(count(1), count(3))

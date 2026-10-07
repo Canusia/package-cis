@@ -5,6 +5,7 @@ from rest_framework import serializers
 from ..models.district import District
 from ..models.highschool import HighSchool, HighSchoolTranscript
 from ..models.highschool_administrator import (
+    HSAdminPerm,
     HSAdministratorPosition, HSAdministratorAccessRequest
 )
 from ..models.teacher import TeacherHighSchool, TeacherCourseCertificate
@@ -144,10 +145,16 @@ class HighSchoolAdministratorSerializer(serializers.ModelSerializer):
     hsadmin = HSAdministratorSerializer()
     position = HSPositionSerializer()
     highschool = HighSchoolSerializer()
+    # Codenames in HSAdminPerm.ALL order, not Permission pks.
+    permissions = serializers.SerializerMethodField()
 
     class Meta:
         model = HSAdministratorPosition
         fields = '__all__'
+
+    def get_permissions(self, obj):
+        held = obj.codenames()
+        return [c for c in HSAdminPerm.ALL if c in held]
 
 
 class TeacherCourseSerializer(serializers.ModelSerializer):
