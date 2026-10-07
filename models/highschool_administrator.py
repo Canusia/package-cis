@@ -432,15 +432,75 @@ class HSPosition(models.Model):
             record.save()
         return record
 
-# Per-role permission flags, stored in HSAdministratorPosition.meta as 'Yes' or
-# 'No'. Access checks use meta__<flag>__iexact='yes', so anything else -- a
-# missing key included -- means 'No'; forms and imports must agree (#72).
+# DEPRECATED (v0.1.15a): permissions moved to HSAdministratorPosition.permissions
+# (HSAdminPerm). Kept importable for one release; nothing reads these keys.
 POSITION_FLAGS = ('manage_student_recommendation', 'manage_roster_verification')
 
 
 def normalize_position_flag(value):
     """'Yes' for any casing of yes, otherwise 'No' (unset included)."""
     return 'Yes' if str(value or '').strip().lower() == 'yes' else 'No'
+
+
+class HSAdminPerm:
+    """Codenames of the per-school HS admin permissions. Other packages import
+    these constants rather than hard-coding the strings."""
+    MANAGE_STUDENT_RECOMMENDATION = 'can_manage_student_recommendation'
+    VERIFY_ROSTER = 'can_verify_roster'
+    BULK_UPLOAD_STUDENTS = 'can_bulk_upload_students'
+    BULK_ENROLL = 'can_bulk_enroll'
+    BULK_UPLOAD_SUPPORTING_DOCS = 'can_bulk_upload_supporting_docs'
+    MANAGE_SCHOOL_PERSONNEL = 'can_manage_school_personnel'
+    MANAGE_FUTURE_SECTIONS = 'can_manage_future_sections'
+    SUBMIT_DROP_REQUESTS = 'can_submit_drop_requests'
+    SUBMIT_GRADES = 'can_submit_grades'
+
+    LABELS = {
+        MANAGE_STUDENT_RECOMMENDATION: 'Can manage student recommendations',
+        VERIFY_ROSTER: 'Can verify class rosters',
+        BULK_UPLOAD_STUDENTS: 'Can bulk upload students',
+        BULK_ENROLL: 'Can bulk enroll',
+        BULK_UPLOAD_SUPPORTING_DOCS: 'Can upload supporting documents',
+        MANAGE_SCHOOL_PERSONNEL: 'Can manage school personnel',
+        MANAGE_FUTURE_SECTIONS: 'Can manage future sections',
+        SUBMIT_DROP_REQUESTS: 'Can submit drop requests',
+        SUBMIT_GRADES: 'Can submit grades',
+    }
+    ALL = tuple(LABELS)
+
+
+# A codename alone is not unique in auth_permission; every lookup pins the
+# content type too.
+_PERMISSION_CT = {
+    'content_type__app_label': 'cis',
+    'content_type__model': 'hsadministratorposition',
+}
+
+
+def hsadmin_permission_objects(codenames):
+    """Permission rows for `codenames`, in HSAdminPerm.ALL order. Raises
+    ValueError for anything that is not an HS admin permission."""
+    from django.contrib.auth.models import Permission
+    from django.db.models import Case, IntegerField, When
+
+    codenames = list(codenames)
+    unknown = set(codenames) - set(HSAdminPerm.ALL)
+    if unknown:
+        raise ValueError(f'Unknown HS admin permission(s): {sorted(unknown)}')
+
+    order = Case(*[When(codename=c, then=i) for i, c in enumerate(HSAdminPerm.ALL)],
+                 output_field=IntegerField())
+    return Permission.objects.filter(
+        codename__in=codenames, **_PERMISSION_CT).order_by(order)
+
+
+class HSAdministratorPositionQuerySet(models.QuerySet):
+    def with_perm(self, codename):
+        """Active positions holding `codename`."""
+        return self.filter(
+            status='Active',
+            permissions__codename=codename,
+            **{f'permissions__{k}': v for k, v in _PERMISSION_CT.items()})
 
 
 class HSAdministratorPosition(models.Model):
@@ -466,9 +526,40 @@ class HSAdministratorPosition(models.Model):
     ]
     status = models.CharField(max_length=10, choices=STATUS_OPTIONS)
 
+    # Per-school HS admin permissions; they count only while status is Active.
+    permissions = models.ManyToManyField(
+        'auth.Permission', blank=True, related_name='hsadmin_positions',
+        limit_choices_to={**_PERMISSION_CT, 'codename__in': HSAdminPerm.ALL})
+
+    objects = HSAdministratorPositionQuerySet.as_manager()
+
     class Meta:
         unique_together = (('hsadmin', 'highschool', 'position'))
+        permissions = [(c, HSAdminPerm.LABELS[c]) for c in HSAdminPerm.ALL]
 
+    def codenames(self):
+        """Codenames attached to this position, whatever its status."""
+        cache = getattr(self, '_prefetched_objects_cache', {})
+        if 'permissions' in cache:
+            perms = cache['permissions']
+        else:
+            perms = self.permissions.filter(**_PERMISSION_CT).select_related('content_type')
+        return {p.codename for p in perms
+                if p.codename in HSAdminPerm.ALL
+                and p.content_type.app_label == 'cis'
+                and p.content_type.model == 'hsadministratorposition'}
+
+    def has_perm(self, codename):
+        return self.status == 'Active' and codename in self.codenames()
+
+    def set_perms(self, codenames):
+        self.permissions.set(hsadmin_permission_objects(codenames))
+
+    def grant(self, *codenames):
+        self.permissions.add(*hsadmin_permission_objects(codenames))
+
+    def revoke(self, *codenames):
+        self.permissions.remove(*hsadmin_permission_objects(codenames))
 
     def toggle_student_recommendation(self):
         if self.status == 'Active':
