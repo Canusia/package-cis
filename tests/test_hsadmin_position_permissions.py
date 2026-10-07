@@ -331,6 +331,19 @@ class AccessRequestPermissionTests(HsAdminRoleFixtureMixin, TestCase):
             {str(pk) for pk in hsadmin_permission_objects(
                 [HSAdminPerm.BULK_ENROLL, HSAdminPerm.SUBMIT_GRADES]).values_list('pk', flat=True)})
 
+    def test_processed_request_labels_the_field_as_current(self):
+        self._approve([HSAdminPerm.BULK_ENROLL])
+        self.req.refresh_from_db()
+        form = self._form(self.staff, instance=self.req)
+        self.assertEqual(form.fields['permissions'].label, 'Current role permissions')
+
+    def test_denied_request_hides_the_field_even_if_the_role_exists(self):
+        self._approve([HSAdminPerm.BULK_ENROLL])
+        HSAdministratorAccessRequest.objects.filter(pk=self.req.pk).update(status='Denied')
+        self.req.refresh_from_db()
+        form = self._form(self.staff, instance=self.req)
+        self.assertNotIn('permissions', form.fields)
+
     def test_processed_request_without_a_role_hides_the_field(self):
         HSAdministratorAccessRequest.objects.filter(pk=self.req.pk).update(status='Denied')
         self.req.refresh_from_db()

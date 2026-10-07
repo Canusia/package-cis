@@ -366,15 +366,21 @@ class HSAdminAccessRequestModelForm(ModelForm):
             instance = kwargs.get('instance')
             if instance and instance.status.lower() != 'submitted':
                 # Show what the approved role holds now, not what was ticked
-                # at approval; hide the field when no such role exists.
-                role = HSAdministratorPosition.objects.filter(
-                    hsadmin__user__email__iexact=instance.email,
-                    highschool=instance.highschool,
-                    position__name__iexact=instance.role,
-                ).first()
+                # at approval; hide the field when the request was denied or
+                # no such role exists.
+                role = None
+                if instance.status == 'Approved':
+                    role = HSAdministratorPosition.objects.filter(
+                        hsadmin__user__email__iexact=instance.email,
+                        highschool=instance.highschool,
+                        position__name__iexact=instance.role,
+                    ).first()
                 if role is None:
                     del self.fields['permissions']
                 else:
+                    self.fields['permissions'].label = 'Current role permissions'
+                    self.fields['permissions'].help_text = (
+                        'What the role holds now; change it on the role.')
                     self.initial['permissions'] = list(
                         hsadmin_permission_objects(role.codenames())
                         .values_list('pk', flat=True))
