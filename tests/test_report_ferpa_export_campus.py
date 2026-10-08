@@ -82,9 +82,10 @@ class FerpaExportReportCampusTests(TestCase):
         StudentRegistration.objects.create(
             student=student, class_section=section, status='applied',
             status_changed_on={'applied_on': '01/01/2024'})
+        # The consent belongs to the college it was given to (#65).
         return StudentFerpa.objects.create(
-            student=student, legacy_campus={}, permissions_granted={},
-            student_signature='sig')
+            student=student, campus=section.course.campus, legacy_campus={},
+            permissions_granted={}, student_signature='sig')
 
     def _data(self, campus):
         return {
@@ -92,6 +93,14 @@ class FerpaExportReportCampusTests(TestCase):
             'applied_until': ['01/01/2030'],
             'campus': campus,
         }
+
+    def test_unassigned_consent_is_excluded(self):
+        # A legacy record with no campus is consent to no college (#65), even
+        # when the student is registered on the selected campus.
+        StudentFerpa.objects.filter(pk=self.ferpa_a.pk).update(campus=None)
+        rows = list(ferpa_export.__new__(ferpa_export).get_result(
+            self._data([str(self.campus_a.id)]), user=self.superuser))
+        self.assertNotIn(self.ferpa_a, rows)
 
     def test_campus_field_is_required_multiselect_of_accessible(self):
         from django import forms as dj_forms

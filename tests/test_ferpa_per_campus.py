@@ -235,3 +235,31 @@ class CeTabTests(FerpaFixtureMixin, TestCase):
         registration.class_section.course.campus = self.b
         registration.get_student_signature.return_value = None
         self.assertEqual(signatures_tab(None, registration)['ferpa'], rec_b)
+
+
+class ImportCommandTests(FerpaFixtureMixin, TestCase):
+    def setUp(self):
+        self.build()
+
+    def test_import_requires_campus_on_multi_campus(self):
+        from django.core.management import CommandError, call_command
+        with override_settings(MULTI_CAMPUS=True), self.assertRaises(CommandError):
+            call_command('import_student_ferpa', path='/nonexistent.csv')
+
+    def test_import_creates_per_campus_and_is_idempotent(self):
+        import os
+        import tempfile
+        from django.core.management import call_command
+        type(self.student).objects.filter(pk=self.student.pk).update(pidm='123')
+        with tempfile.NamedTemporaryFile('w', suffix='.csv', delete=False) as f:
+            f.write('studentid,name1,code1,name2,code2,name3,code3,name4,code4\n'
+                    '123,Pat,P,,,,,,\n')
+        try:
+            call_command('import_student_ferpa', path=f.name, campus=self.a.code)
+            call_command('import_student_ferpa', path=f.name, campus=self.a.code)
+        finally:
+            os.unlink(f.name)
+        rows = StudentFerpa.objects.filter(student=self.student)
+        self.assertEqual(rows.count(), 1)
+        self.assertEqual(rows.get().campus, self.a)
+        self.assertEqual(rows.get().legacy_campus, [])

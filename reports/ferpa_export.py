@@ -70,18 +70,19 @@ class ferpa_export(forms.Form):
     def get_result(self, data, user=None):
         records = StudentFerpa.objects.select_related(
             'student__user',
-            'student__highschool'
+            'student__highschool',
+            'campus',
         ).filter(
+            campus__isnull=False,
             student__user__created_at__gte=datetime.datetime.strptime(data.get('applied_on')[0], '%m/%d/%Y'),
             student__user__created_at__lt=datetime.datetime.strptime(data.get('applied_until')[0], '%m/%d/%Y'),
         )
 
-        # Campus gate: filter to the selected campus(es), constrained to the
-        # ce requester's processable campuses (superusers/non-ce as-is).
+        # Campus gate on the consent's own campus (#65): a record is the
+        # consent given to that college. Constrained to the ce requester's
+        # processable campuses (superusers/non-ce as-is).
         records = scope_report_by_campus(
-            records, user, data.get('campus'),
-            campus_path='student__studentregistration__class_section__course__campus',
-            distinct=True)
+            records, user, data.get('campus'), campus_path='campus')
 
         return records
 
@@ -93,6 +94,7 @@ class ferpa_export(forms.Form):
         file_name = "student-ferpa-export.csv"
         fields = {
             'student.id': 'Canusia ID Number',
+            'campus.name': 'Campus',
             'student.user.first_name': 'Student Legal First Name',
             'student.user.last_name': 'Student Legal Last Name',
             'student.user.middle_name': 'Middle Name or Initial',
