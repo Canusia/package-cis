@@ -348,6 +348,26 @@ class AccessRequestPermissionTests(HsAdminRoleFixtureMixin, TestCase):
         form = self._form(self.staff, instance=self.req)
         self.assertNotIn('permissions', form.fields)
 
+    def test_single_campus_has_no_scope(self):
+        self.assertNotIn('scope', self._form(self.staff, instance=self.req).fields)
+
+    def test_approval_grants_for_the_chosen_campus(self):
+        from django.conf import settings as djs
+        from django.test import override_settings as ovs
+        from cis.models.course import Campus as C
+        from cis.models.highschool import HighSchoolCampus as HSC
+        lit = C.objects.create(name='LIT Z', code=f'{djs.CAMPUS_CODE_PREFIX}_LITZ')
+        HSC.objects.create(highschool=self.central, campus=lit)
+        data = {'name': self.req.name, 'email': self.req.email, 'phone': self.req.phone,
+                'highschool': str(self.central.id), 'role': self.req.role, 'status': 'Approved',
+                'scope': str(lit.id),
+                'permissions': [str(p.pk) for p in hsadmin_permission_objects([HSAdminPerm.BULK_ENROLL])]}
+        with ovs(MULTI_CAMPUS=True):
+            form = self._form(self.staff, data=data, instance=self.req)
+            self.assertTrue(form.is_valid(), form.errors)
+            self.assertTrue(form.save().grant_access(form.cleaned_data))
+        self.assertEqual(self._new_role().grants(), [(HSAdminPerm.BULK_ENROLL, lit)])
+
     def test_processed_request_without_a_role_hides_the_field(self):
         HSAdministratorAccessRequest.objects.filter(pk=self.req.pk).update(status='Denied')
         self.req.refresh_from_db()

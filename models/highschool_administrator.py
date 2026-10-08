@@ -180,7 +180,8 @@ class HSAdministratorAccessRequest(models.Model):
         except IntegrityError:
             return False
         hs_admin_position.set_perms(
-            [p.codename for p in form_data.get('permissions') or []])
+            [p.codename for p in form_data.get('permissions') or []],
+            campus=form_data.get('scope'))
         return True
 
 class HSAdministrator(models.Model):

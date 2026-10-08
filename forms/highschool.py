@@ -339,6 +339,9 @@ class HSAdminAccessRequestModelForm(ModelForm):
         label=''
     )
   
+    scope = HSAdminScopeField(
+        help_text='Which campus the permissions below apply to.')
+
     permissions = HSAdminPermissionField(
         label='Permissions (applied if approved)',
         help_text=('Leave all unchecked to approve with no permissions; '
@@ -388,8 +391,12 @@ class HSAdminAccessRequestModelForm(ModelForm):
         if not user_has_cis_role(self.request.user):
             del self.fields['status']
             del self.fields['permissions']
+            del self.fields['scope']
         else:
             del self.fields['captcha']
+            apply_scope_field(self, HighSchool.objects.filter(
+                pk=self.instance.highschool_id) if self.instance.pk
+                else HighSchool.objects.none())
 
             instance = kwargs.get('instance')
             if instance and instance.status.lower() != 'submitted':
@@ -409,8 +416,9 @@ class HSAdminAccessRequestModelForm(ModelForm):
                     self.fields['permissions'].label = 'Current role permissions'
                     self.fields['permissions'].help_text = (
                         'What the role holds now; change it on the role.')
+                    from cis.models.highschool_administrator import ANY_CAMPUS
                     self.initial['permissions'] = list(
-                        hsadmin_permission_objects(role.codenames())
+                        hsadmin_permission_objects(role.codenames(ANY_CAMPUS))
                         .values_list('pk', flat=True))
 
                 for field_name, field in self.fields.items():
