@@ -103,13 +103,27 @@ first use:
 | Module | Must export | Used by |
 |---|---|---|
 | `verify_email_form.py` | `StudentVerifyEmailForm` | student signup at `/student/start_request/`, and `seed_demo_students` |
-| `ferpa_form.py` | `StudentFerpaForm` | student FERPA page, `StudentFerpa.asHTML` |
+| `ferpa_form.py` | `StudentFerpaForm`, `form_template`, `as_html`, `export_headers`, `export_row` | student FERPA page, `StudentFerpa.asHTML`, FERPA export |
 | `recommendation_form.py` | `StudentRecommendationForm` | HS-admin student recommendation |
 | `registration_form.py` | `EditStudentRegistration` | CE registration detail/edit |
 | `student_profile_form.py` | `StudentProfileForm`, `EDITABLE_FIELDS` | student profile, CE student edit, importer |
 
 `verify_email_form.py` is **new in v0.0.3** — a tenant upgrading from v0.0.2 must add it
 before deploying, or `/student/start_request/` fails to resolve the form.
+
+**`ferpa_form.py` changed contract in v0.1.15a** (#65, FERPA consent per campus). Ship it in
+the same deploy as this cis, or the first FERPA save raises `ValueError` (it assigns a list
+to what is now the `StudentFerpa.campus` foreign key):
+
+- `StudentFerpaForm.__init__(self, student, *args, campus=None, **kwargs)`: keep `campus`
+  (`cis.ferpa.resolve_campus(campus)`) and read the record with `cis.ferpa.ferpa_record`.
+- `save()` looks the record up and creates it by `(student, campus)`, and never assigns
+  `ferpa.campus` a list. The hidden `campus` form field is gone.
+- `form_template(campus=None)`. cis passes `campus` only when the function accepts it.
+- `as_html(ferpa)` builds the read-back form with `campus=ferpa.campus`.
+
+`recommendation_form.py`: `StudentRecommendationForm.__init__` may accept `campus=None`
+(v0.1.15a passes it when accepted).
 
 ### Optional tenant service modules
 
@@ -120,6 +134,8 @@ before deploying, or `/student/start_request/` fails to resolve the form.
 |---|---|---|---|
 | `roster_status_form.py` | `ClassSectionRosterStatusForm` | `cis.forms.section.DefaultClassSectionRosterStatusForm` | "Is the roster accurate?" in the instructor and HS admin portals (#69); import it as `from cis.forms.section import ClassSectionRosterStatusForm` |
 | `roster_verification.py` | `pending_roster_sections(queryset, notif_settings)` | no extra narrowing | `ClassSection.objects.pending_roster_verification()`: which pending rosters get reminders and show on the instructor / HS admin dashboards. Receives the default result and returns a subset. |
+| `ferpa_form.py` | `get_form_class(campus)` (v0.1.15a) | `StudentFerpaForm` | `cis.ferpa.ferpa_form_class`: a different FERPA form per campus on a multi-campus deployment. Must accept `campus=None` (no campus context). |
+| `recommendation_form.py` | `get_form_class(campus)` (v0.1.15a) | `StudentRecommendationForm` | `cis.recommendations.recommendation_form_class`: a different recommendation form per campus. Must accept `campus=None`. |
 
 ### Tenant table-config modules
 
