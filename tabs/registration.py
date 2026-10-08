@@ -28,9 +28,11 @@ def recommendation_tab(request, record):
 @registration_tabs.tab(slug='signatures', title='Agreement & Consent', order=60,
                        template='cis/registrations/tabs/_signatures.html')
 def signatures_tab(request, record):
+    # The registration's own campus (#65); a campus-less course keeps the
+    # current campus.
     return {
         'student_signature': record.get_student_signature(),
-        'ferpa': record.student.get_ferpa(),
+        'ferpa': record.student.get_ferpa(record.class_section.course.campus),
     }
 
 

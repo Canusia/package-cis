@@ -5,6 +5,8 @@ dict (rendered into the declared template) or an HttpResponse.  This module is
 eager-imported by myce/component_registry/student.py so the decorators run.
 """
 from myce.component_registry.student import student_tabs  # noqa: F401
+from cis.campus_context import is_multi_campus
+from cis.campus_gate import get_accessible_campuses
 
 
 # ---------------------------------------------------------------------------
@@ -20,7 +22,14 @@ def details_tab(request, record):
 @student_tabs.tab(slug='ferpa', title='Information Release', order=20,
                   template='cis/students/tabs/_ferpa.html')
 def ferpa_tab(request, record):
-    return {'ferpa': record.get_ferpa()}
+    # Multi-campus: one read-back per campus the CE user may access (#65).
+    if not is_multi_campus():
+        return {'ferpa': record.get_ferpa()}
+    from cis.ferpa import ferpa_record
+    return {'ferpa_by_campus': [
+        (campus, ferpa_record(record, campus))
+        for campus in get_accessible_campuses(request.user).order_by('name')
+    ]}
 
 
 @student_tabs.tab(slug='recommendations', title='Recommendation(s)', order=40,

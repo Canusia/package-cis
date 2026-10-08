@@ -2,7 +2,16 @@
     <div class="card-body">
         <div class="row">
             <div class="col-12">
-                {% if ferpa %}
+                {% if ferpa_by_campus %}
+                    {% for campus, campus_ferpa in ferpa_by_campus %}
+                    <h5 class="mt-2">{{ campus.name }}</h5>
+                    {% if campus_ferpa %}
+                    {{ campus_ferpa.asHTML|safe }}
+                    {% else %}
+                    <p class="alert alert-danger">Information Release form has not been completed for {{ campus.name }}</p>
+                    {% endif %}
+                    {% endfor %}
+                {% elif ferpa %}
                 {{ferpa.asHTML|safe}}
                 {% else %}
                 <p class="alert alert-danger">Information Release form has not been completed</p>

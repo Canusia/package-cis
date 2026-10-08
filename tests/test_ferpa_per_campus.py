@@ -186,3 +186,52 @@ class FormHookTests(FerpaFixtureMixin, TestCase):
         svc.form_template = lambda campus=None: f'{campus.code}.html'
         with mock.patch('cis.ferpa.get_tenant_service', return_value=svc):
             self.assertEqual(F.ferpa_form_template(self.a), f'{self.a.code}.html')
+
+
+from django.test import RequestFactory  # noqa: E402
+
+
+class CeTabTests(FerpaFixtureMixin, TestCase):
+    def setUp(self):
+        self.build()
+        sfx = uuid.uuid4().hex[:6]
+        self.staff = CustomUser.objects.create_superuser(
+            username=f'ce{sfx}', email=f'ce{sfx}@x.com', password='x')
+
+    def _ctx(self, user):
+        from cis.tabs.student import ferpa_tab
+        request = RequestFactory().get('/')
+        request.user = user
+        return ferpa_tab(request, self.student)
+
+    def test_single_campus_context_unchanged(self):
+        rec = StudentFerpa.objects.create(student=self.student, campus=self.ewu,
+                                          permissions_granted={})
+        ctx = self._ctx(self.staff)
+        self.assertEqual(ctx['ferpa'], rec)
+        self.assertNotIn('ferpa_by_campus', ctx)
+
+    @override_settings(MULTI_CAMPUS=True)
+    def test_multi_campus_lists_each_accessible_campus(self):
+        rec = StudentFerpa.objects.create(student=self.student, campus=self.a,
+                                          permissions_granted={})
+        rows = dict(self._ctx(self.staff)['ferpa_by_campus'])
+        self.assertEqual(rows[self.a], rec)
+        self.assertIsNone(rows[self.b])
+
+    @override_settings(MULTI_CAMPUS=True)
+    def test_ce_user_sees_only_their_campus(self):
+        with mock.patch('cis.tabs.student.get_accessible_campuses',
+                        return_value=Campus.objects.filter(pk=self.a.pk)):
+            rows = dict(self._ctx(self.staff)['ferpa_by_campus'])
+        self.assertEqual(list(rows), [self.a])
+
+    def test_signatures_tab_uses_the_registration_campus(self):
+        from cis.tabs.registration import signatures_tab
+        rec_b = StudentFerpa.objects.create(student=self.student, campus=self.b,
+                                            permissions_granted={})
+        registration = mock.Mock()
+        registration.student = self.student
+        registration.class_section.course.campus = self.b
+        registration.get_student_signature.return_value = None
+        self.assertEqual(signatures_tab(None, registration)['ferpa'], rec_b)
