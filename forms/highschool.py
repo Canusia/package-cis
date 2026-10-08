@@ -962,6 +962,10 @@ class BulkRoleEditForm(forms.Form):
         choices=[]
     )
 
+    scope = HSAdminScopeField(
+        help_text=('Campus the grants and revokes below apply to. Roles whose school '
+                   'is not linked to it are skipped for grants.'))
+
     grant = HSAdminPermissionField(
         chosen_label='Grant to selected roles',
         label='Grant permissions',
@@ -1017,6 +1021,9 @@ class BulkRoleEditForm(forms.Form):
         self.fields['record_ids'].choices = choices
         self.fields['record_ids'].initial = initial
 
+        apply_scope_field(self, HighSchool.objects.filter(
+            id__in=[r.highschool_id for r in records]))
+
     def clean(self):
         """Something must change, and a permission cannot be granted and
         revoked in the same edit.
@@ -1055,6 +1062,8 @@ class BulkRoleEditForm(forms.Form):
         status = data.get('status')
         grant = [p.codename for p in data.get('grant') or []]
         revoke = [p.codename for p in data.get('revoke') or []]
+        scope = data.get('scope') if 'scope' in self.fields else None
+        skipped = []
         note_text = (data.get('note') or '').strip()
 
         records = HSAdministratorPosition.objects.filter(
@@ -1067,10 +1076,14 @@ class BulkRoleEditForm(forms.Form):
             if status:
                 record.status = status
             record.save()
-            if grant:
-                record.grant(*grant)
+            linked = (scope is None
+                      or record.highschool.campus_links.filter(campus=scope).exists())
+            if grant and linked:
+                record.grant(*grant, campus=scope)
+            elif grant:
+                skipped.append(record.highschool.name)
             if revoke:
-                record.revoke(*revoke)
+                record.revoke(*revoke, campus=scope)
             updated += 1
             per_admin.setdefault(record.hsadmin, []).append(
                 f"{record.highschool.name} ({record.position.name})"
@@ -1083,6 +1096,11 @@ class BulkRoleEditForm(forms.Form):
             changes.append('Granted: ' + ', '.join(HSAdminPerm.LABELS[c] for c in grant))
         if revoke:
             changes.append('Revoked: ' + ', '.join(HSAdminPerm.LABELS[c] for c in revoke))
+        if scope is not None and (grant or revoke):
+            changes.append(f'Applies to {scope.name}')
+        if skipped:
+            changes.append('Skipped ' + ', '.join(sorted(set(skipped)))
+                           + f' (not linked to {scope.name})')
         summary = '; '.join(changes)
 
         notes_created = 0

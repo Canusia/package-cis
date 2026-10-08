@@ -104,6 +104,10 @@ class BulkEditStatusTests(HsAdminRoleFixtureMixin, TestCase):
             HSAdministratorPosition.objects.filter(status='Inactive').count(), 1)
 
 
+    def test_single_campus_has_no_scope(self):
+        resp = self.client.get(self.url, {'action': 'edit', 'ids[]': [str(self.role_a1.id)]})
+        self.assertNotIn('name="scope"', resp.content.decode())
+
     def test_grant_adds_without_touching_others(self):
         self.role_a1.grant(HSAdminPerm.SUBMIT_GRADES)
         resp = self.client.post(self.url, {
@@ -164,6 +168,49 @@ class BulkEditStatusTests(HsAdminRoleFixtureMixin, TestCase):
         self.assertIn('Granted: Can bulk enroll', note.note)
         self.assertIn('Revoked: Can submit grades', note.note)
         self.assertIn('End of year.', note.note)
+
+
+from django.conf import settings as dj_settings  # noqa: E402
+from django.test import override_settings  # noqa: E402
+from cis.models.course import Campus  # noqa: E402
+from cis.models.highschool import HighSchoolCampus  # noqa: E402
+
+
+@override_settings(MULTI_CAMPUS=True)
+class BulkEditScopeTests(HsAdminRoleFixtureMixin, TestCase):
+    def setUp(self):
+        self.build_fixture()
+        self.url = reverse('cis:hs_admin_do_bulk_action')
+        p = dj_settings.CAMPUS_CODE_PREFIX
+        from django.contrib.sites.models import Site
+        site, _ = Site.objects.get_or_create(domain='testserver', defaults={'name': 'test'})
+        self.lit = Campus.objects.create(name='LIT Y', code=f'{p}_LITY', site=site)
+        HighSchoolCampus.objects.create(highschool=self.central, campus=self.lit)
+
+    def tearDown(self):
+        self.tear_down_fixture()
+
+    def _ids(self, *codes):
+        return [str(p.pk) for p in hsadmin_permission_objects(codes)]
+
+    def test_grant_for_a_campus_skips_unlinked_schools(self):
+        resp = self.client.post(self.url, {
+            'action': 'edit', 'record_ids': [str(self.role_a1.id), str(self.role_a2.id)],
+            'status': '', 'scope': str(self.lit.id),
+            'grant': self._ids(HSAdminPerm.BULK_ENROLL), 'note': 'x'})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(self.role_a1.grants(), [(HSAdminPerm.BULK_ENROLL, self.lit)])
+        self.assertEqual(self.role_a2.grants(), [])
+        note = HSAdministratorNote.objects.get(hsadmin=self.admin_a)
+        self.assertIn('Skipped North High', note.note)
+        self.assertIn(f'Applies to {self.lit.name}', note.note)
+
+    def test_scope_choices_are_union_of_selected_schools(self):
+        resp = self.client.get(self.url, {'action': 'edit',
+                                          'ids[]': [str(self.role_a1.id), str(self.role_a2.id)]})
+        body = resp.content.decode()
+        self.assertIn('name="scope"', body)
+        self.assertIn(self.lit.name, body)
 
 
 class BulkDeleteRolesTests(HsAdminRoleFixtureMixin, TestCase):
