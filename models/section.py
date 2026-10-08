@@ -2157,8 +2157,10 @@ class StudentRegistration(models.Model):
                 pk=highschool_id
             )
 
+            # Per-campus job: only counselors permitted for this campus (#66).
+            from cis.campus_context import current_campus_or_none
             hs_administrators = highschool.administrators_in_highschool(
-                'can_manage_student_recommendation')
+                'can_manage_student_recommendation', campus=current_campus_or_none())
 
             groups.append({
                 'highschool': highschool,
