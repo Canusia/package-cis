@@ -28,7 +28,7 @@ from cis.utils import (
 from cis.campus_gate import (
     scope_students_by_campus, can_access_student,
     processable_student_ids, get_accessible_campuses,
-    scope_records_by_student_campus,
+    scope_records_by_student_campus, scope_queryset_by_campus,
 )
 from cis.models.student import (
     recommendation_required_q,
@@ -337,8 +337,12 @@ class StudentRecommendationViewSet(viewsets.ReadOnlyModelViewSet):
                 student__id=student
             )
 
-        return scope_records_by_student_campus(
-            records, self.request.user, selected_campus=campus or None)
+        # The recommendation's own campus (its term's), not the student's
+        # registrations: a student at two colleges has one per college (#66).
+        return scope_queryset_by_campus(
+            records, self.request.user,
+            campus_path='term__academic_year__campus',
+            selected_campus=campus or None)
 
 @eager_queryset(with_student_term_related)
 class StudentSupportingDocumentViewSet(viewsets.ReadOnlyModelViewSet):

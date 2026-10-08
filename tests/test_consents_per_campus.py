@@ -176,3 +176,50 @@ class ParentConsentLinkTests(ConsentFixture, TestCase):
 
     def test_dead_recommendation_get_url_removed(self):
         self.assertFalse(hasattr(StudentRecommendation, 'get_url'))
+
+
+from unittest import mock  # noqa: E402
+
+
+@override_settings(MULTI_CAMPUS=True)
+class CeRecommendationScopeTests(ConsentFixture, TestCase):
+    def setUp(self):
+        self.build()
+        self.ta, self.tb = self.term(self.a, 'A1'), self.term(self.b, 'B1')
+        self.register(self.a, self.ta)
+        self.register(self.b, self.tb)
+        self.rec_a = StudentRecommendation.objects.create(
+            student=self.student, term=self.ta, recommendation={})
+        self.rec_b = StudentRecommendation.objects.create(
+            student=self.student, term=self.tb, recommendation={})
+
+    def test_a_staff_do_not_see_bs_recommendation(self):
+        from django.test import RequestFactory
+        from cis.views.student import StudentRecommendationViewSet
+        staff = CustomUser.objects.create_user(username='ce-a', email='ce-a@x.com', password='x')
+        with mock.patch('cis.campus_gate.get_process_campus_ids', return_value=[str(self.a.id)]), \
+                mock.patch('cis.campus_gate.user_has_cis_role', return_value=True):
+            view = StudentRecommendationViewSet()
+            view.request = RequestFactory().get('/')
+            view.request.user = staff
+            ids = set(view.get_queryset().values_list('id', flat=True))
+        self.assertEqual(ids, {self.rec_a.id})
+
+
+class RecommendationFormHookTests(ConsentFixture, TestCase):
+    def setUp(self):
+        self.build()
+
+    def test_default_class(self):
+        from cis.recommendations import recommendation_form_class
+        from cis.services.tenant_services import get_tenant_service
+        self.assertIs(recommendation_form_class(self.a),
+                      get_tenant_service('recommendation_form').StudentRecommendationForm)
+
+    def test_tenant_hook(self):
+        from cis import recommendations as R
+
+        class AForm:
+            pass
+        with mock.patch('cis.recommendations.get_tenant_override', return_value=lambda c: AForm):
+            self.assertIs(R.recommendation_form_class(self.a), AForm)

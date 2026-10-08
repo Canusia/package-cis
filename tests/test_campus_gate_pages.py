@@ -134,8 +134,14 @@ class CampusGatePagesTests(TestCase):
 
     # --- student-backed viewsets --------------------------------------------
     def test_recommendation_viewset_scoped(self):
-        ra = StudentRecommendation.objects.create(student=self.stu_a, term=self.term, recommendation={})
-        rb = StudentRecommendation.objects.create(student=self.stu_b, term=self.term, recommendation={})
+        # Scoped by the recommendation's own term campus, not the student's
+        # registrations (package-cis#66): each one belongs to its college.
+        term_a = Term.objects.create(academic_year=AcademicYear.objects.create(
+            name=f'AY-{_sfx()}', campus=self.campus_a), code=f'A{_sfx()}', label='A')
+        term_b = Term.objects.create(academic_year=AcademicYear.objects.create(
+            name=f'AY-{_sfx()}', campus=self.campus_b), code=f'B{_sfx()}', label='B')
+        ra = StudentRecommendation.objects.create(student=self.stu_a, term=term_a, recommendation={})
+        rb = StudentRecommendation.objects.create(student=self.stu_b, term=term_b, recommendation={})
         qs = self._qs(StudentRecommendationViewSet, self.ce)
         self.assertIn(ra, qs)
         self.assertNotIn(rb, qs)
