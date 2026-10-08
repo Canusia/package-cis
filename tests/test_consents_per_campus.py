@@ -144,3 +144,35 @@ class SingleCampusConsentTests(ConsentFixture, TestCase):
         self.assertTrue(StudentRecommendation.has_recommendation(self.student))
         self.assertTrue(ParentConsent.has_signed(self.student))
         self.assertTrue(StudentAgreement.has_signed(self.student))
+
+
+from django.contrib.sites.models import Site  # noqa: E402
+from django.core.exceptions import ImproperlyConfigured  # noqa: E402
+
+
+class ParentConsentLinkTests(ConsentFixture, TestCase):
+    def setUp(self):
+        self.build()
+
+    def test_single_campus_uses_get_domain(self):
+        from cis.utils import getDomain
+        t = self.term(None, 'X1')
+        self.assertTrue(ParentConsent.get_url(self.student.id, t.id).startswith(getDomain()))
+
+    @override_settings(MULTI_CAMPUS=True)
+    def test_multi_campus_uses_the_terms_host(self):
+        self.b.site = Site.objects.create(domain='lscpa.example.edu', name='LSCPA')
+        self.b.save()
+        t = self.term(self.b, 'B9')
+        url = ParentConsent.get_url(self.student.id, t.id)
+        self.assertTrue(url.startswith('https://lscpa.example.edu/'), url)
+
+    def test_multi_campus_term_without_campus_raises(self):
+        # Multi-campus refuses to save a campus-less year, so this is legacy
+        # data: create it single-campus, then build the link multi-campus.
+        t = self.term(None, 'N9')
+        with override_settings(MULTI_CAMPUS=True), self.assertRaises(ImproperlyConfigured):
+            ParentConsent.get_url(self.student.id, t.id)
+
+    def test_dead_recommendation_get_url_removed(self):
+        self.assertFalse(hasattr(StudentRecommendation, 'get_url'))

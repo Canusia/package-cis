@@ -2598,9 +2598,24 @@ class ParentConsent(models.Model):
 
     @classmethod
     def get_url(cls, student_id, term_id):
-        return getDomain() + str(reverse_lazy('student:parent', kwargs={
-            'student_id': student_id,
-            'term_id': term_id}))
+        """Parent-consent link on the term's campus host (#66). Single-campus
+        keeps getDomain(); multi-campus with no campus on the term raises, as
+        campus_url() does: a link to another college's host is worse."""
+        from django.core.exceptions import ImproperlyConfigured
+        from cis.campus_context import campus_url, is_multi_campus
+        from cis.models.course import Campus
+        from cis.models.term import Term
+
+        path = str(reverse_lazy('student:parent', kwargs={
+            'student_id': student_id, 'term_id': term_id}))
+        campus_id = Term.objects.filter(pk=term_id).values_list(
+            'academic_year__campus', flat=True).first()
+        if campus_id is None:
+            if is_multi_campus():
+                raise ImproperlyConfigured(
+                    f'Term {term_id} has no campus; cannot build its parent-consent link.')
+            return getDomain() + path
+        return campus_url(Campus.objects.get(pk=campus_id), path)
 
     @classmethod
     def send_notification(cls, student, term_id, parent_name, parent_email):
@@ -2783,12 +2798,6 @@ class StudentRecommendation(models.Model):
     def waiver_approved(self):
         return self.recommendation.get('waiver_approved', 'N/A')
     
-    @classmethod
-    def get_url(cls, student_id, term_id):
-        return getDomain() + str(reverse_lazy('student:parent', kwargs={
-            'student_id': student_id,
-            'term_id': term_id}))
-
     @classmethod
     def default_term(cls, campus=None):
         setting_key = getattr(settings, 'CAMPUS_CODE_PREFIX')+"_cis_registrations"
