@@ -2215,6 +2215,11 @@ class Student(models.Model):
                 status__in=['applied'],
                 student=self
         )
+        # The campus being served, like the other Student helpers (#66).
+        from cis.campus_context import current_campus_or_none, is_multi_campus
+        campus = current_campus_or_none() if not term_id else None
+        if campus is not None and is_multi_campus():
+            records = records.filter(class_section__course__campus=campus)
 
         if recommendation_grade_gate_enabled():
             skip_ids = []
@@ -2608,13 +2613,13 @@ class ParentConsent(models.Model):
 
         path = str(reverse_lazy('student:parent', kwargs={
             'student_id': student_id, 'term_id': term_id}))
+        if not is_multi_campus():
+            return getDomain() + path      # single-campus: unchanged
         campus_id = Term.objects.filter(pk=term_id).values_list(
             'academic_year__campus', flat=True).first()
         if campus_id is None:
-            if is_multi_campus():
-                raise ImproperlyConfigured(
-                    f'Term {term_id} has no campus; cannot build its parent-consent link.')
-            return getDomain() + path
+            raise ImproperlyConfigured(
+                f'Term {term_id} has no campus; cannot build its parent-consent link.')
         return campus_url(Campus.objects.get(pk=campus_id), path)
 
     @classmethod

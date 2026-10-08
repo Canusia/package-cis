@@ -174,6 +174,15 @@ class ParentConsentLinkTests(ConsentFixture, TestCase):
         with override_settings(MULTI_CAMPUS=True), self.assertRaises(ImproperlyConfigured):
             ParentConsent.get_url(self.student.id, t.id)
 
+    def test_single_campus_with_a_campus_site_still_uses_get_domain(self):
+        # Review fix: single-campus links are unchanged even when the term's
+        # campus carries a Site.
+        from cis.utils import getDomain
+        self.a.site = Site.objects.create(domain='prod.example.edu', name='P')
+        self.a.save()
+        t = self.term(self.a, 'S1')
+        self.assertTrue(ParentConsent.get_url(self.student.id, t.id).startswith(getDomain()))
+
     def test_dead_recommendation_get_url_removed(self):
         self.assertFalse(hasattr(StudentRecommendation, 'get_url'))
 

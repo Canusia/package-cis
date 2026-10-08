@@ -445,6 +445,26 @@ def detail(request, record_id):
             ),
         })
 
+def _is_uuid(value):
+    try:
+        uuid.UUID(str(value))
+        return True
+    except (ValueError, TypeError, AttributeError):
+        return False
+
+
+def _scope_grants_json(record):
+    """Every scope's grants of `record`, so the 'Applies to' select can swap
+    the dual list client-side (manage_role.html). '' = all campuses."""
+    perm_ids = dict(hsadmin_permission_objects(HSAdminPerm.ALL)
+                    .values_list('codename', 'pk'))
+    scope_grants = {}
+    for code, campus in record.grants():
+        scope_grants.setdefault(str(campus.pk) if campus else '', []).append(
+            str(perm_ids[code]))
+    return json.dumps(scope_grants)
+
+
 def add_new_role(request):
     '''
     Add new role to hs administrator
@@ -456,7 +476,13 @@ def add_new_role(request):
     record = None
     scope_grants_json = '{}'
     if request.method == 'POST':
-        
+        # A re-rendered (invalid) edit still needs the scope map, or switching
+        # 'Applies to' would show an empty list and saving could wipe a scope.
+        editing = HSAdministratorPosition.objects.filter(
+            pk=request.POST.get('id')).first() if _is_uuid(request.POST.get('id')) else None
+        if editing is not None:
+            scope_grants_json = _scope_grants_json(editing)
+
         form = HSAdministratorPositionForm(
             id=request.POST.get('id'),
             data=request.POST,
@@ -510,15 +536,7 @@ def add_new_role(request):
 
             initial['permissions'] = list(
                 hsadmin_permission_objects(record.codenames()).values_list('pk', flat=True))
-            # Every scope's grants, so the 'Applies to' select can swap the
-            # dual list client-side (manage_role.html). '' = all campuses.
-            perm_ids = dict(hsadmin_permission_objects(HSAdminPerm.ALL)
-                            .values_list('codename', 'pk'))
-            scope_grants = {}
-            for code, campus in record.grants():
-                scope_grants.setdefault(str(campus.pk) if campus else '', []).append(
-                    str(perm_ids[code]))
-            scope_grants_json = json.dumps(scope_grants)
+            scope_grants_json = _scope_grants_json(record)
 
             if record.since:
                 initial['since'] = record.since.strftime("%m/%d/%Y")

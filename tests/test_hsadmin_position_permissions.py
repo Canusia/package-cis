@@ -555,6 +555,21 @@ class RoleFormScopeTests(HsAdminRoleFixtureMixin, TestCase):
         self.assertIn('scope', form.errors)
 
     @override_settings(MULTI_CAMPUS=True)
+    def test_invalid_post_rerender_keeps_the_scope_map(self):
+        # Review fix: after a validation error the 'Applies to' switch must
+        # still know each scope's grants, or saving could wipe one.
+        from cis.views.hs_administrator import add_new_role
+        self.role_a1.grant(HSAdminPerm.BULK_ENROLL, campus=self.lit)
+        data = self._data(scope=str(self.lit.id), perms=[HSAdminPerm.BULK_ENROLL])
+        data['note'] = ''                      # required -> invalid
+        request = RequestFactory().post('/', data)
+        request.user = self.staff
+        with campus_ctx(self.lit):
+            body = add_new_role(request).content.decode()
+        self.assertIn('data-scope-grants', body)
+        self.assertIn(str(self.lit.id), body.split('data-scope-grants')[1][:400])
+
+    @override_settings(MULTI_CAMPUS=True)
     def test_render_carries_every_scopes_grants(self):
         from cis.views.hs_administrator import add_new_role
         self.role_a1.grant(HSAdminPerm.BULK_ENROLL, campus=self.lit)
