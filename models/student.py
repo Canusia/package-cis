@@ -2178,13 +2178,20 @@ class Student(models.Model):
             class_section__term__id__in=regis_term_ids).exists()
 
     def has_signed_student_agreement(self):
-        return StudentAgreement.has_signed(self)
+        """Student-facing: the campus being served (#66)."""
+        from cis.campus_context import current_campus_or_none
+        return StudentAgreement.has_signed(self, campus=current_campus_or_none())
 
     def has_signed_parent_consent(self):
-        return ParentConsent.has_signed(self)
+        """Student-facing: the campus being served (#66)."""
+        from cis.campus_context import current_campus_or_none
+        return ParentConsent.has_signed(self, campus=current_campus_or_none())
 
     def has_recommendation(self, term_id=None):
-        return StudentRecommendation.has_recommendation(self, term_id)
+        """Student-facing: the campus being served when no term is given (#66)."""
+        from cis.campus_context import current_campus_or_none
+        return StudentRecommendation.has_recommendation(
+            self, term_id, campus=None if term_id else current_campus_or_none())
 
     def needs_recommendation(self, term_id=None):
         """Whether this student has an applied registration awaiting one.
@@ -2496,6 +2503,47 @@ class StudentCampusID(models.Model):
             'records': result
         }
 
+def _open_terms_by_campus(student, campus=None):
+    """[(campus or None, [open Term])] that a 'no term given' check covers (#66).
+
+    `campus` given: just that campus (student-facing callers pass the campus
+    being served). Otherwise every campus the student has a registration on
+    (reporting), or the current campus when there are none. Multi-campus with
+    neither covers nothing. Each campus's open terms are read under its own
+    campus_context, so its own <prefix>_cis_registrations setting applies.
+    registration_terms() returns None when that setting is absent; that means
+    no open terms.
+    """
+    from contextlib import nullcontext
+    from cis.campus_context import campus_context, current_campus_or_none, is_multi_campus
+    from cis.models.course import Campus
+
+    if campus is not None:
+        campuses = [campus]
+    else:
+        ids = {i for i in StudentRegistration.objects.filter(student=student)
+               .values_list('class_section__course__campus', flat=True) if i}
+        campuses = list(Campus.objects.filter(id__in=ids).order_by('name'))
+        if not campuses:
+            current = current_campus_or_none()
+            if current is not None:
+                campuses = [current]
+            elif not is_multi_campus():
+                campuses = [None]
+
+    result = []
+    for c in campuses:
+        with (campus_context(c) if c is not None else nullcontext()):
+            result.append((c, list(registration_terms() or [])))
+    return result
+
+
+def _with_campus(campus):
+    from contextlib import nullcontext
+    from cis.campus_context import campus_context
+    return campus_context(campus) if campus is not None else nullcontext()
+
+
 class ParentConsent(models.Model):
     """
     Parent Consent
@@ -2522,10 +2570,10 @@ class ParentConsent(models.Model):
         unique_together = ['student', 'term']
         
     @classmethod
-    def default_term(cls):
+    def default_term(cls, campus=None):
         from cis.settings.registrations import registrations as regis_settings
-        # print(regis_settings.from_db().get('active_term'))
-        return regis_settings.from_db().get('active_term')
+        with _with_campus(campus):
+            return regis_settings.from_db().get('active_term')
     
     @classmethod
     def get_form_message(cls, setting_name='request_consent_intro'):
@@ -2533,28 +2581,20 @@ class ParentConsent(models.Model):
         return Setting.get_value(setting_key, setting_name)
 
     @classmethod
-    def has_signed(cls, student, term_id=None):
-        if not term_id:
-            terms = registration_terms()
-
-            registered_term_ids = StudentRegistration.objects.filter(
-                student=student,
-                class_section__term__in=terms
-            ).values_list('class_section__term__id', flat=True)
-
-            if not registered_term_ids:
-                registered_term_ids = terms.values_list('id', flat=True)
-
-            for term in terms:
-                if term.id in registered_term_ids:
-                    if not ParentConsent.objects.filter(
-                            term__id=term.id,
-                            student=student).exists():
-                        return False
-            return True
-        return ParentConsent.objects.filter(
-            term__id=term_id,
-            student=student).exists()
+    def has_signed(cls, student, term_id=None, campus=None):
+        """Signed for `term_id`; without one, for every registered open term
+        (or every open term when none is registered) of each campus covered
+        by _open_terms_by_campus (#66)."""
+        if term_id:
+            return ParentConsent.objects.filter(term__id=term_id, student=student).exists()
+        registered = set(StudentRegistration.objects.filter(student=student)
+                         .values_list('class_section__term__id', flat=True))
+        for _campus, terms in _open_terms_by_campus(student, campus):
+            required = [t for t in terms if t.id in registered] or terms
+            for term in required:
+                if not ParentConsent.objects.filter(term__id=term.id, student=student).exists():
+                    return False
+        return True
 
     @classmethod
     def get_url(cls, student_id, term_id):
@@ -2723,27 +2763,21 @@ class StudentRecommendation(models.Model):
         unique_together = ['student', 'term']
 
     @classmethod
-    def has_recommendation(cls, student, term_id=None):
-        if not term_id:
-            registered_term_ids = StudentRegistration.objects.filter(
-                student=student
-            ).values_list('class_section__term__id', flat=True)
-
-            # registration_terms() returns None — not an empty queryset — when
-            # the <prefix>_cis_registrations setting row is absent, so iterating
-            # it raised TypeError on any deployment that had not configured
-            # registration terms yet. No open term means nothing outstanding.
-            terms = registration_terms() or []
+    def has_recommendation(cls, student, term_id=None, campus=None):
+        """Filed for `term_id`; without one, for every registered open term of
+        each campus covered by _open_terms_by_campus (#66). No open term means
+        nothing outstanding."""
+        if term_id:
+            return StudentRecommendation.objects.filter(
+                term__id=term_id, student=student).exists()
+        registered = set(StudentRegistration.objects.filter(student=student)
+                         .values_list('class_section__term__id', flat=True))
+        for _campus, terms in _open_terms_by_campus(student, campus):
             for term in terms:
-                if term.id in registered_term_ids:
-                    if not StudentRecommendation.objects.filter(
-                            term__id=term.id,
-                            student=student).exists():
-                        return False
-            return True
-        return StudentRecommendation.objects.filter(
-            term__id=term_id,
-            student=student).exists()
+                if term.id in registered and not StudentRecommendation.objects.filter(
+                        term__id=term.id, student=student).exists():
+                    return False
+        return True
 
     @property
     def waiver_approved(self):
@@ -2756,9 +2790,10 @@ class StudentRecommendation(models.Model):
             'term_id': term_id}))
 
     @classmethod
-    def default_term(cls):
+    def default_term(cls, campus=None):
         setting_key = getattr(settings, 'CAMPUS_CODE_PREFIX')+"_cis_registrations"
-        return Setting.get_value(setting_key, 'signature_term')
+        with _with_campus(campus):
+            return Setting.get_value(setting_key, 'signature_term')
 
     @property
     def gpa(self):
@@ -2894,9 +2929,10 @@ class StudentAgreement(models.Model):
         unique_together = ['student', 'term']
 
     @classmethod
-    def default_term(cls):
+    def default_term(cls, campus=None):
         setting_key = getattr(settings, 'CAMPUS_CODE_PREFIX')+"_cis_registrations"
-        return Setting.get_value(setting_key, 'signature_term')
+        with _with_campus(campus):
+            return Setting.get_value(setting_key, 'signature_term')
 
     @classmethod
     def get_form_message(cls, setting_name='student_terms'):
@@ -2904,33 +2940,23 @@ class StudentAgreement(models.Model):
         return Setting.get_value(setting_key, setting_name)
 
     @classmethod
-    def has_signed(cls, student, term_id=None):
+    def has_signed(cls, student, term_id=None, campus=None):
         """
-        Checks if agreement has been signed for term_id. If no term_id is 
-        passed then it checks for ALL terms that are currently open for registration.
+        Checks if agreement has been signed for term_id. If no term_id is
+        passed then it checks for ALL terms that are currently open for
+        registration, per campus covered by _open_terms_by_campus (#66).
 
         If agreement is missing for any then return False, True otherwise.
         """
-        if not term_id:
-            terms = registration_terms()
-            registered_term_ids = StudentRegistration.objects.filter(
-                student=student,
-                class_section__term__in=terms
-            ).values_list('class_section__term__id', flat=True)
-
-            if not registered_term_ids:
-                registered_term_ids = terms.values_list('id', flat=True)
-
+        if term_id:
+            return StudentAgreement.objects.filter(
+                term__id=term_id, student=student).exists()
+        for _campus, terms in _open_terms_by_campus(student, campus):
             for term in terms:
                 if not StudentAgreement.objects.filter(
-                        term__id=term.id,
-                        student=student).exists():
+                        term__id=term.id, student=student).exists():
                     return False
-            return True
-
-        return StudentAgreement.objects.filter(
-            term__id=term_id,
-            student=student).exists()
+        return True
 
     @property
     def _student_signed_on(self):
