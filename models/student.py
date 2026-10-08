@@ -2701,11 +2701,23 @@ class StudentFerpa(models.Model):
         on_delete=models.PROTECT
     )
 
-    campus = JSONField()
+    # The institution this consent was given to (#65). Null only on legacy
+    # multi-campus rows that could not be matched; those never count.
+    campus = models.ForeignKey(
+        'cis.Campus', null=True, blank=True, on_delete=models.PROTECT,
+        related_name='ferpa_records')
+    # The pre-#65 JSON `campus` value, copied verbatim (always [] in practice).
+    # Nothing reads it; kept for one release so the data is not lost.
+    legacy_campus = JSONField(null=True, blank=True)
     permissions_granted = JSONField()
 
     student_signature = models.TextField()
     student_signed_on = models.DateField(auto_now=False, blank=True, null=True)
+
+    # Registration term codes this signature covers, and when (moved from
+    # student.meta['ferpa_completed_for'/'ferpa_completed_on'], #65).
+    completed_for = JSONField(default=list, blank=True)
+    completed_on = models.DateField(null=True, blank=True)
 
     RELEASES = [
         # ('dec', 'I decline to release any information'),
@@ -2719,7 +2731,11 @@ class StudentFerpa(models.Model):
     ]
     
     class Meta:
-        unique_together = ['student']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['student', 'campus'],
+                name='studentferpa_unique_student_campus'),
+        ]
         
     @property
     def releases(self):

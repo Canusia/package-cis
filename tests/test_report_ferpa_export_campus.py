@@ -83,7 +83,7 @@ class FerpaExportReportCampusTests(TestCase):
             student=student, class_section=section, status='applied',
             status_changed_on={'applied_on': '01/01/2024'})
         return StudentFerpa.objects.create(
-            student=student, campus={}, permissions_granted={},
+            student=student, legacy_campus={}, permissions_granted={},
             student_signature='sig')
 
     def _data(self, campus):
