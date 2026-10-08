@@ -145,7 +145,8 @@ class HighSchoolAdministratorSerializer(serializers.ModelSerializer):
     hsadmin = HSAdministratorSerializer()
     position = HSPositionSerializer()
     highschool = HighSchoolSerializer()
-    # Codenames in HSAdminPerm.ALL order, not Permission pks.
+    # [{codename, campus code or None}] in HSAdminPerm.ALL order (campus None =
+    # every campus), not Permission pks.
     permissions = serializers.SerializerMethodField()
 
     class Meta:
@@ -153,8 +154,8 @@ class HighSchoolAdministratorSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
     def get_permissions(self, obj):
-        held = obj.codenames()
-        return [c for c in HSAdminPerm.ALL if c in held]
+        return [{'codename': code, 'campus': campus.code if campus else None}
+                for code, campus in obj.grants()]
 
 
 class TeacherCourseSerializer(serializers.ModelSerializer):

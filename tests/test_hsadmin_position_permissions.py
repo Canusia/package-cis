@@ -387,7 +387,17 @@ class SerializerTests(HsAdminRoleFixtureMixin, TestCase):
         self.role_a1.grant(HSAdminPerm.SUBMIT_GRADES, HSAdminPerm.BULK_ENROLL)
         data = HighSchoolAdministratorSerializer(self.role_a1).data
         self.assertEqual(data['permissions'],
-                         [HSAdminPerm.BULK_ENROLL, HSAdminPerm.SUBMIT_GRADES])
+                         [{'codename': HSAdminPerm.BULK_ENROLL, 'campus': None},
+                          {'codename': HSAdminPerm.SUBMIT_GRADES, 'campus': None}])
+
+    def test_campus_grant_serializes_campus_code(self):
+        from django.conf import settings as djs
+        from cis.models.course import Campus as C
+        from cis.serializers.highschool import HighSchoolAdministratorSerializer
+        lit = C.objects.create(name='LIT S', code=f'{djs.CAMPUS_CODE_PREFIX}_LITS')
+        self.role_a1.grant(HSAdminPerm.VERIFY_ROSTER, campus=lit)
+        self.assertEqual(HighSchoolAdministratorSerializer(self.role_a1).data['permissions'],
+                         [{'codename': HSAdminPerm.VERIFY_ROSTER, 'campus': lit.code}])
 
     def test_eager_queryset_prefetches_permissions(self):
         from django.db import connection
