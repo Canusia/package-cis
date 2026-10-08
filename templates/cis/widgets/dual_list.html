@@ -72,6 +72,9 @@
     lists.chosen.addEventListener('dblclick', function () { move('chosen', false); });
     filters.available.addEventListener('input', render);
     filters.chosen.addEventListener('input', render);
+    // Callers that change the hidden select's selection (e.g. a scope switch)
+    // dispatch 'dl:refresh' to redraw both lists.
+    source.addEventListener('dl:refresh', render);
     render();
   })();
   </script>

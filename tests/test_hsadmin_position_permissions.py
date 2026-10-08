@@ -467,3 +467,72 @@ class CampusGrantTests(HsAdminRoleFixtureMixin, TestCase):
         self.assertTrue(self.admin_a.can_verify_roster(self.central.id, campus=self.lit))
         self.assertFalse(self.admin_a.can_verify_roster(self.central.id, campus=self.lsc))
         self.assertEqual(list(self.admin_a.get_roster_highschools(campus=self.lit)), [self.central])
+
+
+from django.test import override_settings  # noqa: E402
+from cis.campus_context import campus_context as campus_ctx  # noqa: E402
+
+
+class RoleFormScopeTests(HsAdminRoleFixtureMixin, TestCase):
+    def setUp(self):
+        self.build_fixture()
+        p = dj_settings.CAMPUS_CODE_PREFIX
+        self.lit = Campus.objects.create(name='LIT X', code=f'{p}_LITX')
+        self.lsc = Campus.objects.create(name='LSC X', code=f'{p}_LSCX')
+        HighSchoolCampus.objects.create(highschool=self.central, campus=self.lit)
+
+    def tearDown(self):
+        self.tear_down_fixture()
+
+    def _form(self, data=None, **kw):
+        from cis.forms.highschool import HSAdministratorPositionForm
+        return HSAdministratorPositionForm(id=str(self.role_a1.id), data=data, **kw)
+
+    def _data(self, scope='', perms=()):
+        return {'id': str(self.role_a1.id), 'hs_admin': str(self.role_a1.hsadmin_id), 'ajax': '1',
+                'highschool': str(self.central.id), 'position': str(self.role_a1.position_id),
+                'status': 'Active', 'note': 'n', 'scope': scope,
+                'permissions': [str(p.pk) for p in hsadmin_permission_objects(perms)]}
+
+    def _save(self, form):
+        self.assertTrue(form.is_valid(), form.errors)
+        request = RequestFactory().post('/')
+        request.user = self.staff
+        form.save(request)
+
+    def test_single_campus_has_no_scope_and_ignores_posted_scope(self):
+        self.assertNotIn('scope', self._form(initial={'id': str(self.role_a1.id),
+                                                       'highschool': self.central.id}).fields)
+        self._save(self._form(self._data(scope=str(self.lit.id), perms=[HSAdminPerm.BULK_ENROLL])))
+        self.assertEqual(self.role_a1.grants(), [(HSAdminPerm.BULK_ENROLL, None)])
+
+    @override_settings(MULTI_CAMPUS=True)
+    def test_scope_choices_are_the_schools_campuses(self):
+        form = self._form(initial={'id': str(self.role_a1.id), 'highschool': self.central.id})
+        self.assertEqual(list(form.fields['scope'].queryset), [self.lit])
+
+    @override_settings(MULTI_CAMPUS=True)
+    def test_save_replaces_only_the_chosen_scope(self):
+        self.role_a1.grant(HSAdminPerm.SUBMIT_GRADES)
+        self._save(self._form(self._data(scope=str(self.lit.id), perms=[HSAdminPerm.BULK_ENROLL])))
+        self.assertEqual(sorted(self.role_a1.grants(), key=str), sorted(
+            [(HSAdminPerm.SUBMIT_GRADES, None), (HSAdminPerm.BULK_ENROLL, self.lit)], key=str))
+
+    @override_settings(MULTI_CAMPUS=True)
+    def test_unlinked_campus_is_rejected(self):
+        form = self._form(self._data(scope=str(self.lsc.id), perms=[HSAdminPerm.BULK_ENROLL]))
+        self.assertFalse(form.is_valid())
+        self.assertIn('scope', form.errors)
+
+    @override_settings(MULTI_CAMPUS=True)
+    def test_render_carries_every_scopes_grants(self):
+        from cis.views.hs_administrator import add_new_role
+        self.role_a1.grant(HSAdminPerm.BULK_ENROLL, campus=self.lit)
+        request = RequestFactory().get('/', {'id': str(self.role_a1.id),
+                                             'parent': str(self.role_a1.hsadmin_id), 'ajax': '1'})
+        request.user = self.staff
+        with campus_ctx(self.lit):
+            body = add_new_role(request).content.decode()
+        self.assertIn('name="scope"', body)
+        self.assertIn('data-scope-grants', body)
+        self.assertIn(str(self.lit.id), body)

@@ -1,4 +1,5 @@
 import csv
+import json
 import io
 from django.utils.http import content_disposition_header
 import logging
@@ -26,7 +27,7 @@ from cis.models.customuser import CustomUser
 from cis.models.highschool import HighSchool
 from cis.models.highschool_administrator import (
     HSAdministrator, HSAdministratorPosition, HSPosition,
-    HSAdministratorAccessRequest, hsadmin_permission_objects
+    HSAdministratorAccessRequest, HSAdminPerm, hsadmin_permission_objects
 )
 
 from cis.forms.utils import EmailForm
@@ -453,6 +454,7 @@ def add_new_role(request):
     template = 'cis/hs_admin/manage_role.html'
 
     record = None
+    scope_grants_json = '{}'
     if request.method == 'POST':
         
         form = HSAdministratorPositionForm(
@@ -508,6 +510,15 @@ def add_new_role(request):
 
             initial['permissions'] = list(
                 hsadmin_permission_objects(record.codenames()).values_list('pk', flat=True))
+            # Every scope's grants, so the 'Applies to' select can swap the
+            # dual list client-side (manage_role.html). '' = all campuses.
+            perm_ids = dict(hsadmin_permission_objects(HSAdminPerm.ALL)
+                            .values_list('codename', 'pk'))
+            scope_grants = {}
+            for code, campus in record.grants():
+                scope_grants.setdefault(str(campus.pk) if campus else '', []).append(
+                    str(perm_ids[code]))
+            scope_grants_json = json.dumps(scope_grants)
 
             if record.since:
                 initial['since'] = record.since.strftime("%m/%d/%Y")
@@ -527,6 +538,7 @@ def add_new_role(request):
             'form': form,
             'ajax': ajax,
             'record': record,
+            'scope_grants_json': scope_grants_json,
             'base_template': base_template,
             'menu': draw_menu(cis_menu, 'highschools', 'school_administrators')
         })

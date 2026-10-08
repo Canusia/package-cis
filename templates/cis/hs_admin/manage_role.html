@@ -87,6 +87,26 @@
                                 </script>
                             {% endif %}
                         </form>
+                        {% if form.scope %}
+                        <div hidden data-scope-grants='{{ scope_grants_json }}'></div>
+                        <script>
+                        (function () {
+                          // 'Applies to' switches the dual list to that scope's grants.
+                          var holder = document.querySelector('[data-scope-grants]');
+                          var scope = document.getElementById('id_scope');
+                          var source = document.getElementById('id_permissions');
+                          if (!holder || !scope || !source) { return; }
+                          var grants = JSON.parse(holder.dataset.scopeGrants || '{}');
+                          scope.addEventListener('change', function () {
+                            var chosen = grants[scope.value] || [];
+                            Array.prototype.forEach.call(source.options, function (o) {
+                              o.selected = chosen.indexOf(o.value) !== -1;
+                            });
+                            source.dispatchEvent(new Event('dl:refresh'));
+                          });
+                        })();
+                        </script>
+                        {% endif %}
                     </div>
                 </div> 
             </div> <!-- end card -->

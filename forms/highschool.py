@@ -309,6 +309,31 @@ class HSAdminPermissionField(forms.ModelMultipleChoiceField):
         return obj.name
 
 
+class HSAdminScopeField(forms.ModelChoiceField):
+    """'Applies to': all campuses (blank) or one campus the school is linked to."""
+
+    def __init__(self, **kwargs):
+        from cis.models.course import Campus
+        kwargs.setdefault('required', False)
+        kwargs.setdefault('empty_label', 'All campuses')
+        kwargs.setdefault('label', 'Applies to')
+        super().__init__(queryset=Campus.objects.none(), **kwargs)
+
+
+def apply_scope_field(form, highschools):
+    """Drop `scope` on single-campus deployments; otherwise offer the prefixed
+    campuses linked to any of `highschools`."""
+    from cis.campus_context import is_multi_campus
+    from cis.campus_gate import _prefixed_campuses
+    if 'scope' not in form.fields:
+        return
+    if not is_multi_campus():
+        del form.fields['scope']
+        return
+    form.fields['scope'].queryset = _prefixed_campuses().filter(
+        highschool_links__highschool__in=highschools).distinct().order_by('name')
+
+
 class HSAdminAccessRequestModelForm(ModelForm):
     captcha = ReCaptchaField(
         label=''
@@ -467,6 +492,9 @@ class HSAdministratorPositionForm(forms.Form):
         )
     )
 
+    scope = HSAdminScopeField(
+        help_text='Which campus these permissions apply to.')
+
     permissions = HSAdminPermissionField(
         label='Permissions',
         help_text='Permissions apply only while the role is Active.')
@@ -491,6 +519,7 @@ class HSAdministratorPositionForm(forms.Form):
         # grants permissions, so it never sees (or posts) the field.
         if not can_grant:
             del self.fields['permissions']
+            del self.fields['scope']
 
         initial = kwargs.get('initial', kwargs.get('data', {'id':'-1'}))
         if id != '-1':
@@ -514,7 +543,21 @@ class HSAdministratorPositionForm(forms.Form):
         else:
             self.fields['highschool'].queryset = picker_queryset()
             self.fields['position'].queryset = HSPosition.objects.all().order_by('name')
-        
+
+        hs_id = initial.get('highschool') if hasattr(initial, 'get') else None
+        apply_scope_field(self, HighSchool.objects.filter(pk=hs_id) if hs_id
+                          else self.fields['highschool'].queryset)
+
+    def clean_scope(self):
+        # The queryset already limits choices to the school's campuses; this
+        # re-checks against the submitted school (a link may have been removed).
+        scope = self.cleaned_data.get('scope')
+        highschool = self.cleaned_data.get('highschool')
+        if (scope is not None and highschool is not None
+                and not highschool.campus_links.filter(campus=scope).exists()):
+            raise forms.ValidationError(f'{highschool.name} is not linked to {scope.name}.')
+        return scope
+
     def save(self, request, commit=True):
         data = self.cleaned_data
 
@@ -544,7 +587,8 @@ class HSAdministratorPositionForm(forms.Form):
         if commit:
             record.save()
             if 'permissions' in self.fields:
-                record.set_perms([p.codename for p in data.get('permissions') or []])
+                record.set_perms([p.codename for p in data.get('permissions') or []],
+                                 campus=data.get('scope') if 'scope' in self.fields else None)
 
         return record
 
