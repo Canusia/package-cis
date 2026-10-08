@@ -226,6 +226,7 @@ class CeTabTests(FerpaFixtureMixin, TestCase):
             rows = dict(self._ctx(self.staff)['ferpa_by_campus'])
         self.assertEqual(list(rows), [self.a])
 
+    @override_settings(MULTI_CAMPUS=True)
     def test_signatures_tab_uses_the_registration_campus(self):
         from cis.tabs.registration import signatures_tab
         rec_b = StudentFerpa.objects.create(student=self.student, campus=self.b,
@@ -263,3 +264,29 @@ class ImportCommandTests(FerpaFixtureMixin, TestCase):
         self.assertEqual(rows.count(), 1)
         self.assertEqual(rows.get().campus, self.a)
         self.assertEqual(rows.get().legacy_campus, [])
+
+
+class SingleCampusIgnoresDataCampusTests(FerpaFixtureMixin, TestCase):
+    """Review fix: on single-campus every record is the deployment campus's, so
+    a course or academic year pointing at another campus must not hide it."""
+
+    def setUp(self):
+        self.build()
+        self.rec = StudentFerpa.objects.create(
+            student=self.student, campus=self.ewu, permissions_granted={},
+            completed_for=['202610'])
+
+    def test_explicit_other_campus_still_finds_the_record(self):
+        self.assertEqual(F.ferpa_record(self.student, self.a), self.rec)
+
+    def test_done_for_a_term_whose_year_names_another_campus(self):
+        term = self.term(self.a, '202610')
+        self.assertTrue(F.ferpa_done_for_term(self.student, term))
+
+    def test_signatures_tab_with_a_course_on_another_campus(self):
+        from cis.tabs.registration import signatures_tab
+        registration = mock.Mock()
+        registration.student = self.student
+        registration.class_section.course.campus = self.a
+        registration.get_student_signature.return_value = None
+        self.assertEqual(signatures_tab(None, registration)['ferpa'], self.rec)

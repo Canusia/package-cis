@@ -22,13 +22,17 @@ def resolve_campus(campus=None):
 
 
 def ferpa_record(student, campus=None):
-    """The student's StudentFerpa for `campus`, or None."""
+    """The student's StudentFerpa for `campus`, or None.
+
+    Single-campus: always the deployment's record, whatever campus a course or
+    academic year happens to carry, so behaviour does not depend on that data.
+    """
     from cis.campus_context import is_multi_campus
     from cis.models.student import StudentFerpa
 
     if student is None:
         return None
-    campus = resolve_campus(campus)
+    campus = resolve_campus(campus if is_multi_campus() else None)
     records = StudentFerpa.objects.filter(student=student)
     if campus is not None:
         return records.filter(campus=campus).first()
