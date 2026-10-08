@@ -881,7 +881,8 @@ class ClassSection(MyCEBaseModel):
                 add('', section.teacher.user, section)
             if 'highschool_admin' in verifiers and section.highschool:
                 admins = section.highschool.administrators_in_highschool(
-                    status='can_verify_roster').select_related('user')
+                    status='can_verify_roster',
+                    campus=section.course.campus).select_related('user')
                 for admin in admins:
                     add('hsadmin_', admin.user, section)
 

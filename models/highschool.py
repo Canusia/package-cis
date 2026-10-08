@@ -355,9 +355,12 @@ class HighSchool(models.Model):
             record.save()
         return record
 
-    def administrators_in_highschool(self, status=['Active'], return_type='hsadministrator'):
+    def administrators_in_highschool(self, status=['Active'], return_type='hsadministrator',
+                                     campus=None):
         '''
-        Returns a queryset of HSAdministrator in the high school.
+        Returns a queryset of HSAdministrator in the high school. For the
+        permission statuses, `campus` picks which grants count (see
+        cis.models.highschool_administrator._campus_q).
         '''
         from cis.models.highschool_administrator import (
             HSAdminPerm, HSAdministrator, HSAdministratorPosition
@@ -366,11 +369,11 @@ class HighSchool(models.Model):
         if status == 'can_manage_student_recommendation':
             admin_positions = HSAdministratorPosition.objects.filter(
                 highschool=self.id
-            ).with_perm(HSAdminPerm.MANAGE_STUDENT_RECOMMENDATION)
+            ).with_perm(HSAdminPerm.MANAGE_STUDENT_RECOMMENDATION, campus)
         elif status == 'can_verify_roster':
             admin_positions = HSAdministratorPosition.objects.filter(
                 highschool=self.id
-            ).with_perm(HSAdminPerm.VERIFY_ROSTER)
+            ).with_perm(HSAdminPerm.VERIFY_ROSTER, campus)
         else:
             admin_positions = HSAdministratorPosition.objects.filter(
                 highschool=self.id,
