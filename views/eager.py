@@ -444,10 +444,11 @@ def with_teacher_course_related(records):
 
 def with_highschool_administrator_related(records):
     """HighSchoolAdministratorSerializer(hsadmin -> user, position,
-    highschool -> district, permissions)."""
+    highschool -> district, permission grants)."""
     return records.select_related(
         'hsadmin__user', 'position', 'highschool__district'
-    ).prefetch_related('permissions__content_type')
+    ).prefetch_related('permission_grants__permission__content_type',
+                       'permission_grants__campus')
 
 
 def with_class_section_syllabi_related(records):

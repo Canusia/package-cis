@@ -4,6 +4,7 @@ import uuid
 from django.conf import settings
 from django.urls import reverse_lazy
 from django.db import models, IntegrityError, transaction
+from django.db.models import Q
 from django.contrib.auth.models import Group
 
 from mailer import send_mail, send_html_mail
@@ -219,11 +220,11 @@ class HSAdministrator(models.Model):
         return reverse_lazy('cis:hs_admin', kwargs={
             'record_id': self.id})
 
-    def can_manage_student_student_recommendation(self, highschool_id):
+    def can_manage_student_student_recommendation(self, highschool_id, campus=None):
         # Deprecated duplicate of can_manage_student_recommendation.
-        return self.can_manage_student_recommendation(highschool_id)
+        return self.can_manage_student_recommendation(highschool_id, campus=campus)
 
-    def has_school_perm(self, codename, highschool_id):
+    def has_school_perm(self, codename, highschool_id, campus=None):
         """True if an Active position of this admin at `highschool_id` holds
         `codename` (an HSAdminPerm constant).
 
@@ -234,15 +235,15 @@ class HSAdministrator(models.Model):
             return False
         return HSAdministratorPosition.objects.filter(
             hsadmin=self, highschool__id=highschool_id,
-        ).with_perm(codename).exists()
+        ).with_perm(codename, campus).exists()
 
-    def highschools_with_perm(self, codename):
+    def highschools_with_perm(self, codename, campus=None):
         """HighSchool queryset where has_school_perm(codename, ...) is True.
 
         Exact 'Active', matching get_highschools(): an admin listed here but
         excluded there is shown pending work whose page then 404s."""
         highschool_ids = HSAdministratorPosition.objects.filter(
-            hsadmin__id=self.id).with_perm(codename).values_list('highschool', flat=True)
+            hsadmin__id=self.id).with_perm(codename, campus).values_list('highschool', flat=True)
         return HighSchool.objects.filter(id__in=highschool_ids)
 
     def get_highschools(self, status='Active'):
@@ -260,22 +261,22 @@ class HSAdministrator(models.Model):
         except HSAdministratorPosition.DoesNotExist:
             return []
 
-    def can_manage_student_recommendation(self, highschool_id):
+    def can_manage_student_recommendation(self, highschool_id, campus=None):
         return self.has_school_perm(
-            HSAdminPerm.MANAGE_STUDENT_RECOMMENDATION, highschool_id)
+            HSAdminPerm.MANAGE_STUDENT_RECOMMENDATION, highschool_id, campus)
 
-    def can_verify_roster(self, highschool_id):
+    def can_verify_roster(self, highschool_id, campus=None):
         """True if this admin's Active role at the school has Verify Class
         Rosters. Whether high school admins may verify at all is the Roster
         Verification setting's call (roster_verification.can_verify); check
         both (#69)."""
-        return self.has_school_perm(HSAdminPerm.VERIFY_ROSTER, highschool_id)
+        return self.has_school_perm(HSAdminPerm.VERIFY_ROSTER, highschool_id, campus)
 
-    def get_roster_highschools(self):
+    def get_roster_highschools(self, campus=None):
         """Queryset counterpart to can_verify_roster(), for filtering lists."""
-        return self.highschools_with_perm(HSAdminPerm.VERIFY_ROSTER)
+        return self.highschools_with_perm(HSAdminPerm.VERIFY_ROSTER, campus)
 
-    def get_recommendation_highschools(self):
+    def get_recommendation_highschools(self, campus=None):
         """High schools where this admin may manage student recommendations.
 
         Queryset counterpart to can_manage_student_recommendation(), for
@@ -289,7 +290,7 @@ class HSAdministrator(models.Model):
         also agree with get_highschools(), or this returns a school that one
         excludes and the admin is shown work they cannot open.
         """
-        return self.highschools_with_perm(HSAdminPerm.MANAGE_STUDENT_RECOMMENDATION)
+        return self.highschools_with_perm(HSAdminPerm.MANAGE_STUDENT_RECOMMENDATION, campus)
 
     @classmethod
     def create_new(cls, first_name, last_name, email, primary_phone='', **kwargs):
@@ -472,13 +473,35 @@ def hsadmin_permission_objects(codenames):
         codename__in=codenames, **_PERMISSION_CT).order_by(order)
 
 
+#: Pass as `campus` to match a grant for any campus (lists not tied to one
+#: campus, e.g. the HS admin pending-recommendation list).
+ANY_CAMPUS = object()
+
+
+def _campus_q(campus, prefix=''):
+    """Grants that count for `campus`: all-campuses (null) grants, plus that
+    campus's own when one is given. ANY_CAMPUS matches every grant."""
+    if campus is ANY_CAMPUS:
+        return Q()
+    q = Q(**{f'{prefix}campus__isnull': True})
+    if campus is not None:
+        q |= Q(**{f'{prefix}campus': campus})
+    return q
+
+
+def _grant_ct():
+    return {f'permission__{k}': v for k, v in _PERMISSION_CT.items()}
+
+
 class HSAdministratorPositionQuerySet(models.QuerySet):
-    def with_perm(self, codename):
-        """Active positions holding `codename`."""
+    def with_perm(self, codename, campus=None):
+        """Active positions holding `codename` for `campus` (see _campus_q)."""
+        g = 'permission_grants__'
         return self.filter(
-            status='Active',
-            permissions__codename=codename,
-            **{f'permissions__{k}': v for k, v in _PERMISSION_CT.items()})
+            Q(status='Active', **{f'{g}permission__codename': codename},
+              **{f'{g}{k}': v for k, v in _grant_ct().items()})
+            & _campus_q(campus, g)
+        ).distinct()
 
 
 class HSAdministratorPosition(models.Model):
@@ -504,9 +527,11 @@ class HSAdministratorPosition(models.Model):
     ]
     status = models.CharField(max_length=10, choices=STATUS_OPTIONS)
 
-    # Per-school HS admin permissions; they count only while status is Active.
+    # Per-school HS admin permissions, each optionally for one campus
+    # (HSPositionPermission); they count only while status is Active.
     permissions = models.ManyToManyField(
         'auth.Permission', blank=True, related_name='hsadmin_positions',
+        through='cis.HSPositionPermission',
         limit_choices_to={**_PERMISSION_CT, 'codename__in': HSAdminPerm.ALL})
 
     objects = HSAdministratorPositionQuerySet.as_manager()
@@ -515,29 +540,59 @@ class HSAdministratorPosition(models.Model):
         unique_together = (('hsadmin', 'highschool', 'position'))
         permissions = [(c, HSAdminPerm.LABELS[c]) for c in HSAdminPerm.ALL]
 
-    def codenames(self):
-        """Codenames attached to this position, whatever its status."""
+    def _grant_rows(self):
         cache = getattr(self, '_prefetched_objects_cache', {})
-        if 'permissions' in cache:
-            perms = cache['permissions']
+        if 'permission_grants' in cache:
+            rows = cache['permission_grants']
         else:
-            perms = self.permissions.filter(**_PERMISSION_CT).select_related('content_type')
-        return {p.codename for p in perms
-                if p.codename in HSAdminPerm.ALL
-                and p.content_type.app_label == 'cis'
-                and p.content_type.model == 'hsadministratorposition'}
+            rows = self.permission_grants.filter(**_grant_ct()).select_related(
+                'permission__content_type', 'campus')
+        return [r for r in rows
+                if r.permission.codename in HSAdminPerm.ALL
+                and r.permission.content_type.app_label == 'cis'
+                and r.permission.content_type.model == 'hsadministratorposition']
 
-    def has_perm(self, codename):
-        return self.status == 'Active' and codename in self.codenames()
+    def grants(self):
+        """[(codename, campus or None)], in HSAdminPerm.ALL order then campus name."""
+        order = {c: i for i, c in enumerate(HSAdminPerm.ALL)}
+        return sorted(((r.permission.codename, r.campus) for r in self._grant_rows()),
+                      key=lambda g: (order[g[0]], g[1].name if g[1] else ''))
 
-    def set_perms(self, codenames):
-        self.permissions.set(hsadmin_permission_objects(codenames))
+    def codenames(self, campus=None):
+        """Codenames that count for `campus` (see _campus_q), whatever the status."""
+        return {code for code, c in self.grants()
+                if campus is ANY_CAMPUS or c is None
+                or (campus is not None and c.pk == campus.pk)}
 
-    def grant(self, *codenames):
-        self.permissions.add(*hsadmin_permission_objects(codenames))
+    def has_perm(self, codename, campus=None):
+        return self.status == 'Active' and codename in self.codenames(campus)
 
-    def revoke(self, *codenames):
-        self.permissions.remove(*hsadmin_permission_objects(codenames))
+    def _clear_grant_cache(self):
+        getattr(self, '_prefetched_objects_cache', {}).pop('permission_grants', None)
+
+    def grant(self, *codenames, campus=None):
+        for perm in hsadmin_permission_objects(codenames):
+            HSPositionPermission.objects.get_or_create(
+                position=self, permission=perm, campus=campus)
+        self._clear_grant_cache()
+
+    def revoke(self, *codenames, campus=None):
+        HSPositionPermission.objects.filter(
+            position=self, campus=campus,
+            permission__in=hsadmin_permission_objects(codenames)).delete()
+        self._clear_grant_cache()
+
+    def set_perms(self, codenames, campus=None):
+        """Replace the grants of one scope (`campus`, or the all-campuses scope)."""
+        HSPositionPermission.objects.filter(
+            position=self, campus=campus, **_grant_ct()).delete()
+        self.grant(*codenames, campus=campus)
+
+    def set_grants(self, pairs):
+        """Replace every grant with [(codename, campus or None)]."""
+        HSPositionPermission.objects.filter(position=self, **_grant_ct()).delete()
+        for code, campus in pairs:
+            self.grant(code, campus=campus)
 
     def toggle_student_recommendation(self):
         if self.status == 'Active':
@@ -573,3 +628,30 @@ class HSAdministratorPosition(models.Model):
             )
             record.save()
         return record
+
+
+class HSPositionPermission(models.Model):
+    """One HS admin permission granted on a position, optionally for one campus.
+
+    Null campus = every campus (the only kind a single-campus deployment
+    stores). A campus grant and the all-campuses grant of the same permission
+    may coexist; checks treat them as a union.
+    """
+    position = models.ForeignKey(
+        'cis.HSAdministratorPosition', on_delete=models.CASCADE,
+        related_name='permission_grants')
+    permission = models.ForeignKey(
+        'auth.Permission', on_delete=models.CASCADE, related_name='+',
+        limit_choices_to={**_PERMISSION_CT, 'codename__in': HSAdminPerm.ALL})
+    campus = models.ForeignKey(
+        'cis.Campus', null=True, blank=True, on_delete=models.CASCADE, related_name='+')
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['position', 'permission', 'campus'], name='hsposperm_unique_campus'),
+            models.UniqueConstraint(
+                fields=['position', 'permission'], condition=Q(campus__isnull=True),
+                name='hsposperm_unique_all_campuses'),
+        ]
+

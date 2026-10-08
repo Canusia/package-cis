@@ -52,7 +52,7 @@ class BackfillTests(HsAdminRoleFixtureMixin, TestCase):
         self._meta(self.role_a1, {REC: 'Yes'})
         self.migration.forward(django_apps, None)
         self.migration.forward(django_apps, None)
-        self.assertEqual(self.role_a1.permissions.count(), 1)
+        self.assertEqual(self.role_a1.permission_grants.count(), 1)
 
     def test_non_dict_meta_is_skipped(self):
         self._meta(self.role_a1, [])
@@ -70,4 +70,4 @@ class BackfillTests(HsAdminRoleFixtureMixin, TestCase):
         self.assertEqual(self.role_a1.meta[REC], 'Yes')
         self.assertEqual(self.role_a1.meta[ROSTER], 'No')
         self.assertEqual(self.role_a1.meta['other'], 'kept')
-        self.assertEqual(self.role_a1.permissions.count(), 0)
+        self.assertEqual(self.role_a1.permission_grants.count(), 0)

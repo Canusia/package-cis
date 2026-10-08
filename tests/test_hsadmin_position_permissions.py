@@ -385,3 +385,85 @@ class SerializerTests(HsAdminRoleFixtureMixin, TestCase):
             return len(ctx.captured_queries)
 
         self.assertEqual(count(1), count(3))
+
+
+import uuid as _uuid  # noqa: E402
+from django.conf import settings as dj_settings  # noqa: E402
+from cis.models.course import Campus  # noqa: E402
+from cis.models.highschool import HighSchoolCampus  # noqa: E402,F401
+
+
+class CampusGrantTests(HsAdminRoleFixtureMixin, TestCase):
+    def setUp(self):
+        self.build_fixture()
+        p = dj_settings.CAMPUS_CODE_PREFIX
+        self.lit = Campus.objects.create(name=f'LIT {_uuid.uuid4().hex[:4]}', code=f'{p}_L{_uuid.uuid4().hex[:4]}')
+        self.lsc = Campus.objects.create(name=f'LSC {_uuid.uuid4().hex[:4]}', code=f'{p}_S{_uuid.uuid4().hex[:4]}')
+
+    def tearDown(self):
+        self.tear_down_fixture()
+
+    def test_all_campuses_grant_counts_everywhere(self):
+        self.role_a1.grant(HSAdminPerm.SUBMIT_GRADES)
+        for campus in (None, self.lit, self.lsc):
+            self.assertTrue(self.role_a1.has_perm(HSAdminPerm.SUBMIT_GRADES, campus))
+
+    def test_campus_grant_counts_only_for_that_campus(self):
+        self.role_a1.grant(HSAdminPerm.SUBMIT_GRADES, campus=self.lit)
+        self.assertTrue(self.role_a1.has_perm(HSAdminPerm.SUBMIT_GRADES, self.lit))
+        self.assertFalse(self.role_a1.has_perm(HSAdminPerm.SUBMIT_GRADES, self.lsc))
+        self.assertFalse(self.role_a1.has_perm(HSAdminPerm.SUBMIT_GRADES))
+        self.assertTrue(self.admin_a.has_school_perm(HSAdminPerm.SUBMIT_GRADES, self.central.id, self.lit))
+        self.assertFalse(self.admin_a.has_school_perm(HSAdminPerm.SUBMIT_GRADES, self.central.id, self.lsc))
+
+    def test_any_campus(self):
+        from cis.models.highschool_administrator import ANY_CAMPUS
+        self.role_a1.grant(HSAdminPerm.SUBMIT_GRADES, campus=self.lsc)
+        self.assertEqual(list(self.admin_a.highschools_with_perm(HSAdminPerm.SUBMIT_GRADES, ANY_CAMPUS)),
+                         [self.central])
+        self.assertEqual(list(self.admin_a.highschools_with_perm(HSAdminPerm.SUBMIT_GRADES)), [])
+
+    def test_union_is_not_duplicated_and_revoke_is_per_scope(self):
+        self.role_a1.grant(HSAdminPerm.SUBMIT_GRADES)
+        self.role_a1.grant(HSAdminPerm.SUBMIT_GRADES, campus=self.lit)
+        self.assertEqual(HSAdministratorPosition.objects.with_perm(
+            HSAdminPerm.SUBMIT_GRADES, self.lit).count(), 1)
+        self.role_a1.revoke(HSAdminPerm.SUBMIT_GRADES, campus=self.lit)
+        self.assertEqual(self.role_a1.grants(), [(HSAdminPerm.SUBMIT_GRADES, None)])
+
+    def test_set_perms_replaces_one_scope_only(self):
+        self.role_a1.grant(HSAdminPerm.BULK_ENROLL)
+        self.role_a1.grant(HSAdminPerm.SUBMIT_GRADES, campus=self.lit)
+        self.role_a1.set_perms([HSAdminPerm.VERIFY_ROSTER], campus=self.lit)
+        self.assertEqual(sorted(self.role_a1.grants(), key=str),
+                         sorted([(HSAdminPerm.BULK_ENROLL, None),
+                                 (HSAdminPerm.VERIFY_ROSTER, self.lit)], key=str))
+
+    def test_codenames_by_scope(self):
+        self.role_a1.grant(HSAdminPerm.BULK_ENROLL)
+        self.role_a1.grant(HSAdminPerm.SUBMIT_GRADES, campus=self.lit)
+        self.assertEqual(self.role_a1.codenames(), {HSAdminPerm.BULK_ENROLL})
+        self.assertEqual(self.role_a1.codenames(self.lit),
+                         {HSAdminPerm.BULK_ENROLL, HSAdminPerm.SUBMIT_GRADES})
+
+    def test_prefetched_grants_not_stale(self):
+        self.role_a1.grant(HSAdminPerm.BULK_ENROLL, campus=self.lit)
+        role = HSAdministratorPosition.objects.prefetch_related(
+            'permission_grants__permission__content_type', 'permission_grants__campus'
+        ).get(pk=self.role_a1.pk)
+        self.assertEqual(role.grants(), [(HSAdminPerm.BULK_ENROLL, self.lit)])
+        role.revoke(HSAdminPerm.BULK_ENROLL, campus=self.lit)
+        self.assertEqual(role.grants(), [])
+
+    def test_administrators_in_highschool_by_campus(self):
+        self.role_a1.grant(HSAdminPerm.VERIFY_ROSTER, campus=self.lit)
+        self.assertEqual(list(self.central.administrators_in_highschool(
+            'can_verify_roster', campus=self.lit)), [self.admin_a])
+        self.assertEqual(list(self.central.administrators_in_highschool(
+            'can_verify_roster', campus=self.lsc)), [])
+
+    def test_wrappers_take_campus(self):
+        self.role_a1.grant(HSAdminPerm.VERIFY_ROSTER, campus=self.lit)
+        self.assertTrue(self.admin_a.can_verify_roster(self.central.id, campus=self.lit))
+        self.assertFalse(self.admin_a.can_verify_roster(self.central.id, campus=self.lsc))
+        self.assertEqual(list(self.admin_a.get_roster_highschools(campus=self.lit)), [self.central])

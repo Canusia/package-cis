@@ -4,7 +4,8 @@ Only manage_student_recommendation and manage_roster_verification carry over
 (any casing of 'yes'); the seven new permissions start off for everyone and
 are granted by CE. Django creates Meta.permissions rows after migrate
 finishes, so they are created here (same as 0090_ssn_permissions). The meta
-keys are left in place for rollback; nothing reads them after this.
+keys are left in place for rollback; nothing reads them after this. Grants
+are created for all campuses (campus null).
 """
 from django.db import migrations
 
@@ -40,27 +41,27 @@ def _permissions(apps):
 def forward(apps, schema_editor):
     perms = _permissions(apps)
     Position = apps.get_model('cis', 'HSAdministratorPosition')
-    Through = Position.permissions.through
+    Through = apps.get_model('cis', 'HSPositionPermission')
 
     rows = []
     for position in Position.objects.only('id', 'meta').iterator():
         meta = position.meta if isinstance(position.meta, dict) else {}
         for key, codename in LEGACY.items():
             if str(meta.get(key) or '').strip().lower() == 'yes':
-                rows.append(Through(hsadministratorposition_id=position.id,
-                                    permission_id=perms[codename].id))
+                rows.append(Through(position_id=position.id,
+                                    permission_id=perms[codename].id, campus_id=None))
     Through.objects.bulk_create(rows, ignore_conflicts=True)
 
 
 def backward(apps, schema_editor):
     Position = apps.get_model('cis', 'HSAdministratorPosition')
-    Through = Position.permissions.through
+    Through = apps.get_model('cis', 'HSPositionPermission')
     ours = Through.objects.filter(
         permission__content_type__app_label='cis',
         permission__content_type__model='hsadministratorposition')
 
     held = set(ours.filter(permission__codename__in=LEGACY.values())
-               .values_list('hsadministratorposition_id', 'permission__codename'))
+               .values_list('position_id', 'permission__codename'))
     for position in Position.objects.iterator():
         meta = dict(position.meta) if isinstance(position.meta, dict) else {}
         for key, codename in LEGACY.items():
