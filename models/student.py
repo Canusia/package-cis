@@ -682,7 +682,10 @@ class Student(models.Model):
     
     @property
     def ferpa_completed_for(self):
-        return self.meta.get('ferpa_completed_for')
+        """The current campus's FERPA record's term codes (#65)."""
+        from cis.ferpa import ferpa_record
+        record = ferpa_record(self)
+        return record.completed_for if record else None
     
     @property
     def start_term(self):
@@ -693,7 +696,10 @@ class Student(models.Model):
     
     @property
     def ferpa_completed_on(self):
-        return self.meta.get('ferpa_completed_on')
+        """The current campus's FERPA completion date, as m/d/Y (#65)."""
+        from cis.ferpa import ferpa_record
+        record = ferpa_record(self)
+        return record.completed_on.strftime('%m/%d/%Y') if record and record.completed_on else None
     
     @property
     def state_q_completed_for(self):
@@ -2238,12 +2244,11 @@ class Student(models.Model):
             student=self,
             term__id=term_id)
     
-    def get_ferpa(self):
-        try:
-            return StudentFerpa.objects.get(
-                student=self)
-        except StudentFerpa.DoesNotExist:
-            return StudentFerpa.objects.none()
+    def get_ferpa(self, campus=None):
+        """This student's FERPA record for `campus` (default: current), or an
+        empty queryset (templates test it for truthiness) (#65)."""
+        from cis.ferpa import ferpa_record
+        return ferpa_record(self, campus) or StudentFerpa.objects.none()
 
         
 class StudentTuitionAssistance(models.Model):
@@ -2759,9 +2764,9 @@ class StudentFerpa(models.Model):
         return Setting.get_value(setting_key, setting_name)
 
     @classmethod
-    def has_signed(cls, student):
-        return StudentFerpa.objects.filter(
-            student=student).exists()
+    def has_signed(cls, student, campus=None):
+        from cis.ferpa import ferpa_record
+        return ferpa_record(student, campus) is not None
 
     def asHTML(self):
         from cis.services.tenant_services import get_tenant_service

@@ -46,3 +46,143 @@ class FerpaFixtureMixin:
             key=REG_KEY, campus=campus,
             defaults={'value': {'registration_terms': [str(t.id) for t in terms],
                                 'active_term': str(terms[0].id)}})
+
+
+import datetime  # noqa: E402
+from unittest import mock  # noqa: E402
+
+from cis.campus_context import campus_context  # noqa: E402
+from cis import ferpa as F  # noqa: E402
+
+
+class SingleCampusFerpaTests(FerpaFixtureMixin, TestCase):
+    def setUp(self):
+        self.build()
+        self.t = self.term(None, '202610')
+        self.open_terms(None, self.t)
+
+    def _sign(self, campus, codes):
+        rec = StudentFerpa.objects.create(student=self.student, campus=campus,
+                                          permissions_granted={})
+        F.record_ferpa_completion(rec, codes)
+        return rec
+
+    def test_no_record_is_not_current(self):
+        self.assertFalse(F.ferpa_is_current(self.student))
+
+    def test_current_for_the_deployment_campus(self):
+        self._sign(self.ewu, ['202610'])
+        self.assertTrue(F.ferpa_is_current(self.student))
+        self.assertEqual(F.ferpa_record(self.student), StudentFerpa.objects.get(student=self.student))
+
+    def test_stale_terms_are_not_current(self):
+        self._sign(self.ewu, ['202530'])
+        self.assertFalse(F.ferpa_is_current(self.student))
+
+    def test_no_open_terms_is_not_current(self):
+        self._sign(self.ewu, [])
+        Setting.objects.filter(key=REG_KEY).delete()
+        self.assertFalse(F.ferpa_is_current(self.student))
+
+    def test_order_of_codes_does_not_matter(self):
+        t2 = self.term(None, '202620')
+        self.open_terms(None, self.t, t2)
+        self._sign(self.ewu, ['202620', '202610'])
+        self.assertTrue(F.ferpa_is_current(self.student))
+
+    def test_record_completion_mirrors_meta(self):
+        self._sign(self.ewu, ['202610'])
+        self.student.refresh_from_db()
+        self.assertEqual(self.student.meta['ferpa_completed_for'], ['202610'])
+        self.assertEqual(self.student.meta['ferpa_completed_on'],
+                         datetime.date.today().strftime('%m/%d/%Y'))
+
+    def test_meta_alone_no_longer_counts(self):
+        type(self.student).objects.filter(pk=self.student.pk).update(
+            meta={'ferpa_completed_for': ['202610']})
+        self.student.refresh_from_db()
+        self.assertFalse(F.ferpa_is_current(self.student))
+
+    def test_done_for_term(self):
+        self._sign(self.ewu, ['202610'])
+        self.assertTrue(F.ferpa_done_for_term(self.student, self.t))
+        self.assertFalse(F.ferpa_done_for_term(self.student, None))
+
+    def test_model_shims(self):
+        self.assertFalse(StudentFerpa.has_signed(self.student))
+        self.assertFalse(self.student.get_ferpa())
+        rec = self._sign(self.ewu, ['202610'])
+        self.assertTrue(StudentFerpa.has_signed(self.student))
+        self.assertEqual(self.student.get_ferpa(), rec)
+        self.assertEqual(self.student.ferpa_completed_for, ['202610'])
+        self.assertEqual(self.student.ferpa_completed_on,
+                         datetime.date.today().strftime('%m/%d/%Y'))
+
+
+@override_settings(MULTI_CAMPUS=True)
+class MultiCampusFerpaTests(FerpaFixtureMixin, TestCase):
+    def setUp(self):
+        self.build()
+        self.ta = self.term(self.a, '202610')
+        self.tb = self.term(self.b, '202610')   # shared code
+        self.open_terms(self.a, self.ta)
+        self.open_terms(self.b, self.tb)
+
+    def _rec(self, campus, codes):
+        return StudentFerpa.objects.create(student=self.student, campus=campus,
+                                           permissions_granted={}, completed_for=codes)
+
+    def test_consent_on_a_does_not_satisfy_b(self):
+        self._rec(self.a, ['202610'])
+        with campus_context(self.a):
+            self.assertTrue(F.ferpa_is_current(self.student))
+        with campus_context(self.b):
+            self.assertFalse(F.ferpa_is_current(self.student))
+            self.assertIsNone(F.ferpa_record(self.student))
+
+    def test_null_campus_row_never_counts(self):
+        self._rec(None, ['202610'])
+        with campus_context(self.a):
+            self.assertFalse(F.ferpa_is_current(self.student))
+
+    def test_no_campus_context_is_not_current_and_does_not_raise(self):
+        self._rec(self.a, ['202610'])
+        self.assertFalse(F.ferpa_is_current(self.student))
+        self.assertIsNone(F.ferpa_record(self.student))
+
+    def test_done_for_term_uses_the_terms_campus(self):
+        self._rec(self.a, ['202610'])
+        self.assertTrue(F.ferpa_done_for_term(self.student, self.ta))
+        self.assertFalse(F.ferpa_done_for_term(self.student, self.tb))
+
+
+class FormHookTests(FerpaFixtureMixin, TestCase):
+    def setUp(self):
+        self.build()
+
+    def test_default_form_class(self):
+        from cis.services.tenant_services import get_tenant_service
+        self.assertIs(F.ferpa_form_class(self.ewu),
+                      get_tenant_service('ferpa_form').StudentFerpaForm)
+
+    def test_tenant_hook_wins_per_campus(self):
+        class AForm:
+            pass
+
+        class BForm:
+            pass
+
+        def hook(campus):
+            return AForm if campus == self.a else BForm
+        with mock.patch('cis.ferpa.get_tenant_override', return_value=hook):
+            self.assertIs(F.ferpa_form_class(self.a), AForm)
+            self.assertIs(F.ferpa_form_class(self.b), BForm)
+
+    def test_template_passes_campus_only_when_accepted(self):
+        svc = mock.Mock()
+        svc.form_template = lambda: 'old.html'
+        with mock.patch('cis.ferpa.get_tenant_service', return_value=svc):
+            self.assertEqual(F.ferpa_form_template(self.a), 'old.html')
+        svc.form_template = lambda campus=None: f'{campus.code}.html'
+        with mock.patch('cis.ferpa.get_tenant_service', return_value=svc):
+            self.assertEqual(F.ferpa_form_template(self.a), f'{self.a.code}.html')
