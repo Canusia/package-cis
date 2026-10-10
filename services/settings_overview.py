@@ -126,7 +126,6 @@ def _build_item(cfg_item, request=None):
         # with no whitelist, read the keys off the instance instead.
         if not keys and form is not None:
             keys = list(form.fields.keys())
-        keep_headings = bool(cfg_item.get('keep_headings'))
         hide = set(cfg_item.get('hide') or [])
         # A whitelist may name a field the form only adds in __init__ (e.g.
         # cis.settings.menu's per-role fields); find those on the instance.
@@ -138,7 +137,7 @@ def _build_item(cfg_item, request=None):
                 continue
             if isinstance(field.widget, HiddenInput):
                 continue
-            if not keep_headings and _is_heading_field(field):
+            if _is_heading_field(field):
                 continue
             raw = values.get(key)
             widget_name = type(field.widget).__name__
