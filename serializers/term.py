@@ -59,6 +59,9 @@ class TermSerializer(serializers.ModelSerializer):
     num_highschools = serializers.IntegerField(read_only=True)
     num_teachers = serializers.IntegerField(read_only=True)
     num_courses = serializers.IntegerField(read_only=True)
+    # Tree order/indent supplied by TermViewSet.get_queryset() annotations.
+    tree_position = serializers.IntegerField(read_only=True)
+    tree_depth = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = Term
@@ -66,4 +69,5 @@ class TermSerializer(serializers.ModelSerializer):
         datatables_always_serialize = [
             'id', 'label', 'parent', 'campus',
             'num_sections', 'num_highschools', 'num_teachers', 'num_courses',
+            'tree_position', 'tree_depth',
         ]

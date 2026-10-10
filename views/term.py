@@ -2,7 +2,7 @@ import csv
 import io
 from django.utils.http import content_disposition_header
 
-from django.db.models import Q, Count
+from django.db.models import Q, Count, Case, IntegerField, Value, When
 from django.views import View
 from django.conf import settings
 from django.contrib import messages
@@ -18,6 +18,7 @@ from cis.forms.term import AcademicYearForm, TermForm, MigrateTermForm, TermUplo
 from cis.menu import cis_menu, draw_menu
 from cis.services.table_configs import get_table_config
 from cis.services.comparison import build_compare_context
+from cis.services.term_hierarchy import term_tree
 build_terms_table_config = get_table_config('terms_table').build_config
 from myce.component_registry.term import term_actions, term_tabs
 
@@ -65,6 +66,27 @@ class TermViewSet(viewsets.ReadOnlyModelViewSet):
         # see only terms whose academic year is in a processable campus (+ null).
         result = scope_queryset_by_campus(
             result, self.request.user, campus_path='academic_year__campus')
+
+        # Tree order for the terms table: each term followed by its sub-terms
+        # (siblings by -code). Computed over the scoped rows before DataTables
+        # searches, so a search keeps a consistent order; the table pages on
+        # the server, so the order has to be a sortable column.
+        scoped = Term.objects.filter(
+            pk__in=result.values('pk')).only('pk', 'parent_id', 'code').order_by('-code')
+        tree = term_tree(scoped)
+        if tree:
+            result = result.annotate(
+                tree_position=Case(
+                    *[When(pk=term.pk, then=Value(i)) for i, (term, _) in enumerate(tree)],
+                    output_field=IntegerField()),
+                tree_depth=Case(
+                    *[When(pk=term.pk, then=Value(depth)) for term, depth in tree],
+                    default=Value(0), output_field=IntegerField()),
+            )
+        else:
+            result = result.annotate(
+                tree_position=Value(0, output_field=IntegerField()),
+                tree_depth=Value(0, output_field=IntegerField()))
 
         return result.order_by('-code')
 
