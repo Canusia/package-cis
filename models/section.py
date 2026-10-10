@@ -1585,18 +1585,30 @@ def _tenant_registration_override(name):
 
 
 class StudentRegistrationQuerySet(models.QuerySet):
-    def pending_sis_mirror(self, trigger_statuses=None):
+    def pending_sis_mirror(self, trigger_statuses=None, term_ids=None):
         """Registrations queued for the next SIS mirror run.
 
         Single source of truth shared by send_registrations_to_sis and the
         Pending SIS Mirror tab. `trigger_statuses` defaults to the
         sis_mirror_trigger setting; callers that already loaded the config
         pass it in to avoid a second from_db().
+
+        `term_ids` defaults to the sis_mirror_terms setting: only those terms
+        and their sub-terms are queued; empty means every term. Rows in other
+        terms keep needs_mirroring and are picked up once their term is ticked.
         """
-        if trigger_statuses is None:
+        if trigger_statuses is None or term_ids is None:
             from cis.settings.registration_status_email import registration_status_email
-            trigger_statuses = registration_status_email.from_db().get('sis_mirror_trigger') or []
-        return self.filter(status__in=trigger_statuses, needs_mirroring=True)
+            config = registration_status_email.from_db()
+            if trigger_statuses is None:
+                trigger_statuses = config.get('sis_mirror_trigger') or []
+            if term_ids is None:
+                term_ids = config.get('sis_mirror_terms') or []
+        queued = self.filter(status__in=trigger_statuses, needs_mirroring=True)
+        if term_ids:
+            from cis.models.term import Term
+            queued = queued.filter(class_section__term__in=Term.with_descendants(term_ids))
+        return queued
 
     def awaiting_recommendation(self, terms=None):
         """Applied registrations whose course requires a recommendation.
@@ -1802,16 +1814,41 @@ class StudentRegistration(models.Model):
                     return v
         return '---'
     
-    def notify_sis_mirror_fail(self, log, error_message):
+    def notify_sis_mirror_fail(self, log, error_message, new_errors=()):
+        """Email sis_mirror_error_notifications about a failed mirror.
+
+        `new_errors`: messages this failure added to the registration status
+        email setting. They are flagged in the subject and listed, with a link
+        to that setting, where an admin ticks the ones that should stop
+        mirroring when they happen again."""
         try:
+            from django.urls import reverse
+            from django.utils.html import escape, linebreaks
+            from cis.campus_context import campus_url
             from cis.settings.registration_status_email import registration_status_email
 
             config = registration_status_email.from_db()
 
             subject = 'Canusia - Registration Send Error'
             text_body = f'{self.student.user.last_name}, {self.student.user.first_name} - {self.student.user.psid} for {self.class_section} {self.status} - {error_message}'
+            if new_errors:
+                subject += ' (new error awaiting review)'
+                text_body += '\n\nNew SIS error(s), added to the settings:\n' + '\n'.join(
+                    f'- {message}' for message in new_errors)
+                text_body += ('\n\nReview them under "Stop mirroring when these errors happen '
+                              'again" in Student Registration Change - SIS / Email Notifications')
+                try:
+                    from setting.models import SettingRecord
+                except ImportError:
+                    from setting.setting.models import SettingRecord
+                record = SettingRecord.objects.filter(name='registration_status_email').first()
+                if record:
+                    text_body += ': ' + campus_url(
+                        self.class_section.course.campus,
+                        reverse('setting:record_details') + f'?report_id={record.id}')
+                text_body += '.'
 
-            html_body = text_body
+            html_body = linebreaks(escape(text_body))
             to = config.get('sis_mirror_error_notifications', 'kadaji@gmail.com').split(',')
 
             send_html_mail(

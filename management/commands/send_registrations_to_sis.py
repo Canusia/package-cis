@@ -1,10 +1,11 @@
-import os, csv, datetime, logging, io, json
+import os, csv, datetime, logging, io, json, zlib
 
 from django.conf import settings
+from django.db import connection
 from django.db.utils import IntegrityError
 from django.core.management.base import BaseCommand
 
-from cis.campus_context import scope_to_current_campus
+from cis.campus_context import current_campus_or_none, scope_to_current_campus
 from cis.utils import upload_to_s3
 from cis.models.student import Student
 from cis.models.section import StudentRegistration
@@ -20,6 +21,35 @@ else:
 from cis.settings.registration_status_email import registration_status_email
 logger = logging.getLogger(__name__)
 
+# Postgres advisory-lock key for this command ('SIS1'), paired with a per-campus
+# key. A run takes 20-25 minutes on a 30-minute schedule; without the lock an
+# overlapping run mirrors from a second stale snapshot of the queue (2026-10-08
+# incident). Per campus because multi-campus runs the command once per campus.
+RUN_LOCK_KEY = 0x53495331
+
+
+def campus_lock_key(campus_id):
+    """32-bit second key for the campus (0 for none / single-campus)."""
+    if campus_id is None:
+        return 0
+    return zlib.crc32(str(campus_id).encode()) & 0x7FFFFFFF
+
+
+def _run_lock_keys():
+    campus = current_campus_or_none()
+    return [RUN_LOCK_KEY, campus_lock_key(campus.pk if campus else None)]
+
+
+def _try_run_lock(keys):
+    with connection.cursor() as cursor:
+        cursor.execute('SELECT pg_try_advisory_lock(%s, %s)', keys)
+        return cursor.fetchone()[0]
+
+
+def _release_run_lock(keys):
+    with connection.cursor() as cursor:
+        cursor.execute('SELECT pg_advisory_unlock(%s, %s)', keys)
+
 class Command(BaseCommand):
     '''
     Mirror registrations to SIS
@@ -30,6 +60,25 @@ class Command(BaseCommand):
         parser.add_argument('-t', '--time', type=str, help='Time of run')
 
     def handle(self, *args, **kwargs):
+        keys = _run_lock_keys()
+        if not _try_run_lock(keys):
+            message = 'Skipped: previous run still in progress'
+            logger.warning('send_registrations_to_sis: %s', message)
+            if kwargs.get('time'):
+                cron_task_started.send(
+                    sender=self.__class__, task=self.__class__,
+                    scheduled_time=kwargs['time'])
+                cron_task_done.send(
+                    sender=self.__class__, task=self.__class__,
+                    scheduled_time=kwargs['time'], summary=message,
+                    detailed_log=json.dumps({'skipped': message}))
+            return
+        try:
+            self._run(*args, **kwargs)
+        finally:
+            _release_run_lock(keys)
+
+    def _run(self, *args, **kwargs):
         config = registration_status_email.from_db()
 
         summary = ''
@@ -111,11 +160,9 @@ class Command(BaseCommand):
                             detailed_log[f'{record.status}_fail_count'] = 0
                             detailed_log[f'{record.status}_fail_list'] = []
 
-                        StudentRegistration.objects.filter(
-                            id=record.id
-                        ).update(
-                            needs_mirroring=False
-                        )
+                        # A failed row stays queued unless its error is marked
+                        # Stop on the Known SIS Errors page (mirror_to_sis
+                        # applies that); this used to drop every failure.
 
                         detailed_log[f'{record.status}_fail_count'] += 1
                         detailed_log[f'{record.status}_fail_list'].append(str(record.id))

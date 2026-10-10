@@ -120,6 +120,17 @@ class Term(models.Model):
     def sexy_name(self):
         return str(self)
 
+    @classmethod
+    def with_descendants(cls, term_ids):
+        """Terms `term_ids` plus every sub-term below them, at any depth."""
+        found = set()
+        frontier = {str(i) for i in term_ids}
+        while frontier:
+            found |= frontier
+            frontier = {str(i) for i in cls.objects.filter(
+                parent_id__in=frontier).values_list('id', flat=True)} - found
+        return cls.objects.filter(id__in=found)
+
     def would_create_cycle(self, candidate_parent):
         """True if setting self.parent = candidate_parent would form a cycle."""
         if candidate_parent is None:

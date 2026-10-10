@@ -1,9 +1,13 @@
+import hashlib
 import json
+import re
 from django import forms
 from django.conf import settings
 from django.http import JsonResponse
 from django.urls import reverse_lazy
 from django.core.exceptions import ValidationError
+from django.db import transaction
+from django.utils import timezone
 
 from cis.validators import validate_html_short_code, validate_email_list, validate_cron
 
@@ -16,6 +20,56 @@ from ..models.settings import Setting
 
 from django.utils.safestring import mark_safe
 from form_fields import fields as FFields
+
+SIS_ERROR_KINDS = [
+    ('registration', 'Registration failure'),
+    ('eligibility', 'Eligibility block'),
+]
+
+
+def sis_error_key(message):
+    """Stable key for a SIS error message: same text whatever its spacing or case."""
+    text = re.sub(r'\s+', ' ', (message or '').strip()).casefold()
+    return hashlib.sha256(text.encode()).hexdigest()[:16]
+
+
+def record_sis_mirror_errors(kind, messages):
+    """Add each message not seen before to the setting's sis_mirror_known_errors.
+
+    Returns (first message the admin ticked to stop mirroring, or None;
+    messages added by this call). Runs under the current campus (the mirror
+    runs inside the registration's campus), and locks the setting row so
+    concurrent runs and an admin saving the page don't lose each other's change.
+    """
+    messages = [m.strip() for m in messages if (m or '').strip()]
+    if not messages:
+        return None, []
+    key = registration_status_email.key
+    with transaction.atomic():
+        setting = Setting.objects.select_for_update().filter(key=key).first()
+        if setting is None:
+            setting = Setting(key=key, value={})
+        value = dict(setting.value or {})
+        known = list(value.get('sis_mirror_known_errors') or [])
+        known_keys = {e.get('key') for e in known}
+        stop_keys = set(value.get('sis_mirror_stop_on_errors') or [])
+
+        stop_message, new = None, []
+        for message in messages:
+            k = sis_error_key(message)
+            if k not in known_keys:
+                known.append({'key': k, 'message': message, 'kind': kind,
+                              'first_seen': timezone.now().isoformat()})
+                known_keys.add(k)
+                new.append(message)
+            elif stop_message is None and k in stop_keys:
+                stop_message = message
+        if new:
+            value['sis_mirror_known_errors'] = known
+            setting.value = value
+            setting.save()
+    return stop_message, new
+
 
 class SettingForm(forms.Form):
     STATUS_OPTIONS = [
@@ -31,6 +85,26 @@ class SettingForm(forms.Form):
         widget=forms.CheckboxSelectMultiple
     )
     
+    sis_mirror_terms = forms.MultipleChoiceField(
+        required=False,
+        label='SIS Mirror Term(s)',
+        help_text='Only registrations in these terms are sent to the SIS by the scheduled '
+                  'mirror. Leave all unticked to mirror every term. A parent term includes '
+                  'its sub-terms.',
+        widget=forms.CheckboxSelectMultiple
+    )
+
+    sis_mirror_stop_on_errors = forms.MultipleChoiceField(
+        required=False,
+        label='Stop mirroring when these errors happen again',
+        help_text='Every SIS error that blocks a registration from mirroring is added here '
+                  'automatically, and the SIS Mirror Notification Email(s) are told. Tick an '
+                  'error to take a registration out of the mirror queue the next time it fails '
+                  'with it; staff re-queue it (Set needs mirroring) once the cause is fixed. '
+                  'Unticked errors keep retrying on every run.',
+        widget=forms.CheckboxSelectMultiple
+    )
+
     cron = forms.CharField(
         max_length=50,
         help_text='Min Hr Day Month WeekDay',
@@ -102,6 +176,8 @@ class SettingForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields['sis_mirror_terms'].choices = self._term_choices()
+        self.fields['sis_mirror_stop_on_errors'].choices = self._known_error_choices()
 
         for k, v in StudentRegistration.STATUS_OPTIONS:
             self.fields[f"status_change_{k}_subject"] = forms.CharField(
@@ -117,6 +193,42 @@ class SettingForm(forms.Form):
                         required=False,
                         label=f'\'{v}\' Message Email'
                     )
+
+    @staticmethod
+    def _term_choices():
+        """(id, label) for the current campus's terms, newest first, each parent
+        followed by its sub-terms (indented). Values are strings so the setting
+        stays JSON."""
+        from ..campus_context import scope_to_current_campus
+        terms = list(scope_to_current_campus(
+            Term.objects.select_related('academic_year'), 'academic_year__campus'))
+        term_ids = {t.id for t in terms}
+        children = {}
+        for term in terms:
+            children.setdefault(term.parent_id, []).append(term)
+        choices, seen = [], set()
+
+        def add(term, depth):
+            if term.id in seen:
+                return
+            seen.add(term.id)
+            choices.append((str(term.id), f"{'— ' * depth}{term} ({term.code})"))
+            for child in children.get(term.id, []):
+                add(child, depth + 1)
+
+        for term in terms:
+            if term.parent_id is None or term.parent_id not in term_ids:
+                add(term, 0)
+        return choices
+
+    @classmethod
+    def _known_error_choices(cls):
+        """One checkbox per collected SIS error, newest first."""
+        kinds = dict(SIS_ERROR_KINDS)
+        known = (registration_status_email.from_db().get('sis_mirror_known_errors') or [])
+        return [(e['key'], f"{kinds.get(e.get('kind'), e.get('kind'))}: {e['message']}"
+                           f" (first seen {(e.get('first_seen') or '')[:10]})")
+                for e in reversed(known) if e.get('key')]
 
     def _to_python(self):
         """
@@ -194,14 +306,21 @@ class registration_status_email(SettingForm):
             return {}
 
     def run_record(self):
-        try:
-            setting = Setting.objects.get(key=self.key)
-        except Setting.DoesNotExist:
-            setting = Setting()
-            setting.key = self.key
+        # Locked like record_sis_mirror_errors(), so an error the mirror adds
+        # while the admin has the page open is kept, not overwritten.
+        with transaction.atomic():
+            setting = Setting.objects.select_for_update().filter(key=self.key).first()
+            if setting is None:
+                setting = Setting(key=self.key, value={})
 
-        setting.value = self._to_python()
-        setting.save()
+            value = self._to_python()
+            known = (setting.value or {}).get('sis_mirror_known_errors') or []
+            keys = {e.get('key') for e in known}
+            value['sis_mirror_known_errors'] = known
+            value['sis_mirror_stop_on_errors'] = [
+                k for k in (value.get('sis_mirror_stop_on_errors') or []) if k in keys]
+            setting.value = value
+            setting.save()
 
         return JsonResponse({
             'message': 'Successfully saved settings',
