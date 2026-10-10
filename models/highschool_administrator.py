@@ -120,7 +120,8 @@ class HSAdministratorAccessRequest(models.Model):
             return None
 
         context = Context(self.email_context())
-        subject = Template(subject if subject is not None else default_subject).render(context)
+        subject = Template(subject if subject is not None else default_subject).render(
+            Context(self.email_context(), autoescape=False))
         text_body = Template(body if body is not None else default_email).render(context)
         to = [self.email]
 

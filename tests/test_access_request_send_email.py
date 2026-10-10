@@ -52,3 +52,11 @@ class SendEmailTests(TestCase):
         ctx = self.req.email_context(reset_link='[password reset link]')
         self.assertEqual(ctx['password_reset_link'], '[password reset link]')
         self.assertEqual(ctx['highschool'], 'North High')
+
+    @mock.patch('cis.models.highschool_administrator.send_html_mail')
+    @mock.patch.object(HSAdministratorAccessRequest, 'get_password_reset_link',
+                       return_value='https://reset.example/xyz')
+    def test_subject_is_not_html_escaped(self, _link, send):
+        self.req.name = "Jane O'Brien & Co"
+        self.req.send_email(subject='Welcome {{name}}', body='x')
+        self.assertEqual(send.call_args.args[0], "Welcome Jane O'Brien & Co")
