@@ -77,6 +77,53 @@ class BuildOverviewTests(TestCase):
                     self.assertIn('is_html', f)
 
 
+    def test_menu_and_intro_default_when_profile_omits_them(self):
+        bare = {'title': 'X', 'sections': []}
+        with patch('cis.services.settings_overview._get_profile', return_value=bare):
+            ov = build_overview('anything')
+        from cis.services.settings_overview import DEFAULT_INTRO, DEFAULT_MENU
+        self.assertEqual(ov['menu'], DEFAULT_MENU)
+        self.assertEqual(ov['menu'], ('students', 'students'))
+        self.assertEqual(ov['intro'], DEFAULT_INTRO)
+
+    def test_menu_and_intro_pass_through(self):
+        prof = {'title': 'X', 'sections': [],
+                'menu': ('highschools', 'school_administrators'),
+                'intro': 'Settings behind the school admin portal.'}
+        with patch('cis.services.settings_overview._get_profile', return_value=prof):
+            ov = build_overview('anything')
+        self.assertEqual(ov['menu'], ('highschools', 'school_administrators'))
+        self.assertEqual(ov['intro'], 'Settings behind the school admin portal.')
+
+    def test_whitelisted_runtime_field_is_shown(self):
+        # cis.settings.menu adds its '<role>_menu' fields in __init__, so they
+        # are not in base_fields; a whitelist must still reach them.
+        from django.conf import settings as dj_settings
+        from cis.models.settings import Setting
+        from cis.settings.menu import menu
+        role = next(iter(dj_settings.MY_CE['roles']))
+        SettingRecord.objects.create(app='cis', name='menu', title='System Menu', categories='4')
+        Setting.objects.update_or_create(key=menu.key, defaults={'value': {f'{role}_menu': '[{"label": "Home"}]'}})
+        prof = {'title': 'X', 'sections': [{'title': 'S', 'items': [
+            {'app': 'cis', 'name': 'menu', 'fields': [f'{role}_menu']}]}]}
+        request = RequestFactory().get('/x', {'report_id': '1'})
+        with patch('cis.services.settings_overview._get_profile', return_value=prof):
+            ov = build_overview('anything', request=request)
+        item = ov['sections'][0]['items'][0]
+        self.assertTrue(item['available'])
+        self.assertEqual(len(item['fields']), 1)
+        self.assertIn('Home', item['fields'][0]['value'])
+
+    def test_runtime_fields_not_shown_without_whitelist(self):
+        from cis.settings.menu import menu
+        SettingRecord.objects.create(app='cis', name='menu', title='System Menu', categories='4')
+        prof = {'title': 'X', 'sections': [{'title': 'S', 'items': [{'app': 'cis', 'name': 'menu'}]}]}
+        request = RequestFactory().get('/x', {'report_id': '1'})
+        with patch('cis.services.settings_overview._get_profile', return_value=prof):
+            ov = build_overview('anything', request=request)
+        self.assertEqual(ov['sections'][0]['items'][0]['fields'], [])
+
+
 class ChoiceResolutionTests(TestCase):
     def _req(self):
         # A minimal request; forms only need it as a positional arg (mirrors

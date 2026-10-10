@@ -15,7 +15,7 @@ def settings_overview_page(request, profile):
         overview = build_overview(profile, request=request)
     except KeyError:
         raise Http404('Unknown settings profile')
-    menu = draw_menu(cis_menu, 'students', 'students')
+    menu = draw_menu(cis_menu, *overview['menu'])
     return render(request, 'cis/settings_overview.html', {
         'menu': menu,
         'overview': overview,

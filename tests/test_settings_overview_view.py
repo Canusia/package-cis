@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from django.contrib.auth.models import Group
 from django.contrib.auth.signals import user_logged_in
 from django.test import TestCase
@@ -66,3 +68,23 @@ class SettingsOverviewViewTests(TestCase):
         url = reverse('cis:settings_overview', kwargs={'profile': 'student_registration'})
         resp = self.client.get(url)
         self.assertEqual(resp.status_code, 200)
+
+    def test_students_profile_keeps_students_highlight_and_intro(self):
+        url = reverse('cis:settings_overview', kwargs={'profile': 'student_registration'})
+        with patch('cis.views.settings_overview.draw_menu', return_value='') as menu:
+            resp = self.client.get(url)
+        self.assertEqual(menu.call_args.args[1:], ('students', 'students'))
+        self.assertIn(b'each step a student moves through', resp.content)
+
+    def test_profile_menu_drives_highlight(self):
+        prof = {'title': 'HS', 'sections': [],
+                'menu': ('highschools', 'school_administrators'),
+                'intro': 'School admin portal settings.'}
+        url = reverse('cis:settings_overview', kwargs={'profile': 'whatever'})
+        with patch('cis.services.settings_overview._get_profile', return_value=prof), \
+             patch('cis.views.settings_overview.draw_menu', return_value='') as menu:
+            resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(menu.call_args.args[1:], ('highschools', 'school_administrators'))
+        self.assertIn(b'School admin portal settings.', resp.content)
+        self.assertNotIn(b'each step a student moves through', resp.content)

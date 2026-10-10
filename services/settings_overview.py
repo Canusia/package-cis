@@ -25,6 +25,12 @@ logger = logging.getLogger(__name__)
 # Widget classes whose value we render as raw (trusted) HTML rather than escaped.
 _HTML_WIDGET_HINTS = ('Textarea', 'CKEditor')
 
+# What a profile gets when it does not set its own sidebar highlight / intro
+# (the student registration overview predates both keys).
+DEFAULT_MENU = ('students', 'students')
+DEFAULT_INTRO = ('Current configuration for each step a student moves through. '
+                 'Use Edit to change a setting in place.')
+
 
 def _get_profile(name):
     mod = importlib.import_module(
@@ -96,11 +102,14 @@ def _build_item(cfg_item, request=None):
 
         keys = cfg_item.get('fields') or list(form_cls.base_fields.keys())
         hide = set(cfg_item.get('hide') or [])
+        # A whitelist may name a field the form only adds in __init__ (e.g.
+        # cis.settings.menu's per-role fields); find those on the instance.
+        runtime_fields = form.fields if (form is not None and cfg_item.get('fields')) else {}
         fields = []
         for key in keys:
-            if key in hide or key not in form_cls.base_fields:
+            field = form_cls.base_fields.get(key) or runtime_fields.get(key)
+            if key in hide or field is None:
                 continue
-            field = form_cls.base_fields[key]
             if isinstance(field.widget, HiddenInput):
                 continue
             raw = values.get(key)
@@ -137,7 +146,10 @@ def _build_item(cfg_item, request=None):
 
 def build_overview(profile_name, request=None):
     profile = _get_profile(profile_name)
-    out = {'title': profile.get('title', ''), 'sections': []}
+    out = {'title': profile.get('title', ''),
+           'menu': tuple(profile.get('menu') or DEFAULT_MENU),
+           'intro': profile.get('intro') or DEFAULT_INTRO,
+           'sections': []}
     for section in profile['sections']:
         sec = {'title': section['title'], 'items': []}
         for cfg_item in section['items']:
