@@ -2,12 +2,14 @@
 mirror is added to the registration status email setting (and the admin is
 emailed); the admin ticks the ones that should stop mirroring when they happen
 again. Unticked errors keep retrying."""
+import re
 import uuid
 from unittest.mock import patch
 
 from django.contrib.auth.models import Group
 from django.core.management import call_command
 from django.test import RequestFactory, TestCase
+from django.urls import reverse
 
 from cis.models import CustomUser
 from cis.models.course import Cohort, Course
@@ -184,20 +186,22 @@ class NotifyNewErrorsTests(TestCase):
         except ImportError:
             from setting.setting.models import SettingRecord
         return SettingRecord.objects.create(
-            name='registration_status_email', title='Student Registration Change',
+            name='registration_status_email', title='Reg Change Title',
             description='x', categories='x')
 
     def test_new_errors_flag_the_subject_and_link_to_the_settings(self):
         reg = self._registration()
-        record = self._setting_record()
+        self._setting_record()
         with patch('cis.models.section.send_html_mail') as send:
             reg.notify_sis_mirror_fail(None, 'boom <b>&', new_errors=['boom <b>&'])
         subject, text_body, html_body = send.call_args.args[:3]
         self.assertIn('new error awaiting review', subject)
         self.assertIn('boom', text_body)
         self.assertIn('Stop mirroring when these errors happen again', text_body)
-        self.assertRegex(
-            text_body, rf'https?://[^\s]+/record_details/?\?report_id={record.id}')
+        self.assertRegex(text_body, r'https?://[^\s]+' + re.escape(reverse('setting:records')))
+        self.assertIn('Reg Change Title', text_body)
+        self.assertNotIn('report_id=', text_body)
+        self.assertNotIn('record_details', text_body)
         self.assertIn('boom &lt;b&gt;&amp;', html_body)
         self.assertNotIn('<b>', html_body)
 
