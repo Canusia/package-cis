@@ -31,7 +31,10 @@ from cis.utils import user_has_cis_role, get_movable_reference_choices, move_ref
 from cis.highschool_scope import picker_queryset
 from cis.forms.widgets import DualListSelectMultiple
 
-from cis.validators import validate_html_short_code
+from cis.validators import validate_html_short_code, validate_email_placeholders
+from cis.services.access_request_review import (
+    ALL_PLACEHOLDERS, APPROVE, DENY, MISSING_RESET_LINK, PLACEHOLDERS, RESET_LINK_RE,
+)
 
 class MigrateForm(forms.Form):
     
@@ -339,20 +342,11 @@ class HSAdminAccessRequestModelForm(ModelForm):
         label=''
     )
   
-    scope = HSAdminScopeField(
-        help_text='Which campus the permissions below apply to.')
-
-    permissions = HSAdminPermissionField(
-        label='Permissions (applied if approved)',
-        help_text=('Leave all unchecked to approve with no permissions; '
-                   'they can be granted later on the role.'))
-
     class Meta:
         model = HSAdministratorAccessRequest
         fields = [
             'name', 'email', 'phone',
             'highschool', 'role',
-            'status'
         ]
         widgets = {
             'name': forms.TextInput(
@@ -387,43 +381,6 @@ class HSAdminAccessRequestModelForm(ModelForm):
 
         self.fields['highschool'].queryset = picker_queryset(
             keep=self.instance.highschool_id)
-        
-        if not user_has_cis_role(self.request.user):
-            del self.fields['status']
-            del self.fields['permissions']
-            del self.fields['scope']
-        else:
-            del self.fields['captcha']
-            apply_scope_field(self, HighSchool.objects.filter(
-                pk=self.instance.highschool_id) if self.instance.pk
-                else HighSchool.objects.none())
-
-            instance = kwargs.get('instance')
-            if instance and instance.status.lower() != 'submitted':
-                # Show what the approved role holds now, not what was ticked
-                # at approval; hide the field when the request was denied or
-                # no such role exists.
-                role = None
-                if instance.status == 'Approved':
-                    role = HSAdministratorPosition.objects.filter(
-                        hsadmin__user__email__iexact=instance.email,
-                        highschool=instance.highschool,
-                        position__name__iexact=instance.role,
-                    ).first()
-                if role is None:
-                    del self.fields['permissions']
-                else:
-                    self.fields['permissions'].label = 'Current role permissions'
-                    self.fields['permissions'].help_text = (
-                        'What the role holds now; change it on the role.')
-                    from cis.models.highschool_administrator import ANY_CAMPUS
-                    self.initial['permissions'] = list(
-                        hsadmin_permission_objects(role.codenames(ANY_CAMPUS))
-                        .values_list('pk', flat=True))
-
-                for field_name, field in self.fields.items():
-                    field.disabled = True
-                    field.widget.attrs['readonly'] = True
 
     def clean(self):
         cleaned_data = super().clean()
@@ -444,6 +401,93 @@ class HSAdminAccessRequestModelForm(ModelForm):
                 ))
 
         return cleaned_data
+
+
+class AccessRequestReviewForm(ModelForm):
+    """CE review of an access request: details, approve/deny, permissions on
+    approve, and the outcome email edited for this one request.
+
+    Submitting with `save_details` saves the details only (no decision, no
+    email); any other submit must carry a decision and a valid email.
+    """
+    DECISIONS = ((APPROVE, 'Approve'), (DENY, 'Deny'))
+
+    decision = forms.ChoiceField(
+        choices=DECISIONS, widget=forms.RadioSelect, required=False,
+        label='Do you approve or deny this request?')
+
+    scope = HSAdminScopeField(
+        help_text='Which campus the permissions below apply to.')
+
+    permissions = HSAdminPermissionField(
+        label='Permissions',
+        help_text=('Leave all unchecked to approve with no permissions; '
+                   'they can be granted later on the role.'))
+
+    email_subject = forms.CharField(required=False, max_length=200, label='Subject')
+    email_message = forms.CharField(
+        required=False, label='Message', widget=forms.Textarea(attrs={'rows': 10}))
+
+    class Meta:
+        model = HSAdministratorAccessRequest
+        fields = ['name', 'email', 'phone', 'highschool', 'role']
+        labels = {
+            'name': 'Name',
+            'email': 'Email',
+            'phone': 'Phone #',
+            'highschool': 'High School',
+            'role': 'Position/Title',
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['highschool'].queryset = picker_queryset(
+            keep=self.instance.highschool_id)
+        apply_scope_field(self, HighSchool.objects.filter(pk=self.instance.highschool_id))
+
+    @property
+    def saving_details_only(self):
+        return 'save_details' in self.data
+
+    def clean_email(self):
+        return (self.cleaned_data.get('email') or '').lower()
+
+    def clean(self):
+        cleaned = super().clean()
+        if self.saving_details_only:
+            return cleaned
+
+        decision = cleaned.get('decision')
+        if decision not in (APPROVE, DENY):
+            self.add_error('decision', 'Choose Approve or Deny.')
+            return cleaned
+
+        for field in ('email_subject', 'email_message'):
+            value = cleaned.get(field) or ''
+            if not value.strip():
+                self.add_error(field, 'This field is required.')
+                continue
+            try:
+                validate_email_placeholders(
+                    value, PLACEHOLDERS[decision], known=ALL_PLACEHOLDERS)
+            except ValidationError as exc:
+                self.add_error(field, exc)
+
+        if (decision == APPROVE and 'email_message' not in self.errors
+                and not RESET_LINK_RE.search(cleaned.get('email_message') or '')):
+            self.add_error('email_message', MISSING_RESET_LINK)
+
+        if decision == DENY:
+            cleaned['permissions'] = []
+            cleaned['scope'] = None
+        else:
+            scope = cleaned.get('scope')
+            highschool = cleaned.get('highschool')
+            if (scope is not None and highschool is not None
+                    and not highschool.campus_links.filter(campus=scope).exists()):
+                self.add_error('scope', f'{highschool.name} is not linked to {scope.name}.')
+        return cleaned
+
 
 class HSCollegeAdvisorForm(forms.Form):
     id = forms.CharField(
