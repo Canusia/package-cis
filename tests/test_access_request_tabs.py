@@ -61,4 +61,4 @@ class AccessRequestTabDispatchTests(TestCase):
         self.assertNotIn('href="#notes"', body)          # dropped dead hidden tab
         self.assertIn('id="additional_info"', body)      # eager active pane present
         self.assertIn('tab_loader.js', body)
-        self.assertIn('name="status"', body)             # page-shell edit form still rendered
+        self.assertIn('id="ar-review-form"', body)       # page-shell review form rendered

@@ -39,7 +39,8 @@ build_access_requests_table_config = get_table_config('access_requests_table').b
 from cis.forms.highschool import (
     HSAdministratorForm, HSAdministratorAddForm,
     HSAdministratorPositionForm,
-    HSAdminAccessRequestModelForm, HSMemberUploadForm
+    HSAdminAccessRequestModelForm, HSMemberUploadForm,
+    AccessRequestReviewForm,
 )
 
 from cis.models.note import HSAdministratorNote
@@ -267,45 +268,82 @@ def access_request_tab(request, record_id, tab_slug):
 
 @xframe_options_exempt
 def access_request(request, record_id):
-    """
-    Shows details about request
-    """
+    """Review an access request: details, approve/deny, permissions, email."""
+    from cis.services.access_request_review import (
+        APPROVE, DENY, MISSING_RESET_LINK, PLACEHOLDERS,
+        complete_review, current_role_permissions, note_location,
+    )
+    from cis.settings.access_request import access_request as access_request_settings
+
     template = 'cis/hs_admin/access_request.html'
     record = get_object_or_404(HSAdministratorAccessRequest, pk=record_id)
+    decided = record.status != 'Submitted'
+    form = None
 
-    if request.method == 'POST':
-        form = HSAdminAccessRequestModelForm(
-            request.POST,
-            instance=record,
-            request=request)
+    if not decided:
+        if request.method == 'POST':
+            form = AccessRequestReviewForm(request.POST, instance=record)
+            if form.is_valid():
+                if form.saving_details_only:
+                    form.save()
+                    messages.add_message(request, messages.SUCCESS,
+                                         'Saved the request details. Nothing was sent.',
+                                         'list-group-item-success')
+                    return redirect('cis:hs_admin_access_request', record_id=record_id)
 
-        if form.is_valid():
-            record = form.save()
-            
-            if record.status == 'Approved':                    
-                record.grant_access(form.cleaned_data)
+                try:
+                    outcome = complete_review(form, request.user)
+                except Exception as e:
+                    logger.exception('Unable to complete access request %s', record_id)
+                    messages.add_message(
+                        request, messages.SUCCESS,
+                        f'Unable to complete the request \u2014 nothing was changed. {e}',
+                        'list-group-item-warning')
+                    return redirect('cis:hs_admin_access_request', record_id=record_id)
 
-            record.send_email()
-            
-            messages.add_message(
-                request,
-                messages.SUCCESS,
-                'Successfully updated request',
-                'list-group-item-success') 
-            return redirect('cis:hs_admin_access_request', record_id=record_id)
+                verb = 'Approved' if outcome.decision == APPROVE else 'Denied'
+                if outcome.email_sent:
+                    messages.add_message(request, messages.SUCCESS,
+                                         f'{verb}. The email was sent to {record.email}.',
+                                         'list-group-item-success')
+                else:
+                    messages.add_message(request, messages.SUCCESS,
+                                         f'{verb}, but the email could not be sent. '
+                                         f'Contact {record.email} directly.',
+                                         'list-group-item-warning')
+                if outcome.role_already_existed:
+                    messages.add_message(request, messages.SUCCESS,
+                                         'This person already had that role; its permissions '
+                                         'were not changed.', 'list-group-item-warning')
+                if not outcome.note_saved:
+                    messages.add_message(request, messages.SUCCESS,
+                                         'The decision note could not be saved.',
+                                         'list-group-item-warning')
+                return redirect('cis:hs_admin_access_request', record_id=record_id)
         else:
-            messages.add_message(
-                request,
-                messages.SUCCESS,
-                'Unable to complete request - ' + str(form.errors),
-                'list-group-item-warning') 
-            return redirect('cis:hs_admin_access_request', record_id=record_id)
+            form = AccessRequestReviewForm(instance=record)
+    elif request.method == 'POST':
+        messages.add_message(request, messages.SUCCESS,
+                             f'This request was already {record.status.lower()}. Nothing was changed.',
+                             'list-group-item-warning')
+        return redirect('cis:hs_admin_access_request', record_id=record_id)
 
-    form = HSAdminAccessRequestModelForm(instance=record, request=request)
+    config = access_request_settings.from_db()
     return render(
         request,
         template, {
             'form': form,
+            'decided': decided,
+            'note_location': note_location(record) if decided else None,
+            'current_permissions': current_role_permissions(record) if decided else None,
+            'email_templates': {
+                APPROVE: {'subject': config.get('approved_subject', ''),
+                          'message': config.get('approved_email', '')},
+                DENY: {'subject': config.get('denied_subject', ''),
+                       'message': config.get('denied_email', '')},
+            },
+            'placeholders': PLACEHOLDERS,
+            'missing_link_message': MISSING_RESET_LINK,
             'menu': draw_menu(cis_menu, 'highschools', 'access_requests'),
             'record': record,
             'detail_tabs': access_request_tabs.for_record(

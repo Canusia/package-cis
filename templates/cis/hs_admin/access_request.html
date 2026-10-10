@@ -3,6 +3,7 @@
 
 {% load templatehelpers %}
 {% load crispy_forms_tags %}
+{% load static %}
 
 {% block body %}
 <script>
@@ -24,18 +25,79 @@
             {% include "cis/messages.html" with messages=messages %}
         </div>
         
-        <div class="col-md-4 col-sm-12 mb-4">            
+        <div class="col-lg-6 col-sm-12 mb-4">            
             <div class="card">
                 <div class="card-body">
-                    <h5 class="card-title">Details</h5>
-                    <div class="card-text">
+                    <h5 class="card-title">Review request</h5>
+{% if decided %}
+  <p class="alert {% if record.status == 'Approved' %}alert-success{% else %}alert-secondary{% endif %}">
+    This request was <strong>{{ record.status }}</strong>.
+    {% if note_location %}The decision and the email that was sent are recorded in the notes for
+      <a href="{{ note_location.1 }}">{{ note_location.0 }}</a>.{% endif %}
+  </p>
+  <dl class="row mb-0">
+    <dt class="col-sm-4">Name</dt><dd class="col-sm-8">{{ record.name }}</dd>
+    <dt class="col-sm-4">Email</dt><dd class="col-sm-8">{{ record.email }}</dd>
+    <dt class="col-sm-4">Phone #</dt><dd class="col-sm-8">{{ record.phone }}</dd>
+    <dt class="col-sm-4">High School</dt><dd class="col-sm-8">{{ record.highschool.name }}</dd>
+    <dt class="col-sm-4">Position/Title</dt><dd class="col-sm-8">{{ record.role }}</dd>
+    {% if current_permissions is not None %}
+    <dt class="col-sm-4">Current role permissions</dt>
+    <dd class="col-sm-8">{{ current_permissions|join:", "|default:"None" }}
+      <small class="d-block text-muted">Change these on the role.</small></dd>
+    {% endif %}
+  </dl>
+{% else %}
+<form action="" method="post" id="ar-review-form" novalidate>
+  {% csrf_token %}
+  {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
 
-                        <form action="" method="post">
-                            {% csrf_token %}
-                            {{ form | crispy }}
-                            <p class="alert alert-info">Approved and Denied requests will be automatically emailed. <br><br>You can configure the email templates in Settings -> High School</p>
-                            <input type="submit" class="btn btn-primary btn-sm" value="Update">
-                            <script>
+  <h6 class="text-uppercase text-muted small mt-2">1. Requester details</h6>
+  {{ form.name|as_crispy_field }}
+  {{ form.email|as_crispy_field }}
+  {{ form.phone|as_crispy_field }}
+  {{ form.highschool|as_crispy_field }}
+  {{ form.role|as_crispy_field }}
+  <button type="submit" name="save_details" value="1" class="btn btn-outline-secondary btn-sm mb-3">
+    Save details
+  </button>
+  <small class="text-muted ml-2">Saves these details only. Nothing is sent.</small>
+
+  <hr>
+  <h6 class="text-uppercase text-muted small">2. Decision</h6>
+  {{ form.decision|as_crispy_field }}
+
+  <div id="ar-permissions" class="d-none">
+    {% if form.scope %}{{ form.scope|as_crispy_field }}{% endif %}
+    {{ form.permissions|as_crispy_field }}
+  </div>
+
+  <div id="ar-email" class="d-none">
+    <hr>
+    <h6 class="text-uppercase text-muted small">3. Email to {{ record.email }}</h6>
+    {{ form.email_subject|as_crispy_field }}
+    {{ form.email_message|as_crispy_field }}
+    <div id="ar-placeholder-warnings" class="alert alert-warning d-none" role="alert"></div>
+    <p class="small text-muted mb-1">You can use:</p>
+    {% for decision, names in placeholders.items %}
+    <ul class="small text-muted ar-placeholder-list d-none" data-decision="{{ decision }}">
+      {% for name, description in names.items %}
+      <li><code>{% templatetag openvariable %}{{ name }}{% templatetag closevariable %}</code>: {{ description }}</li>
+      {% endfor %}
+    </ul>
+    {% endfor %}
+    <button type="submit" name="decide" value="1" id="ar-decide" class="btn btn-primary btn-sm">
+      Send
+    </button>
+  </div>
+
+  {{ email_templates|json_script:"ar-email-templates" }}
+  {{ placeholders|json_script:"ar-placeholders" }}
+  {{ missing_link_message|json_script:"ar-missing-link" }}
+</form>
+<script src="{% static 'cis/js/access_request_review.js' %}"></script>
+{% endif %}
+<script>
                                 jQuery(document).ready(function ($) {
                                     $("a.delete").on("click", function () {
                                         if (!confirm("Are you sure you want to permanently delete this record and all the related information?"))
@@ -63,12 +125,10 @@
                                 });
                             </script>
                             <a class="btn btn-sm btn-danger delete"><i class="fa fa-trash-alt text-light"></i></a>
-                        </form>
-                    </div>
                 </div>
             </div>
         </div>
-        <div class="col-md-8 col-sm-12">
+        <div class="col-lg-6 col-sm-12">
             <ul class="nav nav-tabs">
                 {% for slug, tab in detail_tabs.items %}
                 <li class="nav-item{% if tab.hidden %} d-none{% endif %}">
@@ -88,7 +148,7 @@
                 {% endif %}
                 {% endfor %}
             </div>
-        </div> <!-- end col-md-8 -->
+        </div> <!-- end right col -->
 
     </div> <!-- end row -->
 
