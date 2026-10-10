@@ -1838,14 +1838,17 @@ class StudentRegistration(models.Model):
                 text_body += ('\n\nReview them under "Stop mirroring when these errors happen '
                               'again" in Student Registration Change - SIS / Email Notifications')
                 try:
-                    from setting.models import SettingRecord
-                except ImportError:
-                    from setting.setting.models import SettingRecord
-                record = SettingRecord.objects.filter(name='registration_status_email').first()
-                if record:
-                    text_body += ': ' + campus_url(
-                        self.class_section.course.campus,
-                        reverse('setting:record_details') + f'?report_id={record.id}')
+                    try:
+                        from setting.models import SettingRecord
+                    except ImportError:
+                        from setting.setting.models import SettingRecord
+                    record = SettingRecord.objects.filter(name='registration_status_email').first()
+                    if record:
+                        text_body += ': ' + campus_url(
+                            self.class_section.course.campus,
+                            reverse('setting:record_details') + f'?report_id={record.id}')
+                except Exception:
+                    logger.exception('SIS mirror failure email: could not build the settings link; sending without it')
                 text_body += '.'
 
             html_body = linebreaks(escape(text_body))

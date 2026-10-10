@@ -141,14 +141,14 @@ class CronKeepsFailuresQueuedTests(TestCase):
 
 
 class NotifyNewErrorsTests(TestCase):
-    def test_new_errors_flag_the_subject_and_link_to_the_settings(self):
+    def _registration(self):
         Group.objects.get_or_create(name='student')
         CustomUser.objects.get_or_create(username='cron', defaults={'email': 'cron@example.com'})
         Setting.objects.update_or_create(
             key=registration_status_email.key,
             defaults={'value': {'sis_mirror_error_notifications': 'admin@example.com'}})
         short = uuid.uuid4().hex[:8]
-        reg = StudentRegistration.objects.create(
+        return StudentRegistration.objects.create(
             student=Student.objects.create(
                 user=CustomUser.objects.create_user(
                     username=f's-{short}', email=f'{short}@x.com', password='x',
@@ -161,9 +161,39 @@ class NotifyNewErrorsTests(TestCase):
                                          academic_year=AcademicYear.objects.create(name='AY')),
                 class_number=f'A-{short}', section_number='01', meta={}),
             status='applied', status_changed_on={})
+
+    def _setting_record(self):
+        try:
+            from setting.models import SettingRecord
+        except ImportError:
+            from setting.setting.models import SettingRecord
+        return SettingRecord.objects.create(
+            name='registration_status_email', title='Student Registration Change',
+            description='x', categories='x')
+
+    def test_new_errors_flag_the_subject_and_link_to_the_settings(self):
+        reg = self._registration()
+        record = self._setting_record()
         with patch('cis.models.section.send_html_mail') as send:
-            reg.notify_sis_mirror_fail(None, 'boom', new_errors=['boom'])
+            reg.notify_sis_mirror_fail(None, 'boom <b>&', new_errors=['boom <b>&'])
         subject, text_body, html_body = send.call_args.args[:3]
         self.assertIn('new error awaiting review', subject)
         self.assertIn('boom', text_body)
         self.assertIn('Stop mirroring when these errors happen again', text_body)
+        self.assertRegex(
+            text_body, rf'https?://[^\s]+/record_details/?\?report_id={record.id}')
+        self.assertIn('boom &lt;b&gt;&amp;', html_body)
+        self.assertNotIn('<b>', html_body)
+
+    def test_email_still_goes_out_without_the_link_when_building_it_fails(self):
+        from django.core.exceptions import ImproperlyConfigured
+        reg = self._registration()
+        self._setting_record()
+        with patch('cis.campus_context.campus_url', side_effect=ImproperlyConfigured('no site')), \
+                patch('cis.models.section.send_html_mail') as send:
+            reg.notify_sis_mirror_fail(None, 'boom', new_errors=['boom'])
+        send.assert_called_once()
+        subject, text_body = send.call_args.args[:2]
+        self.assertIn('new error awaiting review', subject)
+        self.assertIn('boom', text_body)
+        self.assertNotIn('report_id=', text_body)
