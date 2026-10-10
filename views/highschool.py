@@ -23,6 +23,7 @@ from cis.models.term import Term
 from cis.models.course import Course
 from django.utils.safestring import mark_safe
 
+from cis.services.term_hierarchy import expand_term_ids
 from cis.services.table_configs import get_table_config
 from cis.highschool_scope import scope_highschools
 from cis.campus_context import current_campus_or_none
@@ -148,7 +149,7 @@ class HighSchoolServedByCampusViewSet(viewsets.ReadOnlyModelViewSet):
 
         highschool_ids = StudentRegistration.objects.filter(
             class_section__campus__id=campus_id,
-            class_section__term__id=term_id
+            class_section__term__id__in=expand_term_ids(term_id)
         ).distinct(
             'student__highschool__id'
         ).values_list(
@@ -179,14 +180,18 @@ class HighSchoolTranscriptViewSet(viewsets.ReadOnlyModelViewSet):
             'highschool', 'uploaded_by', 'term', 'reviewed_by'
         ).order_by('-uploaded_on')
 
-        for param, lookup in (('highschool_id', 'highschool_id'), ('term', 'term_id')):
-            value = params.get(param, '').strip()
-            if not value:
-                continue
+        highschool_id = params.get('highschool_id', '').strip()
+        if highschool_id:
             try:
-                records = records.filter(**{lookup: _uuid.UUID(value)})
+                records = records.filter(highschool_id=_uuid.UUID(highschool_id))
             except ValueError:
                 return HighSchoolTranscript.objects.none()
+        term = params.get('term', '').strip()
+        if term:
+            term_ids = expand_term_ids(term)
+            if not term_ids:
+                return HighSchoolTranscript.objects.none()
+            records = records.filter(term_id__in=term_ids)
 
         reviewed = params.get('reviewed', '').strip().lower()
         if reviewed == 'yes':
@@ -305,6 +310,7 @@ def index(request):
 def highschool_map_data(request):
     """Return high school locations as JSON for map display."""
     term_ids = request.GET.getlist('term_ids')
+    term_ids = expand_term_ids(term_ids) if term_ids else []
     course_ids = request.GET.getlist('course_ids')
     statuses = request.GET.getlist('statuses')
 
@@ -389,6 +395,7 @@ def highschool_map_courses(request):
 
     if not term_ids:
         return JsonResponse({'courses': []})
+    term_ids = expand_term_ids(term_ids) if term_ids else []
 
     course_ids = ClassSection.objects.filter(
         term_id__in=term_ids,

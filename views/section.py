@@ -58,6 +58,7 @@ from cis.forms.section import AddNewHighSchoolClassOfferingForm
 
 from cis.menu import cis_menu, draw_menu
 from cis.services.importers.class_section_schema import ClassSectionRow
+from cis.services.term_hierarchy import filter_by_term, expand_term_ids
 from cis.services.table_configs import get_table_config
 build_registrations_table_config = get_table_config('registrations_table').build_config
 build_sections_table_config = get_table_config('sections_table').build_config
@@ -220,9 +221,8 @@ class ClassSectionSyllabiViewSet(viewsets.ReadOnlyModelViewSet):
             )
         
         if term:
-            records = ClassSectionSyllabi.objects.filter(
-                class_sections__term__id=term
-            )
+            records = filter_by_term(
+                ClassSectionSyllabi.objects.all(), term, field='class_sections__term')
         
             if roster_status:
                 records = records.filter(
@@ -250,9 +250,8 @@ class ClassSectionNoteViewSet(viewsets.ReadOnlyModelViewSet):
             )
         
         if term:
-            records = ClassSectionNote.objects.filter(
-                class_section__term__id=term
-            )
+            records = filter_by_term(
+                ClassSectionNote.objects.all(), term, field='class_section__term')
         
             if roster_status:
                 records = records.filter(
@@ -301,7 +300,7 @@ class ClassesRegisteredByCampusViewSet(viewsets.ReadOnlyModelViewSet):
 
         class_section_ids = StudentRegistration.objects.filter(
             class_section__course__campus__id=campus_id,
-            class_section__term__id=term_id
+            class_section__term__id__in=expand_term_ids(term_id)
         ).distinct(
             'class_section__id'
         ).values_list(

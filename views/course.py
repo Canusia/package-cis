@@ -25,6 +25,7 @@ from ..models.note import CourseNote
 from ..models.section import ClassSection
 from ..models.teacher import TeacherCourseCertificate
 from myce.component_registry.course import course_tabs
+from cis.services.term_hierarchy import filter_by_term
 from cis.services.table_configs import get_table_config
 
 build_courses_table_config = get_table_config('courses_table').build_config
@@ -230,9 +231,9 @@ class CourseViewSet(viewsets.ReadOnlyModelViewSet):
         faculty_coordinator_id = self.request.GET.get('faculty_coordinator_id')
         
         if term:
-            course_ids = ClassSection.objects.filter(
-                    term__id=term
-                ).distinct('course').values_list('course__id', flat=True)
+            course_ids = filter_by_term(
+                ClassSection.objects.all(), term
+            ).distinct('course').values_list('course__id', flat=True)
             records = Course.objects.filter(
                 id__in=course_ids
             )

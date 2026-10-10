@@ -44,6 +44,7 @@ from cis.utils import (
 )
 from cis.campus_gate import scope_queryset_by_campus, campus_gate, get_accessible_campuses, processable_ids
 from cis.menu import cis_menu, draw_menu
+from cis.services.term_hierarchy import filter_by_term
 from cis.services.table_configs import get_table_config
 from cis.services.tenant_services import get_tenant_service
 build_registrations_table_config = get_table_config('registrations_table').build_config
@@ -171,7 +172,7 @@ class RegistrationViewSet(viewsets.ReadOnlyModelViewSet):
                     uuid.UUID(str(term))
                 except (ValueError, AttributeError, TypeError):
                     return StudentRegistration.objects.none()
-                records = records.filter(class_section__term__id=term)
+                records = filter_by_term(records, term, field='class_section__term')
 
         if status:
             records = records.filter(status=status)

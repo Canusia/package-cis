@@ -49,6 +49,7 @@ from cis.views.eager import (
 )
 
 from cis.serializers import tables
+from cis.services.term_hierarchy import filter_by_term
 
 
 @eager_queryset(with_drop_request_related)
@@ -82,7 +83,7 @@ class StudentDropViewSet(viewsets.ReadOnlyModelViewSet):
             records = records.filter(status=status)
 
         if term:
-            records = records.filter(registration__class_section__term__id=term)
+            records = filter_by_term(records, term, field='registration__class_section__term')
 
         # if campus:
         #     records = records.filter(registration__class_section__campus__id=campus)

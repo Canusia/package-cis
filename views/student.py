@@ -59,6 +59,7 @@ from cis.models.note import StudentNote
 
 from cis.utils import registration_terms
 from cis.menu import cis_menu, draw_menu
+from cis.services.term_hierarchy import filter_by_term, expand_term_ids
 from cis.services.table_configs import get_table_config
 build_registrations_table_config = get_table_config('registrations_table').build_config
 build_students_table_config                = get_table_config('students_table').build_config
@@ -207,9 +208,7 @@ class StudentTuitionAssistanceViewSet(viewsets.ReadOnlyModelViewSet):
             )
 
         if term_id:
-            records = records.filter(
-                term__id=term_id
-            )
+            records = filter_by_term(records, term_id)
 
         if status:
             records = records.filter(
@@ -447,12 +446,12 @@ class StudentViewSet(viewsets.ReadOnlyModelViewSet):
 
                 applied_students = StudentRegistration.objects.filter(
                     Q(status__in=['applied', 'registered', 'approved']) &
-                    Q(class_section__registration_term__id=registration_term_id) &
+                    Q(class_section__registration_term__id__in=expand_term_ids(registration_term_id)) &
                     recommendation_required_q()
                 ).values_list('student__id', flat=True)
 
                 has_recommendation = StudentRecommendation.objects.filter(
-                    term__id=registration_term_id
+                    term__id__in=expand_term_ids(registration_term_id)
                 ).values_list('student__id', flat=True)
 
 
@@ -473,11 +472,11 @@ class StudentViewSet(viewsets.ReadOnlyModelViewSet):
                 term_id = self.request.GET.get('term_id')
 
                 applied_students = StudentRegistration.objects.filter(
-                    class_section__registration_term__id=term_id
+                    class_section__registration_term__id__in=expand_term_ids(term_id)
                 ).values_list('student__id', flat=True)
 
                 has_faa = StudentTuitionAssistance.objects.filter(
-                    term__id=term_id
+                    term__id__in=expand_term_ids(term_id)
                 ).values_list('student__id', flat=True)
 
                 records = records.filter(
@@ -541,8 +540,8 @@ class StudentViewSet(viewsets.ReadOnlyModelViewSet):
             except (ValueError, AttributeError, TypeError):
                 return records.none()
 
-            applied_in_term_ids = StudentRegistration.objects.filter(
-                class_section__term__id=term_id
+            applied_in_term_ids = filter_by_term(
+                StudentRegistration.objects.all(), term_id, field='class_section__term'
             ).values_list('student__id', flat=True).distinct()
             records = records.filter(
                 id__in=applied_in_term_ids
