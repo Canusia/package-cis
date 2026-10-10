@@ -1861,8 +1861,9 @@ class StudentRegistration(models.Model):
                 settings.DEFAULT_FROM_EMAIL,
                 to
             )
-        except:
-            ...
+        except Exception:
+            logger.exception(
+                'SIS mirror failure email: could not send for registration %s', self.pk)
 
     def next_step(self):
         if self.status == 'applied':

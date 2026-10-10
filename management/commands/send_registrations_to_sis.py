@@ -161,7 +161,8 @@ class Command(BaseCommand):
                             detailed_log[f'{record.status}_fail_list'] = []
 
                         # A failed row stays queued unless its error is marked
-                        # Stop on the Known SIS Errors page (mirror_to_sis
+                        # "Stop mirroring when these errors happen again" in the
+                        # registration status email setting (mirror_to_sis
                         # applies that); this used to drop every failure.
 
                         detailed_log[f'{record.status}_fail_count'] += 1

@@ -50,7 +50,8 @@ def record_sis_mirror_errors(kind, messages):
         if setting is None:
             setting = Setting(key=key, value={})
         value = dict(setting.value or {})
-        known = list(value.get('sis_mirror_known_errors') or [])
+        # non-dict entries are dropped on write
+        known = [e for e in (value.get('sis_mirror_known_errors') or []) if isinstance(e, dict)]
         known_keys = {e.get('key') for e in known}
         stop_keys = set(value.get('sis_mirror_stop_on_errors') or [])
 
@@ -226,9 +227,9 @@ class SettingForm(forms.Form):
         """One checkbox per collected SIS error, newest first."""
         kinds = dict(SIS_ERROR_KINDS)
         known = (registration_status_email.from_db().get('sis_mirror_known_errors') or [])
-        return [(e['key'], f"{kinds.get(e.get('kind'), e.get('kind'))}: {e['message']}"
+        return [(e['key'], f"{kinds.get(e.get('kind'), e.get('kind'))}: {e.get('message', '')}"
                            f" (first seen {(e.get('first_seen') or '')[:10]})")
-                for e in reversed(known) if e.get('key')]
+                for e in reversed(known) if isinstance(e, dict) and e.get('key')]
 
     def _to_python(self):
         """
@@ -314,7 +315,9 @@ class registration_status_email(SettingForm):
                 setting = Setting(key=self.key, value={})
 
             value = self._to_python()
-            known = (setting.value or {}).get('sis_mirror_known_errors') or []
+            # non-dict entries are dropped on write
+            known = [e for e in ((setting.value or {}).get('sis_mirror_known_errors') or [])
+                     if isinstance(e, dict)]
             keys = {e.get('key') for e in known}
             value['sis_mirror_known_errors'] = known
             value['sis_mirror_stop_on_errors'] = [

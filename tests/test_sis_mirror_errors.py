@@ -16,7 +16,7 @@ from cis.models.settings import Setting
 from cis.models.student import Student
 from cis.models.term import AcademicYear, Term
 from cis.settings.registration_status_email import (
-    record_sis_mirror_errors, registration_status_email, sis_error_key)
+    SettingForm, record_sis_mirror_errors, registration_status_email, sis_error_key)
 
 ONE_OF = ('One of the following is preventing registration: Course registration status '
           'rules not defined for this section.; Registration is outside of the specified '
@@ -134,10 +134,26 @@ class CronKeepsFailuresQueuedTests(TestCase):
                 sis_id=uuid.uuid4()),
             class_section=section, status='registered', status_changed_on={})
         StudentRegistration.objects.filter(pk=reg.pk).update(needs_mirroring=True)
-        with patch('cis.services.tenant_services.get_tenant_service') as svc:
+        with patch('cis.management.commands.send_registrations_to_sis.get_tenant_service') as svc:
             svc.return_value.mirror_to_sis.return_value = (True, ['S, x - failed to process - boom'])
             call_command('send_registrations_to_sis')
         self.assertTrue(StudentRegistration.objects.get(pk=reg.pk).needs_mirroring)
+
+
+class MalformedKnownErrorsTests(TestCase):
+    def test_non_dict_and_message_less_entries_do_not_break_the_page(self):
+        Setting.objects.update_or_create(
+            key=registration_status_email.key,
+            defaults={'value': {'sis_mirror_known_errors': [
+                'junk', None, {'key': 'k1', 'kind': 'registration'}]}})
+        choices = SettingForm._known_error_choices()
+        self.assertEqual([c[0] for c in choices], ['k1'])
+        stop, new = record_sis_mirror_errors('registration', ['fresh'])
+        self.assertEqual((stop, new), (None, ['fresh']))
+        known = Setting.objects.get(key=registration_status_email.key).value[
+            'sis_mirror_known_errors']
+        self.assertTrue(all(isinstance(e, dict) for e in known))
+        self.assertEqual(len(known), 2)
 
 
 class NotifyNewErrorsTests(TestCase):
