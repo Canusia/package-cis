@@ -91,28 +91,37 @@ class HSAdministratorAccessRequest(models.Model):
         )
         return True
         
-    def send_email(self):
+    def email_context(self, reset_link=None):
+        """Values for the approval/denial email placeholders
+        (catalogue: cis.services.access_request_review.PLACEHOLDERS)."""
+        return {
+            'name': self.name,
+            'email': self.email,
+            'highschool': self.highschool.name,
+            'role': self.role,
+            'password_reset_link': (
+                reset_link if reset_link is not None else self.get_password_reset_link()),
+        }
+
+    def send_email(self, subject=None, body=None):
+        """Email the requester the outcome. `subject` / `body` override the
+        Settings templates (the CE review form's per-request edit)."""
         from cis.settings.access_request import access_request as access_request_settings
 
         config = access_request_settings.from_db()
-        email = subject = ''
 
         if self.status == 'Approved':
-            email = config.get('approved_email', '2')
-            subject = config.get('approved_subject', '2')
+            default_email = config.get('approved_email', '2')
+            default_subject = config.get('approved_subject', '2')
         elif self.status == 'Denied':
-            email = config.get('denied_email', '22')
-            subject = config.get('denied_subject', '22')
+            default_email = config.get('denied_email', '22')
+            default_subject = config.get('denied_subject', '22')
         else:
             return None
 
-        email_template = Template(email)
-        context = Context({
-            'name': self.name,
-            'password_reset_link': self.get_password_reset_link(),
-        })
-
-        text_body = email_template.render(context)
+        context = Context(self.email_context())
+        subject = Template(subject if subject is not None else default_subject).render(context)
+        text_body = Template(body if body is not None else default_email).render(context)
         to = [self.email]
 
         template = get_template('cis/email.html')
