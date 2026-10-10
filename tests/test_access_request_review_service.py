@@ -30,9 +30,9 @@ class CompleteReviewTests(TestCase):
             name='Jane Doe', email='jane@example.com', phone='555',
             highschool=self.hs, role='Counselor')
 
-    def form(self, decision, message, subject='Hi {{name}}'):
+    def form(self, decision, message, subject='Hi {{name}}', name='Jane Doe'):
         form = AccessRequestReviewForm({
-            'name': 'Jane Doe', 'email': 'jane@example.com', 'phone': '555',
+            'name': name, 'email': 'jane@example.com', 'phone': '555',
             'highschool': str(self.hs.pk), 'role': 'Counselor', 'decide': '1',
             'decision': decision, 'email_subject': subject, 'email_message': message,
         }, instance=self.req)
@@ -107,3 +107,20 @@ class CompleteReviewTests(TestCase):
         self.assertTrue(outcome.role_already_existed)
         send.assert_called_once()
         self.assertTrue(outcome.note_saved)
+        note = HSAdministratorNote.objects.filter(
+            hsadmin__user__email='jane@example.com').latest('createdon')
+        self.assertIn('Role already existed; permissions unchanged.', note.note)
+        self.assertNotIn('Permissions (', note.note)
+
+    def test_note_escapes_email_text_once(self, _link):
+        with mock.patch(SEND):
+            complete_review(
+                self.form('deny', 'Hi\n<script>alert(1)</script>', subject='Hi {{name}}',
+                          name="Pat O'Brien & Co"),
+                self.staff)
+        note = HighSchoolNote.objects.get(highschool=self.hs).note
+        self.assertNotIn('<script>', note)
+        self.assertIn('&lt;script&gt;', note)
+        self.assertIn('Hi<br>', note)
+        self.assertIn('Hi Pat O&#x27;Brien &amp; Co', note)
+        self.assertNotIn('&amp;#x27;', note)

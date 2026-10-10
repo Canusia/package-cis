@@ -39,6 +39,7 @@ from django.template import Context, Template
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import escape
+from django.template.defaultfilters import linebreaksbr
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +88,7 @@ def current_role_permissions(record):
                 .values_list('name', flat=True))
 
 
-def _note_text(record, user, decision, form, email_sent):
+def _note_text(record, user, decision, form, email_sent, role_already_existed=False):
     data = form.cleaned_data
     verb = 'approved' if decision == APPROVE else 'denied'
     who = escape(user.get_full_name() or user.email)
@@ -97,17 +98,20 @@ def _note_text(record, user, decision, form, email_sent):
         f'{escape(record.role)} at {escape(record.highschool.name)}.'
     ]
     if decision == APPROVE:
-        perms = [p.name for p in data.get('permissions') or []]
-        scope = data.get('scope')
-        lines.append(
-            f'Permissions ({escape(scope.name) if scope else "All campuses"}): '
-            f'{escape(", ".join(perms)) if perms else "none"}')
-    context = Context(record.email_context(reset_link=NOTE_RESET_LINK))
+        if role_already_existed:
+            lines.append('Role already existed; permissions unchanged.')
+        else:
+            perms = [p.name for p in data.get('permissions') or []]
+            scope = data.get('scope')
+            lines.append(
+                f'Permissions ({escape(scope.name) if scope else "All campuses"}): '
+                f'{escape(", ".join(perms)) if perms else "none"}')
+    context = Context(record.email_context(reset_link=NOTE_RESET_LINK), autoescape=False)
     subject = Template(data['email_subject']).render(context)
     body = Template(data['email_message']).render(context)
     status = 'Email sent' if email_sent else 'Email was not sent (sending failed)'
     lines.append(f'{status} to {escape(record.email)}.<br>'
-                 f'<strong>Subject:</strong> {escape(subject)}<br>{body}')
+                 f'<strong>Subject:</strong> {escape(subject)}<br>{linebreaksbr(escape(body))}')
     return '<br><br>'.join(lines)
 
 
@@ -145,7 +149,8 @@ def complete_review(form, user):
         logger.exception('Access request %s: email failed', record.pk)
 
     try:
-        _write_note(record, user, _note_text(record, user, decision, form, outcome.email_sent))
+        _write_note(record, user, _note_text(record, user, decision, form, outcome.email_sent,
+                                        outcome.role_already_existed))
         outcome.note_saved = True
         location = note_location(record)
         outcome.note_url = location[1] if location else None
