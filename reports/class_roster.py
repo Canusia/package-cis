@@ -12,6 +12,7 @@ from crispy_forms.layout import Submit
 
 from cis.models.student import ParentConsent, StudentAgreement
 from cis.models.term import Term
+from cis.services.term_hierarchy import apply_term_tree, expand_term_ids
 from cis.models.course import Campus
 from cis.models.section import StudentRegistration
 from cis.models.highschool import HighSchool
@@ -76,7 +77,7 @@ class class_roster(ReportDataSourceMixin, forms.Form):
         self.helper.form_method = 'POST'
         self.helper.add_input(Submit('submit', 'Generate Export'))
 
-        self.fields['term'].queryset = Term.objects.all()
+        apply_term_tree(self.fields['term'], Term.objects.all().order_by('-code'))
 
         if request:
             self.roles = request.user.get_roles()
@@ -123,7 +124,7 @@ class class_roster(ReportDataSourceMixin, forms.Form):
             'student__user__last_name',
             'student__user__psid'
         ).filter(
-            class_section__term__id__in=term_id,
+            class_section__term__id__in=expand_term_ids(term_id),
             student__highschool__id__in=data.get('highschool')
         )
 
@@ -154,7 +155,7 @@ class class_roster(ReportDataSourceMixin, forms.Form):
         highschools = data.get('highschool')
         statuses = data.get('registration_status')
         if terms:
-            records = records.filter(class_section__term__id__in=terms)
+            records = records.filter(class_section__term__id__in=expand_term_ids(terms))
         if highschools:
             records = records.filter(student__highschool__id__in=highschools)
         if statuses:
@@ -179,14 +180,14 @@ class class_roster(ReportDataSourceMixin, forms.Form):
         consent_set = set(
             ParentConsent.objects.filter(
                 student_id__in=student_ids,
-                term_id__in=term_ids
+                term_id__in=expand_term_ids(term_ids)
             ).values_list('student_id', 'term_id')
         )
 
         agreement_set = set(
             StudentAgreement.objects.filter(
                 student_id__in=student_ids,
-                term_id__in=term_ids
+                term_id__in=expand_term_ids(term_ids)
             ).values_list('student_id', 'term_id')
         )
 

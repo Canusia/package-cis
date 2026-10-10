@@ -15,6 +15,7 @@ from cis.utils import get_field
 from cis.models.highschool import HighSchool
 from cis.highschool_scope import picker_queryset
 from cis.models.term import Term
+from cis.services.term_hierarchy import apply_term_tree, expand_term_ids
 from cis.models.section import ClassSection
 from cis.models.teacher import Teacher, TeacherHighSchool
 
@@ -61,7 +62,7 @@ class teacher_export(forms.Form):
             )
 
         self.fields['highschools'].queryset = picker_queryset()
-        self.fields['terms'].queryset = Term.objects.all().order_by('-code')
+        apply_term_tree(self.fields['terms'], Term.objects.all().order_by('-code'))
 
     def run(self, task, data):
         records = TeacherHighSchool.objects.select_related(
@@ -76,7 +77,7 @@ class teacher_export(forms.Form):
 
         if data.get('terms'):
             teacher_ids = ClassSection.objects.filter(
-                term__id__in=data.get('terms')
+                term__id__in=expand_term_ids(data.get('terms'))
             ).values_list('teacher__id', flat=True)
 
             records = records.filter(

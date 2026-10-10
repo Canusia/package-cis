@@ -14,6 +14,7 @@ from crispy_forms.layout import Submit
 from cis.utils import get_field
 from student_transactions.models import StudentTransaction
 from cis.models.term import Term
+from cis.services.term_hierarchy import apply_term_tree, expand_term_ids
 from cis.models.course import Campus
 from cis.campus_gate import get_accessible_campuses, scope_report_by_campus
 
@@ -67,7 +68,7 @@ class transactions(forms.Form):
         self.helper.form_method = 'POST'
         self.helper.add_input(Submit('submit', 'Generate Export'))
 
-        self.fields['term'].queryset = Term.objects.all().order_by('-code')
+        apply_term_tree(self.fields['term'], Term.objects.all().order_by('-code'))
 
         if self.request:
             self.fields['campus'].queryset = get_accessible_campuses(
@@ -84,7 +85,7 @@ class transactions(forms.Form):
             'student__highschool',
             'term'
         ).filter(
-            term__id__in=term_id,
+            term__id__in=expand_term_ids(term_id),
             t_type__in=data.get('t_type')
         )
 

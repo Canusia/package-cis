@@ -14,6 +14,7 @@ from crispy_forms.layout import Submit
 from cis.utils import get_field
 from cis.models.student import Student
 from cis.models.term import Term
+from cis.services.term_hierarchy import apply_term_tree, expand_term_ids
 from cis.models.section import StudentRegistration
 from cis.models.course import Campus
 from cis.campus_gate import get_accessible_campuses, scope_report_by_campus
@@ -54,7 +55,7 @@ class students_by_date(forms.Form):
         self.helper.form_method = 'POST'
         self.helper.add_input(Submit('submit', 'Generate Export'))
 
-        self.fields['term'].queryset = Term.objects.all().order_by('-code')
+        apply_term_tree(self.fields['term'], Term.objects.all().order_by('-code'))
 
         # Populate the campus selector with only the campuses the requesting
         # user may process (superusers see all prefixed campuses).
@@ -91,7 +92,7 @@ class students_by_date(forms.Form):
         # Get student IDs who have registrations in the selected term
         student_ids = set(
             str(sid) for sid in StudentRegistration.objects.filter(
-                class_section__registration_term__id__in=data.get('term')
+                class_section__registration_term__id__in=expand_term_ids(data.get('term'))
             ).values_list('student_id', flat=True).distinct()
         )
 

@@ -15,6 +15,7 @@ from crispy_forms.layout import Submit
 
 from cis.backends.storage_backend import PrivateMediaStorage
 from cis.models.term import Term
+from cis.services.term_hierarchy import apply_term_tree, expand_term_ids
 from cis.models.section import ClassSection, ClassSectionSyllabi
 
 
@@ -88,7 +89,7 @@ class teacher_syllabi_status(forms.Form):
                 'report:run_report', args=[request.GET.get('report_id')]
             )
 
-        self.fields['terms'].queryset = Term.objects.all().order_by('-code')
+        apply_term_tree(self.fields['terms'], Term.objects.all().order_by('-code'))
 
     STATUS_LABEL = dict(STATUS_CHOICES)
 
@@ -132,7 +133,7 @@ class teacher_syllabi_status(forms.Form):
         term_ids = [t.id if hasattr(t, 'id') else t for t in terms]
 
         sections = ClassSection.objects.filter(
-            term__id__in=term_ids,
+            term__id__in=expand_term_ids(term_ids),
             teacher__isnull=False,
         ).select_related(
             'teacher__user', 'course', 'highschool',

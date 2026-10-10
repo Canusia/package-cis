@@ -21,6 +21,7 @@ from cis.models.highschool_administrator import HSAdministrator
 from cis.models.highschool import HighSchool
 from cis.highschool_scope import picker_queryset
 from cis.models.term import Term
+from cis.services.term_hierarchy import apply_term_tree, expand_term_ids
 from cis.models.course import Campus
 from cis.models.section import ClassSection, StudentRegistration
 from cis.integrations.grades import grade_scale
@@ -71,7 +72,7 @@ class class_export(forms.Form):
             self.fields['campus'].queryset = get_accessible_campuses(
                 self.request.user)
 
-        self.fields['term'].queryset = Term.objects.all().order_by('-code')
+        apply_term_tree(self.fields['term'], Term.objects.all().order_by('-code'))
 
     def get_result(self, data, user=None):
         term_id = data['term']
@@ -87,7 +88,7 @@ class class_export(forms.Form):
             'teacher__user__last_name', 'teacher__user__first_name', 'teacher__user__email',
             'teacher__user__last_login'
         ).filter(
-            term__id__in=term_id,
+            term__id__in=expand_term_ids(term_id),
             highschool__in=highschools
         )
 

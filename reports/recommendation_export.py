@@ -12,6 +12,7 @@ from crispy_forms.layout import Submit
 
 from cis.utils import get_field
 from cis.models.term import Term
+from cis.services.term_hierarchy import apply_term_tree, expand_term_ids
 from cis.models.course import Campus
 from cis.models.student import StudentRecommendation
 from cis.campus_gate import get_accessible_campuses, scope_report_by_campus
@@ -51,7 +52,7 @@ class recommendation_export(forms.Form):
             self.fields['campus'].queryset = get_accessible_campuses(
                 self.request.user)
 
-        self.fields['term'].queryset = Term.objects.all().order_by('-code')
+        apply_term_tree(self.fields['term'], Term.objects.all().order_by('-code'))
 
         self.helper.add_input(Submit('submit', 'Generate Export'))
 
@@ -61,7 +62,7 @@ class recommendation_export(forms.Form):
             'student__highschool',
             'term'
         ).filter(
-            term__id__in=data.get('term')
+            term__id__in=expand_term_ids(data.get('term'))
         )
 
         records = scope_report_by_campus(

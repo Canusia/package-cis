@@ -14,6 +14,7 @@ from crispy_forms.helper import FormHelper
 from crispy_forms.layout import Submit
 
 from cis.models.term import Term
+from cis.services.term_hierarchy import apply_term_tree, expand_term_ids
 from cis.models.student import StudentSupportingDocument
 from cis.models.course import Campus
 from cis.campus_gate import get_accessible_campuses, scope_report_by_campus
@@ -62,7 +63,7 @@ class supporting_doc_export(forms.Form):
         self.helper.form_method = 'POST'
         self.helper.add_input(Submit('submit', 'Generate Export'))
 
-        self.fields['term'].queryset = Term.objects.all().order_by('-code')
+        apply_term_tree(self.fields['term'], Term.objects.all().order_by('-code'))
 
         # Populate the campus selector with only the campuses the requesting
         # user may process (superusers see all prefixed campuses).
@@ -79,7 +80,7 @@ class supporting_doc_export(forms.Form):
             'student__highschool',
             'term'
         ).filter(
-            term__id__in=term
+            term__id__in=expand_term_ids(term)
         )
 
         if created_from:

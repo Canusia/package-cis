@@ -13,6 +13,7 @@ from crispy_forms.layout import Submit
 
 from cis.utils import get_field, registration_terms
 from cis.models.term import Term
+from cis.services.term_hierarchy import apply_term_tree, expand_term_ids
 from cis.models.course import Campus
 from cis.models.section import StudentRegistration
 from cis.campus_gate import get_accessible_campuses, scope_report_by_campus
@@ -43,7 +44,7 @@ class detailed_students_with_class(forms.Form):
         self.helper.form_method = 'POST'
         self.helper.add_input(Submit('submit', 'Generate Export'))
 
-        self.fields['term'].queryset = Term.objects.all().order_by('-code')
+        apply_term_tree(self.fields['term'], Term.objects.all().order_by('-code'))
 
         # Populate the campus selector with only the campuses the requesting
         # user may process (superusers see all prefixed campuses).
@@ -67,7 +68,7 @@ class detailed_students_with_class(forms.Form):
             # this the export issues two extra queries per row.
             'class_section__teacher__user',
         ).filter(
-            class_section__term__id__in=term_id,
+            class_section__term__id__in=expand_term_ids(term_id),
             status__in=status
         )
 

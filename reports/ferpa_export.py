@@ -14,6 +14,7 @@ from crispy_forms.layout import Submit
 from cis.utils import get_field
 from cis.models.student import StudentFerpa
 from cis.models.term import Term
+from cis.services.term_hierarchy import apply_term_tree, expand_term_ids
 from cis.models.course import Campus
 from cis.campus_gate import get_accessible_campuses, scope_report_by_campus
 from cis.services.tenant_services import get_tenant_service
@@ -62,7 +63,7 @@ class ferpa_export(forms.Form):
                 'report:run_report', args=[request.GET.get('report_id')]
             )
 
-        self.fields['term'].queryset = Term.objects.all().order_by('-code')
+        apply_term_tree(self.fields['term'], Term.objects.all().order_by('-code'))
 
         self.helper.add_input(Submit('submit', 'Generate Export'))
 

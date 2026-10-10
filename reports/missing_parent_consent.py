@@ -16,6 +16,7 @@ from cis.models.student import Student, ParentConsent
 from cis.models.highschool_administrator import HSAdministrator
 
 from cis.models.term import Term
+from cis.services.term_hierarchy import apply_term_tree, expand_term_ids
 from cis.models.highschool import HighSchool
 from cis.highschool_scope import picker_queryset
 from cis.models.section import ClassSection, Campus, StudentRegistration
@@ -68,7 +69,7 @@ class missing_parent_consent(forms.Form):
                     id__in=highschools.values_list('id', flat=True)
                 )
 
-        self.fields['term'].queryset = Term.objects.all().order_by('-code')
+        apply_term_tree(self.fields['term'], Term.objects.all().order_by('-code'))
 
     def run(self, task, data):
         term_id = data.get('term', None)
@@ -83,7 +84,7 @@ class missing_parent_consent(forms.Form):
             'class_section__term'
         ).filter(
             status__in=data.get('status'),
-            class_section__term__id__in=term_id,
+            class_section__term__id__in=expand_term_ids(term_id),
             class_section__highschool__id__in=highschool_id
         ).distinct('student')
 
@@ -92,7 +93,7 @@ class missing_parent_consent(forms.Form):
         signed_consents = set(
             ParentConsent.objects.filter(
                 student_id__in=student_ids,
-                term_id__in=term_id,
+                term_id__in=expand_term_ids(term_id),
                 signed_on__isnull=False
             ).values_list('student_id', 'term_id')
         )
