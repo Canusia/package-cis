@@ -30,6 +30,7 @@ from cis.models.teacher import TeacherCourseCertificate
 from cis.utils import user_has_cis_role, get_movable_reference_choices, move_references
 from cis.highschool_scope import picker_queryset
 from cis.forms.widgets import DualListSelectMultiple
+from cis.services.term_hierarchy import apply_term_tree
 
 from cis.validators import validate_html_short_code, validate_email_placeholders
 from cis.services.access_request_review import (
@@ -267,7 +268,7 @@ class HSTranscriptUploadForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         from cis.settings.hs_uploads import hs_uploads
-        self.fields['term'].queryset = upload_terms()
+        apply_term_tree(self.fields['term'], upload_terms())
         self.fields['description'].required = True
         self.fields['description'].help_text = (
             'What the file contains, e.g. "Auburn HS transcripts, all Fall '

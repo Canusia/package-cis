@@ -3,6 +3,7 @@ from django.utils.translation import gettext_lazy as _
 from django.forms import ValidationError
 
 from cis.utils import get_movable_reference_choices, move_references
+from cis.services.term_hierarchy import apply_term_tree, term_with_descendant_ids
 from cis.models.term import (
     Term, AcademicYear
 )
@@ -115,9 +116,9 @@ class MigrateTermForm(forms.Form):
     def __init__(self, record, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.fields['destination_record'].queryset = Term.objects.select_related(
-            'academic_year'
-        ).exclude(id=record.id)
+        apply_term_tree(
+            self.fields['destination_record'],
+            Term.objects.select_related('academic_year').exclude(id=record.id))
 
         # EXISTS only -- loading every referencing row timed out large records.
         self.fields['move_items'].choices = get_movable_reference_choices(record)
@@ -190,9 +191,10 @@ class BulkAssignParentForm(forms.Form):
     def __init__(self, ids=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.ids = [str(i) for i in (ids or [])]
+        qs = self.fields['parent'].queryset
         if self.ids:
-            self.fields['parent'].queryset = self.fields['parent'].queryset.exclude(
-                pk__in=self.ids)
+            qs = qs.exclude(pk__in=self.ids)
+        apply_term_tree(self.fields['parent'], qs)
 
     def save(self):
         parent = self.cleaned_data['parent']
@@ -230,8 +232,9 @@ class TermForm(forms.ModelForm):
         qs = Term.objects.select_related('academic_year').order_by(
             '-academic_year__name', '-code')
         if self.instance and self.instance.pk:
-            qs = qs.exclude(pk=self.instance.pk)
-        self.fields['parent'].queryset = qs
+            # Itself and its own sub-terms can never be its parent.
+            qs = qs.exclude(pk__in=term_with_descendant_ids(self.instance.pk))
+        apply_term_tree(self.fields['parent'], qs)
         self.fields['parent'].required = False
 
     def clean_parent(self):

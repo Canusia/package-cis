@@ -11,6 +11,7 @@ from django.urls import reverse_lazy
 from ..models.crontab import CronTab
 
 from cis.models.term import AcademicYear, Term
+from cis.services.term_hierarchy import apply_term_tree
 from cis.models.course import Course
 from cis.models.teacher import TeacherCourseCertificate
 
@@ -233,7 +234,7 @@ class syllabi_review(forms.Form):
             'setting:run_record', args=[request.GET.get('report_id')])
         self.helper.add_input(Submit('submit', 'Save Setting'))
 
-        self.fields['term'].queryset = Term.objects.all().order_by('-code')
+        apply_term_tree(self.fields['term'], Term.objects.all().order_by('-code'))
 
     def install(self):
         defaults = {"mode": "test", "testers": "kadaji@gmail.com", "email_message": "{{instructor_first_name}}, {{instructor_last_name}}, {{section_list}}, {{term}}", "email_subject": "Missing Syllabi", "faculty_message": "note to faculty", "instructor_message": "note to teacher"}

@@ -11,6 +11,7 @@ from crispy_forms.layout import Submit
 
 from ..models.highschool import HighSchool
 from ..models.term import Term, AcademicYear
+from ..services.term_hierarchy import term_tree_choices
 from ..models.settings import Setting
 
 class RegistrationForm(forms.Form):
@@ -82,7 +83,7 @@ class RegistrationForm(forms.Form):
             terms = terms.filter(academic_year__campus=campus)
             years = years.filter(campus=campus)
 
-        term_choices = [(str(term.id), term) for term in terms]
+        term_choices = term_tree_choices(terms.select_related('academic_year'))
 
         self.fields['academic_year'].choices = [
             (str(acad_year.id), acad_year) for acad_year in years

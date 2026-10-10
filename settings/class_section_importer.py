@@ -15,6 +15,7 @@ from ..validators import (
 
 from ..models.crontab import CronTab
 from ..models.term import Term, AcademicYear
+from ..services.term_hierarchy import term_tree_choices
 from ..models.settings import Setting
 
 class SettingForm(forms.Form):
@@ -57,10 +58,9 @@ class SettingForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['terms'].choices = [
-            (str(term.id), f"{term.label} ({term.code})")
-            for term in Term.objects.select_related('academic_year').all()
-        ]
+        self.fields['terms'].choices = term_tree_choices(
+            Term.objects.select_related('academic_year').all(),
+            label=lambda term: f"{term.label} ({term.code})")
 
     def _to_python(self):
         """

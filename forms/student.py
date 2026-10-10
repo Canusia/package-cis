@@ -15,6 +15,7 @@ from passwords.validators import (
 )
 
 from cis.models.term import Term
+from cis.services.term_hierarchy import apply_term_tree
 from cis.models.course import Campus
 from cis.models.customuser import CustomUser
 from cis.models.student import (
@@ -83,7 +84,7 @@ class BulkPaymentForm(forms.Form):
     def __init__(self, record_ids=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.fields['term'].queryset = Term.objects.all().order_by('-code')
+        apply_term_tree(self.fields['term'], Term.objects.all().order_by('-code'))
 
         if record_ids:
 

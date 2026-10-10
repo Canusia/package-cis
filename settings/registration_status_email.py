@@ -201,26 +201,11 @@ class SettingForm(forms.Form):
         followed by its sub-terms (indented). Values are strings so the setting
         stays JSON."""
         from ..campus_context import scope_to_current_campus
-        terms = list(scope_to_current_campus(
-            Term.objects.select_related('academic_year'), 'academic_year__campus'))
-        term_ids = {t.id for t in terms}
-        children = {}
-        for term in terms:
-            children.setdefault(term.parent_id, []).append(term)
-        choices, seen = [], set()
-
-        def add(term, depth):
-            if term.id in seen:
-                return
-            seen.add(term.id)
-            choices.append((str(term.id), f"{'— ' * depth}{term} ({term.code})"))
-            for child in children.get(term.id, []):
-                add(child, depth + 1)
-
-        for term in terms:
-            if term.parent_id is None or term.parent_id not in term_ids:
-                add(term, 0)
-        return choices
+        from ..services.term_hierarchy import term_tree_choices
+        terms = scope_to_current_campus(
+            Term.objects.select_related('academic_year'), 'academic_year__campus')
+        return term_tree_choices(
+            terms, label=lambda t: f"{t} ({t.code})", indent='— ')
 
     @classmethod
     def _known_error_choices(cls):
