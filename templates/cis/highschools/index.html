@@ -1,4 +1,5 @@
 {% extends "cis/logged-base.html" %}
+{% load term_tree %}
 {%block title %}{{page_title}}{% endblock %}
 
 {% load templatehelpers %}
@@ -104,8 +105,8 @@
                                         <div class="form-row">
                                             <div class="col">
                                                 <select id="map-term-filter" name="term_ids" multiple="multiple" class="form-control">
-                                                    {% for term in terms %}
-                                                    <option value="{{ term.id }}">{{ term.label }}</option>
+                                                    {% for term in terms|term_tree %}
+                                                    <option value="{{ term.id }}">{{ term|term_indent }}{{ term.label }}</option>
                                                     {% endfor %}
                                                 </select>
                                                 &nbsp;

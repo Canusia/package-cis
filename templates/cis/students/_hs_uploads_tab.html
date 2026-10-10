@@ -1,3 +1,4 @@
+{% load term_tree %}
 {% comment %}
 High School Uploads tab of /ce/students/support_docs/ (package-cis #56).
 Files high schools send the college, from every school. Context comes from
@@ -12,8 +13,8 @@ without one (system check cis.W003) a plain list of the latest uploads shows.
                     <form id="hs_uploads_filter" class="form-inline filter" onsubmit="return false;">
                         <select class="form-control mr-2 mt-2" name="term">
                             <option value="">All Terms</option>
-                            {% for t in terms %}
-                            <option value="{{ t.id }}" {% if t.id == hs_uploads_active_term.id %}selected{% endif %}>{{ t.label }}</option>
+                            {% for t in terms|term_tree %}
+                            <option value="{{ t.id }}" {% if t.id == hs_uploads_active_term.id %}selected{% endif %}>{{ t|term_indent }}{{ t.label }}</option>
                             {% endfor %}
                         </select>
                         <select class="form-control mr-2 mt-2" name="highschool_id">

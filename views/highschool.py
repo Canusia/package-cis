@@ -259,9 +259,15 @@ def index(request):
     template = 'cis/highschools/index.html'
 
     # Get terms that have class sections at high schools
-    terms = Term.objects.filter(
+    # Terms with high-school sections, plus their parent terms: a parent with
+    # no sections of its own still has to be pickable as a group.
+    from cis.services.term_hierarchy import term_ids_with_ancestors
+    used = Term.objects.filter(
         classsection__highschool__isnull=False
-    ).distinct().order_by('-code', '-label')
+    ).values_list('pk', flat=True).distinct()
+    terms = Term.objects.filter(
+        pk__in=term_ids_with_ancestors(used)
+    ).order_by('-code', '-label')
 
     return render(
         request,

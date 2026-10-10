@@ -1,3 +1,4 @@
+{% load term_tree %}
 <div class="row">
     <div class="col-12 bg-gray-100">
         <div class="card mb-4 border-top-0">
@@ -8,8 +9,8 @@
                             <div class="float-right">
                                 <select class="form-control mt-2" name="term">
                                     <option value="-1">All Terms</option>
-                                    {% for c in terms %}
-                                    <option value="{{ c.id }}">{{ c }}</option>
+                                    {% for c in terms|term_tree %}
+                                    <option value="{{ c.id }}">{{ c|term_indent }}{{ c }}</option>
                                     {% endfor %}
                                 </select>
                             </div>

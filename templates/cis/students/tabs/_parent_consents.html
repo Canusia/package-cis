@@ -1,3 +1,4 @@
+{% load term_tree %}
 <div class="card border-top-0">
     <div class="card-body">
         <div class="row">
@@ -76,8 +77,8 @@
                         <div class="form-group row">
                             <div class="col-sm-6">
                                 <select class="form-control" name="term">
-                                    {% for c in terms %}
-                                    <option value="{{c.id}}">{{c.label}} {{c.year}}</option>
+                                    {% for c in terms|term_tree %}
+                                    <option value="{{c.id}}">{{ c|term_indent }}{{c.label}} {{c.year}}</option>
                                     {% endfor %}
                                 </select>
                             </div>

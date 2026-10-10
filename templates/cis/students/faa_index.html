@@ -1,4 +1,5 @@
 {% extends "cis/logged-base.html" %}
+{% load term_tree %}
 {%block title %}{{page_title}}{% endblock %}
 
 {% load templatehelpers %}
@@ -42,10 +43,10 @@
                                                                 
                                                                 <select class="form-control mt-2" name="term_id">
                                                                     <option value="">By Term</option>
-                                                                    {% for c in terms %}
+                                                                    {% for c in terms|term_tree %}
                                                                     <option value="{{c.id}}"
                                                                         {% if c.id == active_term.id %} selected
-                                                                        {% endif %}>{{c}}</option>
+                                                                        {% endif %}>{{ c|term_indent }}{{c}}</option>
                                                                     {% endfor %}
                                                                 </select>
                                                                 {% include 'snippets/campus.html' with campus=accessible_campuses default_campus=default_campus %}
@@ -103,10 +104,10 @@
                                                                 
                                                                 <select class="form-control mt-2" name="term_id">
                                                                     <option value="">By Term</option>
-                                                                    {% for c in terms %}
+                                                                    {% for c in terms|term_tree %}
                                                                     <option value="{{c.id}}"
                                                                         {% if c.id == active_term.id %} selected
-                                                                        {% endif %}>{{c}}</option>
+                                                                        {% endif %}>{{ c|term_indent }}{{c}}</option>
                                                                     {% endfor %}
                                                                 </select>
                                                                 {% include 'snippets/campus.html' with campus=accessible_campuses default_campus=default_campus %}

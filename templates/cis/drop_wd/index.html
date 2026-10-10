@@ -1,4 +1,5 @@
 {% extends "cis/logged-base.html" %}
+{% load term_tree %}
 {%block title %}{{page_title}}{% endblock %}
 
 {% load templatehelpers %}
@@ -47,8 +48,8 @@
                                                                 &nbsp;
                                                                 <select class="form-control mt-2" name="term">
                                                                     <option value="">By Term</option>
-                                                                    {% for c in terms %}
-                                                                    <option value="{{c.id}}">{{c.label}} {{c.year}}</option>
+                                                                    {% for c in terms|term_tree %}
+                                                                    <option value="{{c.id}}">{{ c|term_indent }}{{c.label}} {{c.year}}</option>
                                                                     {% endfor %}
                                                                 </select>
                                                                 &nbsp;
