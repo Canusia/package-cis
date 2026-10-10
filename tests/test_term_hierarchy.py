@@ -122,6 +122,10 @@ class TermIdHelperTests(TestCase):
             expand_term_ids(['x'])
         self.assertEqual(len(queries.captured_queries), 0)
 
+    def test_expand_term_ids_accepts_bare_int(self):
+        self.assertEqual(expand_term_ids(-1), set())
+        self.assertEqual(expand_term_ids(0), set())
+
     def test_ancestors(self):
         self.assertEqual(term_ids_with_ancestors([self.block.pk]),
                          {self.block.pk, self.semester.pk, self.quarter.pk})

@@ -1,6 +1,7 @@
 """Compare Terms: tree-ordered picker, a parent column rolls up its sub-terms."""
 from django.test import RequestFactory, TestCase
 
+from cis.models.term import Term
 from cis.services.comparison import (
     build_compare_context, build_payload, get_dimension, parse_filters, run_metric,
 )
@@ -55,6 +56,13 @@ class CompareTermTreeTests(TermTreeFixtureMixin, TestCase):
                   build_payload(self.filters(self.quarter, self.spring))['dimensions']}
         self.assertEqual(labels[str(self.quarter.pk)], f'{self.quarter} (+2 sub-terms)')
         self.assertEqual(labels[str(self.spring.pk)], str(self.spring))
+
+    def test_parent_label_singular_for_one_sub_term(self):
+        Term.objects.create(academic_year=self.ay, code='291', label='Fall Block',
+                            parent=self.semester)
+        labels = {d['id']: d['label'] for d in
+                  build_payload(self.filters(self.semester))['dimensions']}
+        self.assertEqual(labels[str(self.semester.pk)], f'{self.semester} (+1 sub-term)')
 
     def test_academic_year_unchanged(self):
         totals = self.totals(self.filters(self.ay, slug='academic_year'))

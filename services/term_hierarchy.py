@@ -78,7 +78,7 @@ def _as_uuid(value):
 
 def _as_uuids(values):
     """Valid UUIDs from one value or an iterable of values, order kept."""
-    if values is None or isinstance(values, (str, uuid.UUID)) or hasattr(values, 'pk'):
+    if values is None or isinstance(values, (str, bytes, int, uuid.UUID)) or hasattr(values, 'pk'):
         values = [values]
     out = []
     for value in values:

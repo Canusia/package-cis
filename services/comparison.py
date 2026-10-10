@@ -279,8 +279,8 @@ def run_metric(filters, key):
     for selected, members in groups.items():
         for dimension_id, cat, value in raw:
             if dimension_id in members:
-                key = (selected, cat)
-                folded[key] = folded.get(key, 0) + (value or 0)
+                slot = (selected, cat)
+                folded[slot] = folded.get(slot, 0) + (value or 0)
     return [
         {'dimension_id': selected, 'category': cat, 'value': value}
         for (selected, cat), value in folded.items()
@@ -299,7 +299,9 @@ def dimension_list(filters):
     def label(i):
         text = dim.label(by_id[i])
         extra = len(groups.get(i, ())) - 1
-        return f'{text} (+{extra} sub-terms)' if dim.rollup and extra > 0 else text
+        if not (dim.rollup and extra > 0):
+            return text
+        return f'{text} (+{extra} sub-term{"" if extra == 1 else "s"})'
     return [{'id': i, 'label': label(i)} for i in filters.ids if i in by_id]
 
 
