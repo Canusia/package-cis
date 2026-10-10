@@ -33,7 +33,7 @@
             <div class="col-md-3">
                 <h6>Select up to 3 {{ compare_noun }}s</h6>
                 {% for record in compare_records %}
-                    <div class="form-check">
+                    <div class="form-check"{% if record.depth %} style="margin-left: {{ record.depth }}rem"{% endif %}>
                         <input class="form-check-input" type="checkbox"
                                name="id" value="{{ record.id }}"
                                data-campus="{{ record.campus_id }}"

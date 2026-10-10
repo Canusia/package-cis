@@ -28,6 +28,7 @@ class Dimension:
     section_path: str
     ordering: str
     noun: str
+    rollup: bool = False
 
     def label(self, record):
         if self.label_field is None:
@@ -42,7 +43,7 @@ def _build_registry():
             slug='term', model=Term, label_field=None,
             registration_path='class_section__term',
             section_path='term',
-            ordering='-code', noun='Term',
+            ordering='-code', noun='Term', rollup=True,
         ),
         'academic_year': Dimension(
             slug='academic_year', model=AcademicYear, label_field='name',
@@ -192,26 +193,37 @@ def _highschool_label(prefix):
         f'{prefix}name', Value(NO_HIGH_SCHOOL), output_field=CharField())
 
 
-def _registration_qs(filters):
+def _groups(filters):
+    """{selected id: {ids its column covers}}; a term covers its sub-terms."""
+    if not filters.dimension.rollup:
+        return {i: {i} for i in filters.ids}
+    from cis.services.term_hierarchy import descendant_groups
+    return {str(k): {str(v) for v in vs}
+            for k, vs in descendant_groups(filters.ids).items()}
+
+
+def _registration_qs(filters, ids=None):
     from cis.models.section import StudentRegistration
     dim = filters.dimension
     return StudentRegistration.objects.filter(
         campus_q('class_section__course__campus', filters),
         **{
-            f'{dim.registration_path}__id__in': filters.ids,
+            f'{dim.registration_path}__id__in': (
+                ids if ids is not None else filters.ids),
             'status__in': filters.statuses,
             'class_section__status__in': filters.section_statuses,
         }
     )
 
 
-def _section_qs(filters):
+def _section_qs(filters, ids=None):
     from cis.models.section import ClassSection
     dim = filters.dimension
     return ClassSection.objects.filter(
         campus_q('course__campus', filters),
         **{
-            f'{dim.section_path}__id__in': filters.ids,
+            f'{dim.section_path}__id__in': (
+                ids if ids is not None else filters.ids),
             'status__in': filters.section_statuses,
         }
     )
@@ -240,11 +252,13 @@ def run_metric(filters, key):
         return []
 
     dim = filters.dimension
+    groups = _groups(filters)
+    covered = set().union(*groups.values()) if groups else set()
     if metric.base == 'registration':
-        qs = _registration_qs(filters)
+        qs = _registration_qs(filters, covered)
         dim_path = f'{dim.registration_path}__id'
     else:
-        qs = _section_qs(filters)
+        qs = _section_qs(filters, covered)
         dim_path = f'{dim.section_path}__id'
 
     aggregate = (
@@ -254,21 +268,22 @@ def run_metric(filters, key):
     category = _category_expression(key)
 
     if category is None:
-        rows = qs.values(dimension_id=F(dim_path)).annotate(value=aggregate)
-        return [
-            {'dimension_id': str(r['dimension_id']),
-             'category': TOTAL_CREDITS_CATEGORY,
-             'value': r['value'] if r['value'] is not None else 0}
-            for r in rows
-        ]
+        raw = [(str(r['dimension_id']), TOTAL_CREDITS_CATEGORY, r['value'])
+               for r in qs.values(dimension_id=F(dim_path)).annotate(value=aggregate)]
+    else:
+        raw = [(str(r['dimension_id']), r['category'], r['value'])
+               for r in qs.values(dimension_id=F(dim_path), category=category)
+                          .annotate(value=aggregate)]
 
-    rows = (qs.values(dimension_id=F(dim_path), category=category)
-              .annotate(value=aggregate))
+    folded = {}
+    for selected, members in groups.items():
+        for dimension_id, cat, value in raw:
+            if dimension_id in members:
+                key = (selected, cat)
+                folded[key] = folded.get(key, 0) + (value or 0)
     return [
-        {'dimension_id': str(r['dimension_id']),
-         'category': r['category'],
-         'value': r['value'] if r['value'] is not None else 0}
-        for r in rows
+        {'dimension_id': selected, 'category': cat, 'value': value}
+        for (selected, cat), value in folded.items()
     ]
 
 
@@ -279,8 +294,13 @@ def dimension_list(filters):
     if dim.slug == 'term':
         qs = qs.select_related('academic_year')
     by_id = {str(r.id): r for r in qs}
-    return [{'id': i, 'label': dim.label(by_id[i])}
-            for i in filters.ids if i in by_id]
+    groups = _groups(filters)
+
+    def label(i):
+        text = dim.label(by_id[i])
+        extra = len(groups.get(i, ())) - 1
+        return f'{text} (+{extra} sub-terms)' if dim.rollup and extra > 0 else text
+    return [{'id': i, 'label': label(i)} for i in filters.ids if i in by_id]
 
 
 def build_payload(filters):
@@ -335,6 +355,12 @@ def build_compare_context(request, dimension_slug):
         def _campus_id(r):
             return ''
 
+    if dim.rollup:
+        from cis.services.term_hierarchy import term_tree
+        ordered = term_tree(records)
+    else:
+        ordered = [(r, 0) for r in records]
+
     campuses = [
         {'id': str(c.id), 'label': c.name}
         for c in get_accessible_campuses(request.user).order_by('name')
@@ -345,8 +371,9 @@ def build_compare_context(request, dimension_slug):
         'compare_dimension': dim.slug,
         'compare_noun': dim.noun,
         'compare_records': [
-            {'id': str(r.id), 'label': dim.label(r), 'campus_id': _campus_id(r)}
-            for r in records],
+            {'id': str(r.id), 'label': dim.label(r), 'campus_id': _campus_id(r),
+             'depth': depth}
+            for r, depth in ordered],
         'compare_statuses': list(StudentRegistration.STATUS_OPTIONS),
         'compare_campuses': campuses,
         'compare_section_statuses': list(ClassSection.CLASS_STATUS),
