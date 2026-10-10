@@ -10,7 +10,9 @@ from crispy_forms.layout import Submit
 
 from ..models.term import Term, AcademicYear
 from ..models.settings import Setting
-from cis.services.access_request_review import ALL_PLACEHOLDERS, APPROVE, DENY, PLACEHOLDERS
+from cis.services.access_request_review import (
+    ALL_PLACEHOLDERS, APPROVE, DENY, MISSING_RESET_LINK, PLACEHOLDERS, RESET_LINK_RE,
+)
 from cis.validators import validate_html_short_code, validate_email_list, validate_email_placeholders
 
 
@@ -18,6 +20,11 @@ def _placeholders(decision):
     def validate(value):
         validate_email_placeholders(value, PLACEHOLDERS[decision], known=ALL_PLACEHOLDERS)
     return validate
+
+
+def _requires_reset_link(value):
+    if not RESET_LINK_RE.search(value or ''):
+        raise ValidationError(MISSING_RESET_LINK)
 
 
 def _help(decision, preview_field):
@@ -54,7 +61,7 @@ class SettingForm(forms.Form):
     approved_email = forms.CharField(
         max_length=None,
         widget=forms.Textarea,
-        validators=[_placeholders(APPROVE)],
+        validators=[_placeholders(APPROVE), _requires_reset_link],
         help_text=_help(APPROVE, 'approved_email'),
         label="Access Approved - Email"
     )

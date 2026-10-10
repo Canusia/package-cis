@@ -34,3 +34,8 @@ class AccessRequestSettingsValidationTests(TestCase):
         form = self.form(approved_subject='Welcome {name}')
         self.assertFalse(form.is_valid())
         self.assertIn('approved_subject', form.errors)
+
+    def test_approved_email_without_reset_link_rejected(self):
+        form = self.form(approved_email='Welcome {{name}}')
+        self.assertFalse(form.is_valid())
+        self.assertIn('password_reset_link', str(form.errors['approved_email']))

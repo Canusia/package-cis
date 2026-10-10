@@ -1,6 +1,7 @@
 import csv
 import json
 import io
+from django.utils.html import escape
 from django.utils.http import content_disposition_header
 import logging
 import uuid
@@ -270,8 +271,8 @@ def access_request_tab(request, record_id, tab_slug):
 def access_request(request, record_id):
     """Review an access request: details, approve/deny, permissions, email."""
     from cis.services.access_request_review import (
-        APPROVE, DENY, MISSING_RESET_LINK, PLACEHOLDERS,
-        complete_review, current_role_permissions, note_location,
+        APPROVE, DENY, MISSING_RESET_LINK, PLACEHOLDERS, AlreadyDecided,
+        complete_review, save_details, current_role_permissions, note_location,
     )
     from cis.settings.access_request import access_request as access_request_settings
 
@@ -284,8 +285,18 @@ def access_request(request, record_id):
         if request.method == 'POST':
             form = AccessRequestReviewForm(request.POST, instance=record)
             if form.is_valid():
+                def already_decided(exc):
+                    messages.add_message(
+                        request, messages.SUCCESS,
+                        f'This request was already {escape(exc.status.lower())}. '
+                        'Nothing was changed.', 'list-group-item-warning')
+                    return redirect('cis:hs_admin_access_request', record_id=record_id)
+
                 if form.saving_details_only:
-                    form.save()
+                    try:
+                        save_details(form)
+                    except AlreadyDecided as exc:
+                        return already_decided(exc)
                     messages.add_message(request, messages.SUCCESS,
                                          'Saved the request details. Nothing was sent.',
                                          'list-group-item-success')
@@ -293,23 +304,25 @@ def access_request(request, record_id):
 
                 try:
                     outcome = complete_review(form, request.user)
+                except AlreadyDecided as exc:
+                    return already_decided(exc)
                 except Exception as e:
                     logger.exception('Unable to complete access request %s', record_id)
                     messages.add_message(
                         request, messages.SUCCESS,
-                        f'Unable to complete the request \u2014 nothing was changed. {e}',
+                        f'Unable to complete the request \u2014 nothing was changed. {escape(str(e))}',
                         'list-group-item-warning')
                     return redirect('cis:hs_admin_access_request', record_id=record_id)
 
                 verb = 'Approved' if outcome.decision == APPROVE else 'Denied'
                 if outcome.email_sent:
                     messages.add_message(request, messages.SUCCESS,
-                                         f'{verb}. The email was sent to {record.email}.',
+                                         f'{verb}. The email was sent to {escape(record.email)}.',
                                          'list-group-item-success')
                 else:
                     messages.add_message(request, messages.SUCCESS,
                                          f'{verb}, but the email could not be sent. '
-                                         f'Contact {record.email} directly.',
+                                         f'Contact {escape(record.email)} directly.',
                                          'list-group-item-warning')
                 if outcome.role_already_existed:
                     messages.add_message(request, messages.SUCCESS,

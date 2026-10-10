@@ -11,7 +11,7 @@ from cis.models.highschool_administrator import (
     HSAdministrator, HSAdministratorAccessRequest, HSAdministratorPosition,
 )
 from cis.models.note import HighSchoolNote, HSAdministratorNote
-from cis.services.access_request_review import complete_review, note_location
+from cis.services.access_request_review import AlreadyDecided, complete_review, note_location
 
 SEND = 'cis.models.highschool_administrator.send_html_mail'
 LINK = 'https://reset.example/live-token'
@@ -120,7 +120,32 @@ class CompleteReviewTests(TestCase):
                 self.staff)
         note = HighSchoolNote.objects.get(highschool=self.hs).note
         self.assertNotIn('<script>', note)
-        self.assertIn('&lt;script&gt;', note)
+        self.assertNotIn('&lt;script', note)   # tags are stripped, not shown
         self.assertIn('Hi<br>', note)
         self.assertIn('Hi Pat O&#x27;Brien &amp; Co', note)
         self.assertNotIn('&amp;#x27;', note)
+
+    def test_decided_since_form_was_bound_raises_and_changes_nothing(self, _link):
+        form = self.form('approve', '{{password_reset_link}}')
+        HSAdministratorAccessRequest.objects.filter(pk=self.req.pk).update(status='Denied')
+        with mock.patch(SEND) as send:
+            with self.assertRaises(AlreadyDecided) as ctx:
+                complete_review(form, self.staff)
+        self.assertEqual(ctx.exception.status, 'Denied')
+        send.assert_not_called()
+        self.req.refresh_from_db()
+        self.assertEqual(self.req.status, 'Denied')
+        self.assertFalse(HSAdministratorNote.objects.exists())
+        self.assertFalse(HighSchoolNote.objects.exists())
+        self.assertFalse(HSAdministratorPosition.objects.filter(highschool=self.hs).exists())
+
+    def test_note_is_readable_text_from_html_body(self, _link):
+        body = 'Line one<br>Line two<br/>\r\nSee <a href="http://x">link</a> now'
+        with mock.patch(SEND):
+            complete_review(self.form('deny', body), self.staff)
+        note = HighSchoolNote.objects.get(highschool=self.hs).note
+        self.assertNotIn('&lt;br', note)
+        self.assertNotIn('&lt;a', note)
+        self.assertNotIn('<a ', note)
+        self.assertIn('Line one<br>Line two<br>', note)
+        self.assertIn('See link now', note)

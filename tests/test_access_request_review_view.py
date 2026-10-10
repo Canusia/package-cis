@@ -123,3 +123,64 @@ class ReviewViewTests(TestCase):
         self.req.refresh_from_db()
         self.assertEqual(self.req.status, 'Submitted')
         send.assert_not_called()
+        followed = self.client.get(self.url)
+        self.assertContains(followed, 'Unable to complete the request')
+
+    def test_messages_escape_email_and_error_text(self, _link):
+        evil = '"<svg/onload=alert(1)>"@x.com'
+        self.req.email = evil
+        self.req.save()
+        with mock.patch(SEND):
+            response = self.client.post(self.url, {
+                'name': 'Jane Doe', 'email': evil, 'phone': '555',
+                'highschool': str(self.hs.pk), 'role': 'Counselor', 'decide': '1',
+                'decision': 'deny', 'email_subject': 'x', 'email_message': 'Sorry'},
+                follow=True)
+        self.assertContains(response, '&lt;svg')
+        self.assertNotContains(response, '<svg/onload')
+
+    def test_error_message_escapes_exception_text(self, _link):
+        with mock.patch(SEND), mock.patch(
+                'cis.services.access_request_review.complete_review',
+                side_effect=RuntimeError('<img src=x onerror=alert(1)>')):
+            response = self.client.post(self.url, {
+                'name': 'Jane Doe', 'email': 'jane@example.com', 'phone': '555',
+                'highschool': str(self.hs.pk), 'role': 'Counselor', 'decide': '1',
+                'decision': 'deny', 'email_subject': 'x', 'email_message': 'Sorry'},
+                follow=True)
+        self.assertContains(response, '&lt;img src=x')
+        self.assertNotContains(response, '<img src=x onerror')
+
+    def _decided_elsewhere(self):
+        # The page was rendered while Submitted; someone else decides first.
+        HSAdministratorAccessRequest.objects.filter(pk=self.req.pk).update(status='Denied')
+
+    def test_concurrent_decision_view_warns_and_sends_nothing(self, _link):
+        from cis.services.access_request_review import complete_review as real
+        def decide_then_complete(form, user):
+            self._decided_elsewhere()
+            return real(form, user)
+        with mock.patch(SEND) as send, mock.patch(
+                'cis.services.access_request_review.complete_review',
+                side_effect=decide_then_complete):
+            response = self.post(decide='1', decision='approve', email_subject='Hi',
+                                 email_message='{{password_reset_link}}')
+            followed = self.client.get(response.url)
+        self.assertContains(followed, 'This request was already denied. Nothing was changed.')
+        self.req.refresh_from_db()
+        self.assertEqual(self.req.status, 'Denied')
+        send.assert_not_called()
+        self.assertFalse(HSAdministratorPosition.objects.filter(highschool=self.hs).exists())
+
+    def test_save_details_on_concurrently_decided_request_changes_nothing(self, _link):
+        from cis.services.access_request_review import save_details as real
+        def decide_then_save(form):
+            self._decided_elsewhere()
+            return real(form)
+        with mock.patch('cis.services.access_request_review.save_details',
+                        side_effect=decide_then_save):
+            response = self.post(name='Janet Doe', save_details='1')
+            followed = self.client.get(response.url)
+        self.assertContains(followed, 'This request was already denied. Nothing was changed.')
+        self.req.refresh_from_db()
+        self.assertEqual((self.req.name, self.req.status), ('Jane Doe', 'Denied'))

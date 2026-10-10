@@ -32,8 +32,8 @@
 {% if decided %}
   <p class="alert {% if record.status == 'Approved' %}alert-success{% else %}alert-secondary{% endif %}">
     This request was <strong>{{ record.status }}</strong>.
-    {% if note_location %}The decision and the email that was sent are recorded in the notes for
-      <a href="{{ note_location.1 }}">{{ note_location.0 }}</a>.{% endif %}
+    {% if note_location %}Notes for
+      <a href="{{ note_location.1 }}">{{ note_location.0 }}</a> include decisions made from this page.{% endif %}
   </p>
   <dl class="row mb-0">
     <dt class="col-sm-4">Name</dt><dd class="col-sm-8">{{ record.name }}</dd>

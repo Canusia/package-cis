@@ -17,6 +17,7 @@
   var TEMPLATES = json('ar-email-templates') || {};
   var PLACEHOLDERS = json('ar-placeholders') || {};
   var MISSING_LINK = json('ar-missing-link') || '';
+  var has = function (o, k) { return Object.prototype.hasOwnProperty.call(o, k); };
   var KNOWN = {};
   Object.keys(PLACEHOLDERS).forEach(function (d) {
     Object.keys(PLACEHOLDERS[d]).forEach(function (n) { KNOWN[n] = true; });
@@ -35,8 +36,8 @@
       var inner = m[1].trim();
       if (!/^\w+$/.test(inner)) {
         out.push('"' + m[0] + '" isn\'t allowed. Use a plain placeholder like {{name}}.');
-      } else if (!(inner in allowed)) {
-        out.push(KNOWN[inner]
+      } else if (!has(allowed, inner)) {
+        out.push(has(KNOWN, inner)
           ? '{{' + inner + '}} can only be used in an approval email.'
           : '{{' + inner + '}} isn\'t a placeholder. Use one of: ' +
             Object.keys(allowed).map(function (n) { return '{{' + n + '}}'; }).join(', ') + '.');

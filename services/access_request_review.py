@@ -38,12 +38,35 @@ from django.db import transaction
 from django.template import Context, Template
 from django.urls import reverse
 from django.utils import timezone
-from django.utils.html import escape
+from django.utils.html import escape, strip_tags
 from django.template.defaultfilters import linebreaksbr
 
 logger = logging.getLogger(__name__)
 
 NOTE_RESET_LINK = '[password reset link]'
+
+
+class AlreadyDecided(Exception):
+    """The request was approved/denied by someone else before this submit."""
+
+    def __init__(self, status):
+        super().__init__(status)
+        self.status = status
+
+
+def _lock_undecided(form):
+    """Re-read the request under a row lock; raise if it is no longer Submitted."""
+    locked = type(form.instance).objects.select_for_update().get(pk=form.instance.pk)
+    if locked.status != 'Submitted':
+        raise AlreadyDecided(locked.status)
+    return locked
+
+
+def save_details(form):
+    """Save the details-only submit, unless the request was decided meanwhile."""
+    with transaction.atomic():
+        _lock_undecided(form)
+        return form.save()
 
 
 @dataclass
@@ -109,6 +132,11 @@ def _note_text(record, user, decision, form, email_sent, role_already_existed=Fa
     context = Context(record.email_context(reset_link=NOTE_RESET_LINK), autoescape=False)
     subject = Template(data['email_subject']).render(context)
     body = Template(data['email_message']).render(context)
+    # The body is HTML from the Settings template: flatten it to plain text first,
+    # so the note shows readable lines instead of tags.
+    body = body.replace('\r\n', '\n')
+    body = re.sub(r'<br\s*/?>', '\n', body, flags=re.IGNORECASE)
+    body = strip_tags(body)
     status = 'Email sent' if email_sent else 'Email was not sent (sending failed)'
     lines.append(f'{status} to {escape(record.email)}.<br>'
                  f'<strong>Subject:</strong> {escape(subject)}<br>{linebreaksbr(escape(body))}')
@@ -136,6 +164,7 @@ def complete_review(form, user):
     outcome = ReviewOutcome(decision=decision)
 
     with transaction.atomic():
+        _lock_undecided(form)
         record = form.save(commit=False)
         record.status = 'Approved' if decision == APPROVE else 'Denied'
         record.save()
