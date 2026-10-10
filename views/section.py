@@ -338,6 +338,10 @@ class ClassSectionViewSet(viewsets.ReadOnlyModelViewSet):
             teacher_id = self.request.GET.get('teacher_id')
             status = self.request.GET.get('status')
             instruction_mode = self.request.GET.get('instruction_mode')
+            # Sub-terms only when the caller opts in (/ce/sections/, faculty
+            # coordinator tab). Class selection and the class lookup fragment
+            # never send it and keep the exact-term match.
+            include_sub_terms = self.request.GET.get('include_sub_terms') == '1'
 
             record_type = self.request.GET.get('type')
 
@@ -374,15 +378,18 @@ class ClassSectionViewSet(viewsets.ReadOnlyModelViewSet):
 
                 if term and term != '-1':
 
+                    if include_sub_terms:
+                        from cis.services.term_hierarchy import term_with_descendant_ids
+                        term_filter = {'term__id__in': term_with_descendant_ids(term)}
+                    else:
+                        term_filter = {'term__id': term}
+
                     if subject:
                         records = ClassSection.objects.filter(
-                            term__id=term,
-                            course__cohort__id__in=subject
+                            course__cohort__id__in=subject, **term_filter
                         ).all()
                     else:
-                        records = ClassSection.objects.filter(
-                            term__id=term
-                        ).all()
+                        records = ClassSection.objects.filter(**term_filter).all()
 
                     if status:
                         records = records.filter(
@@ -1283,10 +1290,10 @@ def index(request):
         template, {
             'menu': menu,
             'page_title': 'Class Sections',
-            'api_url': '/ce/api/class_section?format=datatables',
+            'api_url': '/ce/api/class_section?format=datatables&include_sub_terms=1',
             'sections_table': build_sections_table_config(
                 variant='sections_index',
-                api_url='/ce/api/class_section?format=datatables',
+                api_url='/ce/api/class_section?format=datatables&include_sub_terms=1',
                 filter_form_selector='#class_section_filter',
                 bulk_actions={
                     'default': {

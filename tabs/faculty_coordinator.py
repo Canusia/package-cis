@@ -291,7 +291,7 @@ def class_sections_tab(request, record):
     # opts_json|safe, not interpolated into a JS string by the fragment.
     api_url = (
         f'/ce/api/class_section/?course_administrator_user_id={record.user.id}'
-        '&term=-1&format=datatables')
+        '&term=-1&include_sub_terms=1&format=datatables')
     return {
         'sections_table': build(
             variant='faculty_coordinator_detail',
