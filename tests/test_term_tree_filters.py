@@ -1,13 +1,16 @@
 """Picking a parent term in a CE filter includes its sub-terms."""
-from django.test import TestCase
+import json
 
-from cis.models.section import StudentRegistration
+from django.test import RequestFactory, TestCase
+
+from cis.models.section import ClassSectionSyllabi, StudentRegistration
 from cis.models.section import StudentDropRequest
 from cis.tests.term_tree_fixtures import TermTreeFixtureMixin, run_viewset
 from cis.views.course import CourseViewSet
 from cis.views.drop_request import StudentDropViewSet
 from cis.views.registration import RegistrationViewSet
-from cis.views.section import ClassesRegisteredByCampusViewSet
+from cis.views.highschool import highschool_map_data
+from cis.views.section import ClassSectionSyllabiViewSet, ClassesRegisteredByCampusViewSet
 from cis.views.student import StudentViewSet
 
 
@@ -51,3 +54,29 @@ class TermFilterTests(TermTreeFixtureMixin, TestCase):
         self.assertIn(self.course, qs)
         qs = run_viewset(CourseViewSet, self.ce, term=str(self.spring.pk))
         self.assertIn(self.course, qs)
+
+    def map_schools(self, **params):
+        request = RequestFactory().get('/x', params)
+        request.user = self.ce
+        response = highschool_map_data(request)
+        self.assertEqual(response.status_code, 200)
+        return json.loads(response.content)['schools']
+
+    def test_map_junk_term_ids_returns_no_schools(self):
+        self.hs.latitude, self.hs.longitude = 1.0, 1.0
+        self.hs.save()
+        self.assertEqual(self.map_schools(term_ids='junk'), [])
+
+    def test_map_parent_term_reaches_sub_term_sections(self):
+        self.hs.latitude, self.hs.longitude = 1.0, 1.0
+        self.hs.save()
+        schools = self.map_schools(term_ids=str(self.quarter.pk))
+        self.assertEqual([s['id'] for s in schools], [str(self.hs.pk)])
+
+    def test_syllabi_parent_term_lists_each_syllabus_once(self):
+        syllabus = ClassSectionSyllabi.objects.create(media='s.pdf')
+        syllabus.class_sections.add(
+            self.sections['Fall Semester'], self.sections['Fall Trimester'])
+        qs = run_viewset(ClassSectionSyllabiViewSet, self.ce,
+                         term=str(self.quarter.pk))
+        self.assertEqual([r.pk for r in qs], [syllabus.pk])

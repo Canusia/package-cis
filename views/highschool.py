@@ -309,8 +309,10 @@ def index(request):
 
 def highschool_map_data(request):
     """Return high school locations as JSON for map display."""
-    term_ids = request.GET.getlist('term_ids')
-    term_ids = expand_term_ids(term_ids) if term_ids else []
+    requested_term_ids = request.GET.getlist('term_ids')
+    term_ids = expand_term_ids(requested_term_ids) if requested_term_ids else []
+    if requested_term_ids and not term_ids:
+        return JsonResponse({'schools': []})
     course_ids = request.GET.getlist('course_ids')
     statuses = request.GET.getlist('statuses')
 

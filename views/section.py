@@ -222,7 +222,8 @@ class ClassSectionSyllabiViewSet(viewsets.ReadOnlyModelViewSet):
         
         if term:
             records = filter_by_term(
-                ClassSectionSyllabi.objects.all(), term, field='class_sections__term')
+                ClassSectionSyllabi.objects.all(), term, field='class_sections__term'
+            ).distinct()
         
             if roster_status:
                 records = records.filter(
