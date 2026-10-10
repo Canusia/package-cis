@@ -1,4 +1,4 @@
-import datetime, os, json
+import datetime, difflib, os, json, re
 
 from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
@@ -226,3 +226,73 @@ def validate_display_layout(value):
                 'Each column must be a string or a {field,label} object.')
 
     return value
+
+_PLACEHOLDER_RE = re.compile(r'{{(.*?)}}', re.S)
+_SINGLE_BRACE_RE = re.compile(r'(?<!{){\s*(\w+)\s*}(?!})')
+
+def _token_at(text, index):
+    left = index
+    while left > 0 and not text[left - 1].isspace():
+        left -= 1
+    right = index + 1
+    while right < len(text) and not text[right].isspace():
+        right += 1
+    return left, right, text[left:right]
+
+def validate_email_placeholders(value, allowed, known=None):
+    """Reject anything in an email template that is not a plain, allowed
+    {{placeholder}}: unknown or disallowed names, filters, template tags,
+    single or unbalanced braces. Lists every problem, not just the first.
+
+    `allowed` is the set usable here; `known` (default: `allowed`) is every
+    placeholder that exists anywhere, so a known-but-not-here name gets a
+    clearer message than an unknown one.
+    """
+    text = value or ''
+    allowed = set(allowed)
+    known = set(known) if known else allowed
+    problems = []
+
+    if '{%' in text or '%}' in text:
+        problems.append(
+            'Only plain placeholders like {{name}} are allowed here. Remove "{% ... %}".')
+        text = re.sub(r'{%.*?%}', '', text, flags=re.S)
+
+    for match in _PLACEHOLDER_RE.finditer(text):
+        inner = match.group(1).strip()
+        if not re.fullmatch(r'\w+', inner):
+            problems.append(
+                f'"{match.group(0)}" isn\'t allowed. Use a plain placeholder like {{{{name}}}}.')
+        elif inner not in allowed:
+            if inner in known:
+                problems.append(f'{{{{{inner}}}}} can only be used in an approval email.')
+            else:
+                close = difflib.get_close_matches(inner, sorted(allowed), n=1)
+                if close:
+                    problems.append(
+                        f"{{{{{inner}}}}} isn't a placeholder. Did you mean {{{{{close[0]}}}}}?")
+                else:
+                    options = ', '.join(f'{{{{{n}}}}}' for n in sorted(allowed))
+                    problems.append(
+                        f"{{{{{inner}}}}} isn't a placeholder. Use one of: {options}.")
+
+    # Blank out what was handled, keeping offsets, then report leftover braces
+    # once per whitespace-delimited token, quoting the token as typed.
+    rest = _PLACEHOLDER_RE.sub(lambda m: '\0' * len(m.group(0)), text)
+    for match in _SINGLE_BRACE_RE.finditer(rest):
+        problems.append(
+            f'Use double braces: {{{{{match.group(1)}}}}} instead of {{{match.group(1)}}}.')
+    rest = _SINGLE_BRACE_RE.sub(lambda m: '\0' * len(m.group(0)), rest)
+    reported_until = -1
+    for index, char in enumerate(rest):
+        if char not in '{}' or index < reported_until:
+            continue
+        left, right, token = _token_at(text, index)
+        reported_until = right
+        if char == '{':
+            problems.append(f'Unclosed placeholder near "{token}".')
+        else:
+            problems.append(f'Stray "}}" near "{token}".')
+
+    if problems:
+        raise ValidationError(problems)
