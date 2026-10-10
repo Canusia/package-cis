@@ -1,4 +1,5 @@
 """cis.services.term_hierarchy: parent/sub-term pickers and filters."""
+from django import forms
 from django.db import connection
 from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
@@ -7,7 +8,9 @@ from cis.models.course import Cohort, Course
 from cis.models.section import ClassSection
 from cis.models.term import AcademicYear, Term
 from cis.services.term_hierarchy import (
-    filter_by_term, term_tree, term_tree_choices, term_with_descendant_ids,
+    apply_term_tree, descendant_groups, expand_term_ids, filter_by_term,
+    term_ids_with_ancestors, term_tree, term_tree_choices,
+    term_with_descendant_ids,
 )
 
 
@@ -84,3 +87,74 @@ class TermHierarchyTests(TestCase):
         by_leaf = filter_by_term(ClassSection.objects.all(), str(self.spring.pk))
         self.assertEqual(list(by_leaf), [on_spring])
         self.assertFalse(filter_by_term(ClassSection.objects.all(), 'junk').exists())
+
+
+class TermIdHelperTests(TestCase):
+    def setUp(self):
+        ay = AcademicYear.objects.create(name='2027-2028')
+        self.quarter = Term.objects.create(academic_year=ay, code='300', label='Q')
+        self.semester = Term.objects.create(
+            academic_year=ay, code='290', label='S', parent=self.quarter)
+        self.block = Term.objects.create(
+            academic_year=ay, code='270', label='B', parent=self.semester)
+        self.spring = Term.objects.create(academic_year=ay, code='200', label='Sp')
+
+    def test_descendant_groups_one_query(self):
+        with CaptureQueriesContext(connection) as queries:
+            groups = descendant_groups([self.quarter.pk, str(self.spring.pk)])
+        self.assertEqual(len(queries.captured_queries), 1)
+        self.assertEqual(groups, {
+            self.quarter.pk: {self.quarter.pk, self.semester.pk, self.block.pk},
+            self.spring.pk: {self.spring.pk},
+        })
+
+    def test_expand_term_ids_accepts_single_value_and_terms(self):
+        self.assertEqual(expand_term_ids(str(self.semester.pk)),
+                         {self.semester.pk, self.block.pk})
+        self.assertEqual(expand_term_ids([self.semester, self.spring]),
+                         {self.semester.pk, self.block.pk, self.spring.pk})
+
+    def test_expand_term_ids_tolerates_junk(self):
+        for junk in (None, '', 'nope', [], ['', None, 'x']):
+            with self.subTest(junk=junk):
+                self.assertEqual(expand_term_ids(junk), set())
+        with CaptureQueriesContext(connection) as queries:
+            expand_term_ids(['x'])
+        self.assertEqual(len(queries.captured_queries), 0)
+
+    def test_ancestors(self):
+        self.assertEqual(term_ids_with_ancestors([self.block.pk]),
+                         {self.block.pk, self.semester.pk, self.quarter.pk})
+        self.assertEqual(term_ids_with_ancestors([self.spring]), {self.spring.pk})
+
+    def test_apply_term_tree_single_keeps_empty_label_and_order(self):
+        class F(forms.Form):
+            term = forms.ModelChoiceField(queryset=Term.objects.none(), required=False)
+
+        form = F()
+        apply_term_tree(form.fields['term'], Term.objects.order_by('-code'))
+        choices = list(form.fields['term'].choices)
+        self.assertEqual(choices[0], ('', '---------'))
+        self.assertEqual([c[0] for c in choices[1:5]], [
+            str(self.quarter.pk), str(self.semester.pk),
+            str(self.block.pk), str(self.spring.pk)])
+        self.assertEqual(choices[3][1], '\xa0' * 6 + str(self.block))
+
+    def test_apply_term_tree_multiple_has_no_blank_and_validates(self):
+        class F(forms.Form):
+            terms = forms.ModelMultipleChoiceField(queryset=Term.objects.none())
+
+        form = F(data={'terms': [str(self.block.pk)]})
+        apply_term_tree(form.fields['terms'], Term.objects.order_by('-code'))
+        self.assertNotEqual(list(form.fields['terms'].choices)[0][0], '')
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(list(form.cleaned_data['terms']), [self.block])
+
+    def test_apply_term_tree_keeps_selected_value(self):
+        class F(forms.Form):
+            term = forms.ModelChoiceField(queryset=Term.objects.none())
+
+        form = F(initial={'term': self.semester})
+        apply_term_tree(form.fields['term'], Term.objects.order_by('-code'))
+        html = str(form['term'])
+        self.assertIn(f'value="{self.semester.pk}" selected', html)

@@ -67,32 +67,110 @@ def term_tree_choices(terms=None, label=str, indent='   '):
     ]
 
 
-def term_with_descendant_ids(term_id):
-    """{term_id} plus the ids of all its sub-terms, recursively.
+def _as_uuid(value):
+    """A UUID from a str/UUID/Term, or None for anything else."""
+    value = getattr(value, 'pk', value)
+    try:
+        return uuid.UUID(str(value))
+    except (ValueError, TypeError, AttributeError):
+        return None
 
-    One query for the (id, parent) pairs however deep the tree is; safe
-    against cycles. Returns an empty set for an id that is not a UUID.
+
+def _as_uuids(values):
+    """Valid UUIDs from one value or an iterable of values, order kept."""
+    if values is None or isinstance(values, (str, uuid.UUID)) or hasattr(values, 'pk'):
+        values = [values]
+    out = []
+    for value in values:
+        parsed = _as_uuid(value)
+        if parsed is not None and parsed not in out:
+            out.append(parsed)
+    return out
+
+
+def descendant_groups(term_ids):
+    """{id: {id + all its sub-terms}} for each valid id in `term_ids`.
+
+    One query for the (id, parent) pairs however deep the tree is, none when
+    no id is valid; safe against cycles.
     """
     from cis.models.term import Term
 
-    try:
-        root = uuid.UUID(str(term_id))
-    except (ValueError, TypeError, AttributeError):
-        return set()
+    roots = _as_uuids(term_ids)
+    if not roots:
+        return {}
 
     children = {}
     for pk, parent_id in Term.objects.filter(
             parent__isnull=False).values_list('pk', 'parent_id'):
         children.setdefault(parent_id, []).append(pk)
 
-    found = {root}
-    pending = [root]
+    groups = {}
+    for root in roots:
+        found = {root}
+        pending = [root]
+        while pending:
+            for child in children.get(pending.pop(), []):
+                if child not in found:
+                    found.add(child)
+                    pending.append(child)
+        groups[root] = found
+    return groups
+
+
+def expand_term_ids(term_ids):
+    """Every id in `term_ids` plus all of its sub-terms, as one set.
+
+    `term_ids` is one value or an iterable of str / UUID / Term; anything
+    that is not a UUID is dropped, so junk input narrows to nothing.
+    """
+    return set().union(*descendant_groups(term_ids).values())
+
+
+def term_with_descendant_ids(term_id):
+    """{term_id} plus the ids of all its sub-terms, recursively.
+
+    Returns an empty set for an id that is not a UUID.
+    """
+    return expand_term_ids([term_id])
+
+
+def term_ids_with_ancestors(term_ids):
+    """Every id in `term_ids` plus all of its ancestors (one query).
+
+    For pickers built from "terms that have X": a parent with no X of its own
+    still has to be listed or its sub-terms could never be picked as a group.
+    """
+    from cis.models.term import Term
+
+    pending = _as_uuids(term_ids)
+    if not pending:
+        return set()
+    parents = dict(Term.objects.filter(
+        parent__isnull=False).values_list('pk', 'parent_id'))
+    found = set()
     while pending:
-        for child in children.get(pending.pop(), []):
-            if child not in found:
-                found.add(child)
-                pending.append(child)
+        current = pending.pop()
+        if current in found:
+            continue
+        found.add(current)
+        if current in parents:
+            pending.append(parents[current])
     return found
+
+
+def apply_term_tree(field, queryset):
+    """Point a Model(Multiple)ChoiceField at `queryset`, rendered as a tree.
+
+    Validation still runs against the queryset; only the rendered choices
+    change. A single-choice field keeps its empty label.
+    """
+    field.queryset = queryset
+    choices = term_tree_choices(queryset, label=field.label_from_instance)
+    empty_label = getattr(field, 'empty_label', None)
+    if empty_label is not None:
+        choices = [('', empty_label)] + choices
+    field.choices = choices
 
 
 def filter_by_term(queryset, term_id, field='term'):
