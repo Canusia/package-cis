@@ -33,6 +33,7 @@ from cis.models.highschool_administrator import (
 from cis.forms.utils import EmailForm
 from cis.utils import user_has_cis_role
 from cis.services.table_configs import get_table_config
+from cis.services.settings_overview import profile_exists
 build_access_requests_table_config = get_table_config('access_requests_table').build_config
 
 from cis.forms.highschool import (
@@ -725,6 +726,7 @@ def index(request):
         template, {
             'menu': menu,
             'page_title': 'High School Administrators',
+            'settings_overview_available': profile_exists('highschool_admin_portal'),
             'api_url': '/ce/api/hs-administrator?format=datatables',
             'roles_api_url': '/ce/api/hs-administrator-position?format=datatables',
             'urls': {

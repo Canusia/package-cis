@@ -114,14 +114,99 @@ class BuildOverviewTests(TestCase):
         self.assertEqual(len(item['fields']), 1)
         self.assertIn('Home', item['fields'][0]['value'])
 
-    def test_runtime_fields_not_shown_without_whitelist(self):
+    def test_runtime_only_fields_render_from_instance_without_whitelist(self):
+        # cis.settings.menu adds every field in __init__ (base_fields empty);
+        # with no whitelist the instance's fields are used.
         from cis.settings.menu import menu
         SettingRecord.objects.create(app='cis', name='menu', title='System Menu', categories='4')
         prof = {'title': 'X', 'sections': [{'title': 'S', 'items': [{'app': 'cis', 'name': 'menu'}]}]}
         request = RequestFactory().get('/x', {'report_id': '1'})
         with patch('cis.services.settings_overview._get_profile', return_value=prof):
             ov = build_overview('anything', request=request)
-        self.assertEqual(ov['sections'][0]['items'][0]['fields'], [])
+        item = ov['sections'][0]['items'][0]
+        self.assertTrue(item['available'])
+        self.assertGreater(len(item['fields']), 0)
+
+    def test_real_hs_admin_language_has_fields(self):
+        prof = {'title': 'X', 'sections': [{'title': 'S', 'items': [
+            {'app': 'cis', 'name': 'highschool_admin_portal'}]}]}
+        request = RequestFactory().get('/x', {'report_id': '1'})
+        with patch('cis.services.settings_overview._get_profile', return_value=prof):
+            ov = build_overview('anything', request=request)
+        item = ov['sections'][0]['items'][0]
+        self.assertTrue(item['available'])
+        self.assertGreater(len(item['fields']), 0)
+
+    def test_fake_runtime_form_without_whitelist(self):
+        class RtForm(forms.Form):
+            def __init__(self, request=None, initial=None, **kw):
+                super().__init__(**kw)
+                self.fields['alpha'] = forms.CharField(label='Alpha')
+                self.fields['beta'] = forms.CharField(label='Beta')
+
+            @classmethod
+            def from_db(cls):
+                return {'alpha': 'one'}
+
+        prof = {'title': 'X', 'sections': [{'title': 'S', 'items': [{'app': 'cis', 'name': 'rt'}]}]}
+        request = RequestFactory().get('/x')
+        real = __import__('django.utils.module_loading', fromlist=['import_string']).import_string
+        def fake(path):
+            return RtForm if path == 'cis.settings.rt.rt' else real(path)
+        with patch('cis.services.settings_overview._get_profile', return_value=prof), \
+                patch('cis.services.settings_overview.import_string', side_effect=fake):
+            ov = build_overview('anything', request=request)
+        labels = [f['label'] for f in ov['sections'][0]['items'][0]['fields']]
+        self.assertEqual(labels, ['Alpha', 'Beta'])
+
+
+class HeadingSkipTests(TestCase):
+    def _run(self, item):
+        prof = {'title': 'X', 'sections': [{'title': 'S', 'items': [item]}]}
+        request = RequestFactory().get('/x', {'report_id': '1'})
+        with patch('cis.services.settings_overview._get_profile', return_value=prof):
+            ov = build_overview('anything', request=request)
+        return ov['sections'][0]['items'][0]
+
+    def test_heading_pseudo_fields_skipped(self):
+        SettingRecord.objects.create(app='cis', name='future_sections',
+                                     title='Section Requests', categories='1')
+        item = self._run({'app': 'cis', 'name': 'future_sections'})
+        self.assertTrue(item['available'])
+        self.assertGreater(len(item['fields']), 0)
+        self.assertFalse([f for f in item['fields'] if '<h' in f['label']])
+
+    def test_keep_headings_opt_out(self):
+        SettingRecord.objects.create(app='cis', name='future_sections',
+                                     title='Section Requests', categories='1')
+        item = self._run({'app': 'cis', 'name': 'future_sections',
+                          'keep_headings': True})
+        self.assertTrue([f for f in item['fields'] if '<h' in f['label']])
+
+
+class StudentRegistrationRegressionTests(TestCase):
+    """The student_registration overview renders exactly the fields it did at de550f6."""
+    EXPECTED = [
+        ['Active Academic Year', 'Home School', 'Active Term', 'Registration Term(s)', 'Scholarship App Open Until', 'Tuition Pay Open Until', 'Message when Registration is Closed', 'Opens On', 'Open Until', 'Starting Birth Date', 'Ending Birth Date'],
+        ['Student Verify Email Form Field Labels', 'Pre-Email Verify Page Intro.', 'Awaiting Verification Page Intro.', 'Confirm Verification Page Intro.', 'Post Email Verify Page Intro.', 'Agreement Terms', 'Alert/Error Messages'],
+        ['Profile Fields — Order, Editability, Label & Help Text', 'Profile Not Editable Message', 'Profile Editable Message', 'Profile Review Intro.', 'Profile Review Display Template', 'Student Detail Layout (advanced)'],
+        ['Intro.'],
+        ['Intro.', 'Parent Consent Term(s)'],
+        ['Intro.', 'Tab # Search for Class(es)', 'Tab # EC Classes', 'Tab # My Class Application(s)', 'Footer # My Class'],
+        ['Enabled', 'hs_pay_type', 'Registration Charge Addition Trigger(s)', 'Registration Charge Removal Trigger(s)', 'TA Request Updated Subject', 'TA Request Updated Email', 'Mode', 'Cron Expression for Sending Missing Payment Reminder', 'Bill Pay Subject', 'Bill Pay Email', 'Payment Received Subject', 'Payment Received Email', 'Invoice Template Header', 'Invoice Template Footer'],
+        ['Enabled', 'Verification Email Subject', 'Verification Email', 'Send an email when ID is assigned?', 'Python Regex Pattern to Verify Valid ID', 'Student ID Assigned Email Subject', 'ID Assigned Email Message'],
+        ['SIS Mirror Trigger(s)', 'SIS Mirror Term(s)', 'Stop mirroring when these errors happen again', 'Cron Expression for Mirroring with SIS', 'SIS Mirror Notification Email(s)', 'All Emails Enabled', '<h3 class="mt-4">Parent Notification(s)</h3>', 'Parent/Counselor Status Trigger(s)', 'Parent/Counselor Email Subject', 'Parent/Counselor Email', '<h3 class="mt-4">Student Notification(s)</h3>', 'Student Email - Status Trigger(s)'],
+    ]
+
+    def test_labels_unchanged(self):
+        from django.contrib.auth import get_user_model
+        request = RequestFactory().get('/x')
+        request.user = get_user_model().objects.create_superuser(
+            username='srreg', email='srreg@example.com', password='x')
+        ov = build_overview('student_registration', request=request)
+        got = [[f['label'] for f in i['fields']]
+               for s in ov['sections'] for i in s['items']]
+        self.assertEqual(got, self.EXPECTED)
 
 
 class ChoiceResolutionTests(TestCase):

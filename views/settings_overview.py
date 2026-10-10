@@ -13,7 +13,7 @@ from cis.campus_gate import can_manage_settings as _can_manage_settings
 def settings_overview_page(request, profile):
     try:
         overview = build_overview(profile, request=request)
-    except KeyError:
+    except (KeyError, ImportError, AttributeError):
         raise Http404('Unknown settings profile')
     menu = draw_menu(cis_menu, *overview['menu'])
     return render(request, 'cis/settings_overview.html', {

@@ -1,6 +1,8 @@
 """School Admins page links to the high school admin portal settings overview."""
 from django.contrib.auth.models import Group
 from django.contrib.auth.signals import user_logged_in
+from unittest.mock import patch
+
 from django.test import TestCase
 from django.urls import reverse
 
@@ -27,4 +29,10 @@ class HsAdminSettingsLinkTests(TestCase):
 
     def test_access_requests_page_has_no_link(self):
         resp = self.client.get(reverse('cis:hs_admin_access_requests'))
+        self.assertNotContains(resp, 'settings-overview/highschool_admin_portal')
+
+    def test_link_hidden_when_profile_missing(self):
+        with patch('cis.views.hs_administrator.profile_exists', return_value=False):
+            resp = self.client.get(reverse('cis:hs_admins'))
+        self.assertEqual(resp.status_code, 200)
         self.assertNotContains(resp, 'settings-overview/highschool_admin_portal')

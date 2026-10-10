@@ -60,6 +60,13 @@ class SettingsOverviewViewTests(TestCase):
         resp = self.client.get(url)
         self.assertEqual(resp.status_code, 404)
 
+    def test_missing_overview_module_404(self):
+        url = reverse('cis:settings_overview', kwargs={'profile': 'x'})
+        with patch('cis.services.settings_overview._get_profile',
+                   side_effect=ModuleNotFoundError('no module')):
+            resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 404)
+
     def test_superuser_without_ce_role_allowed(self):
         self.client.logout()
         su = CustomUser.objects.create_superuser(

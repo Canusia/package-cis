@@ -38,6 +38,26 @@ def _get_profile(name):
     return mod.get_profile(name)
 
 
+def profile_exists(name):
+    """True when this tenant defines the settings-overview profile `name`."""
+    try:
+        _get_profile(name)
+        return True
+    except (KeyError, ImportError, AttributeError):
+        return False
+
+
+# Label-only pseudo-fields (section headings) carry no value; matched by class
+# name so this module needs no import of the form_fields package.
+_HEADING_WIDGETS = ('LongLabelWidget',)
+_HEADING_FIELDS = ('ReadOnlyField',)
+
+
+def _is_heading_field(field):
+    return (type(field.widget).__name__ in _HEADING_WIDGETS
+            or type(field).__name__ in _HEADING_FIELDS)
+
+
 def _is_empty(value):
     return value is None or (isinstance(value, str) and value.strip() == '') \
         or value == [] or value == {}
@@ -100,17 +120,25 @@ def _build_item(cfg_item, request=None):
             desc = (record.description or '').strip()
             item['description'] = '' if desc == '-' else desc
 
-        keys = cfg_item.get('fields') or list(form_cls.base_fields.keys())
+        whitelist = cfg_item.get('fields')
+        keys = whitelist or list(form_cls.base_fields.keys())
+        # Some settings add every field in __init__ (base_fields is empty);
+        # with no whitelist, read the keys off the instance instead.
+        if not keys and form is not None:
+            keys = list(form.fields.keys())
+        keep_headings = bool(cfg_item.get('keep_headings'))
         hide = set(cfg_item.get('hide') or [])
         # A whitelist may name a field the form only adds in __init__ (e.g.
         # cis.settings.menu's per-role fields); find those on the instance.
-        runtime_fields = form.fields if (form is not None and cfg_item.get('fields')) else {}
+        runtime_fields = form.fields if form is not None else {}
         fields = []
         for key in keys:
             field = form_cls.base_fields.get(key) or runtime_fields.get(key)
             if key in hide or field is None:
                 continue
             if isinstance(field.widget, HiddenInput):
+                continue
+            if not keep_headings and _is_heading_field(field):
                 continue
             raw = values.get(key)
             widget_name = type(field.widget).__name__
