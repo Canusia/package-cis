@@ -10,7 +10,21 @@ from crispy_forms.layout import Submit
 
 from ..models.term import Term, AcademicYear
 from ..models.settings import Setting
-from cis.validators import validate_html_short_code, validate_email_list
+from cis.services.access_request_review import ALL_PLACEHOLDERS, APPROVE, DENY, PLACEHOLDERS
+from cis.validators import validate_html_short_code, validate_email_list, validate_email_placeholders
+
+
+def _placeholders(decision):
+    def validate(value):
+        validate_email_placeholders(value, PLACEHOLDERS[decision], known=ALL_PLACEHOLDERS)
+    return validate
+
+
+def _help(decision, preview_field):
+    names = ', '.join(f'{{{{{n}}}}}' for n in PLACEHOLDERS[decision])
+    return (f'Customize with {names}. Staff can edit it per request before sending. '
+            f'<a href="#" class="float-right" onClick="do_bulk_action(\'access_request\', '
+            f'\'{preview_field}\')">See Preview</a>')
 
 class SettingForm(forms.Form):
     submitted_subject = forms.CharField(
@@ -34,27 +48,27 @@ class SettingForm(forms.Form):
 
     approved_subject = forms.CharField(
         max_length=200,
-        help_text='',
+        validators=[_placeholders(APPROVE)],
         label="Access Approved - Email Subject")
 
     approved_email = forms.CharField(
         max_length=None,
         widget=forms.Textarea,
-        validators=[validate_html_short_code],
-        help_text='Email template sent to approved request. Customize with {{name}}, {{password_reset_link}}. <a href="#" class="float-right" onClick="do_bulk_action(\'access_request\', \'approved_email\')" >See Preview</a>',
+        validators=[_placeholders(APPROVE)],
+        help_text=_help(APPROVE, 'approved_email'),
         label="Access Approved - Email"
     )
 
     denied_subject = forms.CharField(
         max_length=200,
-        help_text='',
+        validators=[_placeholders(DENY)],
         label="Access Denied - Email Subject")
 
     denied_email = forms.CharField(
         max_length=None,
         widget=forms.Textarea,
-        validators=[validate_html_short_code],
-        help_text='Email template sent to denied request. Customize with {{name}}. <a href="#" class="float-right" onClick="do_bulk_action(\'access_request\', \'denied_email\')" >See Preview</a>',
+        validators=[_placeholders(DENY)],
+        help_text=_help(DENY, 'denied_email'),
         label="Access Denied - Email"
     )
     def __init__(self, *args, **kwargs):
@@ -96,10 +110,9 @@ class access_request(SettingForm):
 
         message = Template(email)
         context = Context({
-            'name': "John Smith",
-            'student_last_name': "Smith",
-            'password_reset_link': "https://some-unique-url.edu",
-            'student_list': mark_safe("<br>".join({'Student 1', 'Student 2', 'Student 3'})),
+            'name': 'John Smith', 'email': 'john.smith@example.edu',
+            'highschool': 'Sample High School', 'role': 'Counselor',
+            'password_reset_link': 'https://some-unique-url.edu',
         })
         
         text_body = message.render(context)
