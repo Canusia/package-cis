@@ -834,7 +834,32 @@ class StudentStateQForm(forms.Form):
 
         return student
 
-class StudentDropRequestForm(forms.Form):
+class _ResolvedStudentMixin:
+    """For forms that save to a student. The student is the one the view
+    resolved, passed as the required `student` keyword; the posted hidden
+    `student` field is never trusted (ewu#96). The field stays so existing
+    templates keep rendering it, but any posted value naming another student
+    fails validation. `student=None` is only for unbound previews."""
+
+    def _bind_student(self, student):
+        if student is None and self.is_bound:
+            raise ValueError(f'{type(self).__name__} needs the student it saves to')
+        self.student = student
+        self.fields['student'].required = False
+
+    def _check_posted_student(self):
+        if hasattr(self.data, 'getlist'):
+            posted = self.data.getlist('student')
+        else:
+            posted = [self.data.get('student')]
+        own = str(self.student.pk)
+        if any(value not in (None, '') and str(value) != own for value in posted):
+            raise ValidationError(
+                _('This form does not belong to this student. Reload the page and try again.'),
+                code='wrong_student')
+
+
+class StudentDropRequestForm(_ResolvedStudentMixin, forms.Form):
     student = forms.CharField(
         required=True,
         widget=forms.HiddenInput()
@@ -853,7 +878,7 @@ class StudentDropRequestForm(forms.Form):
         label='Please explain why you want to drop or withdraw from the course'
     )
 
-    def __init__(self, applied_sections, *args, **kwargs):
+    def __init__(self, applied_sections, *args, student, **kwargs):
         super().__init__(*args, **kwargs)
 
         sections = [('','Select')]
@@ -872,11 +897,14 @@ class StudentDropRequestForm(forms.Form):
             required=True
         )
 
+        self._bind_student(student)
+
     def clean(self):
         cleaned_data = super().clean()
+        self._check_posted_student()
 
         if StudentDropRequest.exists(
-            cleaned_data['student'],
+            self.student.pk,
             cleaned_data['registration']
         ):
             raise ValidationError('Looks like a request has been submitted for the selected class section. Please select a different class section.')
@@ -886,13 +914,13 @@ class StudentDropRequestForm(forms.Form):
     def save(self):
         cleaned_data = self.cleaned_data
         drop_request = StudentDropRequest.add_new(
-            cleaned_data['student'],
+            self.student.pk,
             cleaned_data['registration'],
             cleaned_data['note']
         )
         return drop_request
 
-class StudentAgreementForm(forms.Form):
+class StudentAgreementForm(_ResolvedStudentMixin, forms.Form):
     
     agreement_terms = FFields.LongLabelField(
         required=False,
@@ -923,8 +951,13 @@ class StudentAgreementForm(forms.Form):
         help_text='Please type your name in the box'
     )
 
+    def __init__(self, *args, student, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._bind_student(student)
+
     def clean(self):
         cleaned_data = super().clean()
+        self._check_posted_student()
 
         if not cleaned_data.get('student_signature', None):
             raise ValidationError(_('Student Signature is required. Please sign in the box below.'), code='invalid')
@@ -934,7 +967,7 @@ class StudentAgreementForm(forms.Form):
     def save(self):
         cleaned_data = self.cleaned_data
         
-        student = Student.objects.get(pk=cleaned_data['student'])
+        student = self.student
         terms = registration_terms()
 
         from student_onboarding.signals import onboarding_event
@@ -1066,7 +1099,7 @@ class ParentConsentRequestForm(forms.Form):
     
         return self.data.get('parent_email').lower()
 
-class ParentConsentForm(forms.Form):
+class ParentConsentForm(_ResolvedStudentMixin, forms.Form):
 
     consent_terms = FFields.LongLabelField(
         required=False,
@@ -1100,8 +1133,13 @@ class ParentConsentForm(forms.Form):
         widget=FFields.SignatureWidget
     )
 
+    def __init__(self, *args, student, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._bind_student(student)
+
     def clean(self):
         cleaned_data = super().clean()
+        self._check_posted_student()
         
         if not cleaned_data.get('parent_signature', None):
             raise ValidationError(_('Parent/Guardian Signature is required. Please sign in the box below.'), code='invalid')
@@ -1111,7 +1149,7 @@ class ParentConsentForm(forms.Form):
     def save(self):
         cleaned_data = self.cleaned_data
         
-        student = Student.objects.get(pk=cleaned_data['student'])
+        student = self.student
         terms = registration_terms()
 
         from student_onboarding.signals import onboarding_event

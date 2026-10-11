@@ -107,7 +107,7 @@ class ParentConsentEventTests(TestCase):
             'action': 'submit_parent_consent',
             'student': str(self.student.id),
             'parent_signature': 'A Parent',
-        })
+        }, student=self.student)
         self.assertTrue(form.is_valid(), form.errors)
 
         with _CapturedEvents() as captured:
@@ -123,7 +123,7 @@ class ParentConsentEventTests(TestCase):
             'action': 'submit_parent_consent',
             'student': str(self.student.id),
             'parent_signature': 'A Parent',
-        })
+        }, student=self.student)
         self.assertTrue(form.is_valid(), form.errors)
 
         with _CapturedEvents() as captured:

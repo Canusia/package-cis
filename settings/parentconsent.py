@@ -64,7 +64,7 @@ class parentconsent(ParentConsentForm):
             'student': '-1',
             'consent_terms': ParentConsent.get_form_message('consent_terms'),
             'term': '-1'
-        })
+        }, student=None)
 
         consent_req_form = ParentConsentRequestForm(initial={
             'student': -1,
