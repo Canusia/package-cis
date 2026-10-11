@@ -90,20 +90,21 @@ class SettingForm(forms.Form):
         required=False,
         label='SIS Mirror Term(s)',
         help_text='Only registrations in these terms are sent to the SIS by the scheduled '
-                  'mirror. Leave all unticked to mirror every term. A parent term includes '
-                  'its sub-terms.',
-        widget=forms.CheckboxSelectMultiple
+                  'mirror. Leave none selected to mirror every term. A parent term includes '
+                  'its sub-terms. Ctrl-click (Cmd-click on a Mac) to select more than one.',
+        widget=forms.SelectMultiple(attrs={'class': 'col-md-8 col-sm-12', 'size': 10}),
     )
 
     sis_mirror_stop_on_errors = forms.MultipleChoiceField(
         required=False,
         label='Stop mirroring when these errors happen again',
         help_text='Every SIS error that blocks a registration from mirroring is added here '
-                  'automatically, and the SIS Mirror Notification Email(s) are told. Tick an '
+                  'automatically, and the SIS Mirror Notification Email(s) are told. Select an '
                   'error to take a registration out of the mirror queue the next time it fails '
                   'with it; staff re-queue it (Set needs mirroring) once the cause is fixed. '
-                  'Unticked errors keep retrying on every run.',
-        widget=forms.CheckboxSelectMultiple
+                  'Unselected errors keep retrying on every run. Ctrl-click (Cmd-click on a '
+                  'Mac) to select more than one.',
+        widget=forms.SelectMultiple(attrs={'class': 'col-md-8 col-sm-12', 'size': 10}),
     )
 
     cron = forms.CharField(
