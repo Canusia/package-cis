@@ -905,7 +905,7 @@ class StudentDropRequestForm(_ResolvedStudentMixin, forms.Form):
 
         if StudentDropRequest.exists(
             self.student.pk,
-            cleaned_data['registration']
+            cleaned_data.get('registration')
         ):
             raise ValidationError('Looks like a request has been submitted for the selected class section. Please select a different class section.')
 

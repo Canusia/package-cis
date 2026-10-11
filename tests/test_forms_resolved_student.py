@@ -118,3 +118,8 @@ class ResolvedStudentFormTests(TestCase):
         self.assertFalse(ParentConsent.objects.filter(student=self.b).exists())
         self.assertFalse(StudentAgreement.objects.filter(student=self.b).exists())
         self.assertFalse(StudentDropRequest.objects.filter(student=self.b).exists())
+
+    def test_drop_form_with_invalid_registration_is_a_form_error(self):
+        form = self.drop({'registration': ''})
+        self.assertFalse(form.is_valid())
+        self.assertTrue(form.has_error('registration'))
