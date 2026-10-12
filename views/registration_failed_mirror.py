@@ -10,6 +10,7 @@ from django.urls import reverse
 from django.utils import timezone
 from rest_framework import viewsets
 
+from cis.campus_gate import scope_queryset_by_campus
 from cis.menu import draw_menu, cis_menu
 from cis.models.section import StudentRegistration
 from cis.utils import CIS_user_only, user_has_cis_role
@@ -30,15 +31,18 @@ EXPORT_COLUMNS = (
 )
 
 
-def failed_mirror_queryset():
-    """Every registration whose last mirror attempt failed.
+def failed_mirror_queryset(user):
+    """Every registration whose last mirror attempt failed, that ``user`` may see.
 
     Shared by the DataTables feed and the export-all endpoint so the export
-    can never disagree with the page about what "failed" means.
+    can never disagree with the page about what "failed" means. ce staff are
+    scoped to their campuses, as on the registrations table.
     """
+    records = scope_queryset_by_campus(
+        StudentRegistration.objects.filter(last_mirror_status='failed'),
+        user, campus_path='class_section__course__campus')
     return (
-        StudentRegistration.objects
-        .filter(last_mirror_status='failed')
+        records
         .select_related(
             'student__user',
             'class_section__course',
@@ -56,7 +60,7 @@ class FailedMirrorRegistrationViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [CIS_user_only]
 
     def get_queryset(self):
-        return failed_mirror_queryset()
+        return failed_mirror_queryset(self.request.user)
 
 
 @login_required
@@ -82,7 +86,7 @@ def failed_mirror_export(request):
     Rows are built through FailedMirrorRegistrationSerializer — the same one
     the table feed uses — so a column added there shows up here too.
     """
-    records = failed_mirror_queryset()
+    records = failed_mirror_queryset(request.user)
 
     response = HttpResponse(content_type='text/csv')
     filename = 'failed_mirror_registrations_%s.csv' % (

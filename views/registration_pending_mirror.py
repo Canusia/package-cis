@@ -4,6 +4,7 @@ from django.shortcuts import render
 from django.urls import reverse
 from rest_framework import viewsets
 
+from cis.campus_gate import scope_queryset_by_campus
 from cis.menu import draw_menu, cis_menu
 from cis.models.section import StudentRegistration
 from cis.utils import CIS_user_only, user_has_cis_role
@@ -19,9 +20,12 @@ class PendingSisMirrorRegistrationViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [CIS_user_only]
 
     def get_queryset(self):
+        # Same ce-staff campus scope as the registrations table.
+        records = scope_queryset_by_campus(
+            StudentRegistration.objects.pending_sis_mirror(),
+            self.request.user, campus_path='class_section__course__campus')
         return (
-            StudentRegistration.objects
-            .pending_sis_mirror()
+            records
             .select_related(
                 'student__user',
                 'class_section__course',

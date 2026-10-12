@@ -3,9 +3,8 @@ import os, csv, datetime, logging, io, json, zlib
 from django.conf import settings
 from django.db import connection
 from django.db.utils import IntegrityError
-from django.core.management.base import BaseCommand
-
 from cis.campus_context import current_campus_or_none, scope_to_current_campus
+from cis.management.campus_command import CampusCommand
 from cis.utils import upload_to_s3
 from cis.models.student import Student
 from cis.models.section import StudentRegistration
@@ -50,13 +49,17 @@ def _release_run_lock(keys):
     with connection.cursor() as cursor:
         cursor.execute('SELECT pg_advisory_unlock(%s, %s)', keys)
 
-class Command(BaseCommand):
+class Command(CampusCommand):
     '''
     Mirror registrations to SIS
+
+    A CampusCommand (package_ethos#4): cron's per-campus fan-out supplies the
+    campus; run by hand on a multi-campus deployment, pass --campus <code>.
     '''
     help = 'Mirror registrations to SIS'
 
     def add_arguments(self, parser):
+        super().add_arguments(parser)  # --campus
         parser.add_argument('-t', '--time', type=str, help='Time of run')
 
     def handle(self, *args, **kwargs):
