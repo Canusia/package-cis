@@ -1,4 +1,6 @@
 """Serializers for the CE account tables under /ce/users/."""
+import json
+
 from django.contrib.auth import get_user_model
 
 from rest_framework import serializers
@@ -104,3 +106,45 @@ class RolelessUserSerializer(serializers.ModelSerializer):
             'created_at',
         ]
         datatables_always_serialize = ['id']
+
+
+class LoginLogUserSerializer(serializers.Serializer):
+    first_name = serializers.CharField(read_only=True)
+    last_name = serializers.CharField(read_only=True)
+    email = serializers.CharField(read_only=True)
+
+
+class LoginLogSerializer(serializers.Serializer):
+    """Rows for the Login Log tab of /ce/users/ (django_login_history Login).
+
+    The account is nested under `user`, so the matching data-name paths in
+    myce_tenant_configs/services/login_log_table.py are `user.<field>`.
+    A plain Serializer: Login comes from a third-party app.
+    """
+    id = serializers.IntegerField(read_only=True)
+    user = LoginLogUserSerializer(read_only=True)
+    date = serializers.DateTimeField(format='%m/%d/%Y %I:%M %p', read_only=True)
+    ip = serializers.CharField(read_only=True)
+
+    class Meta:
+        datatables_always_serialize = ['id', 'user']
+
+
+class SamlAttributeLogSerializer(serializers.Serializer):
+    """Rows for the SAML Attributes tab of /ce/users/ (sp.IdPAttributeLog).
+
+    A plain Serializer so this module imports on tenants without the sp app.
+    `attributes` is pretty-printed JSON text; the JS escapes it before
+    putting it in a <pre> -- it comes straight from the IdP's response.
+    """
+    id = serializers.IntegerField(read_only=True)
+    created_on = serializers.DateTimeField(format='%m/%d/%Y %I:%M %p', read_only=True)
+    idp_name = serializers.CharField(source='idp.name', read_only=True)
+    nameid = serializers.CharField(read_only=True)
+    attributes = serializers.SerializerMethodField()
+
+    class Meta:
+        datatables_always_serialize = ['id']
+
+    def get_attributes(self, obj):
+        return json.dumps(obj.attributes or {}, indent=2, sort_keys=True, default=str)

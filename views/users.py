@@ -4,6 +4,7 @@ Staff User Views
 import inspect
 import logging
 
+from django.apps import apps
 from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.contrib import messages
@@ -21,6 +22,7 @@ from cis.menu import draw_menu, cis_menu
 from cis.models.customuser import CustomUser
 from cis.serializers.user import (
     StaffUserSerializer, LockedUserSerializer, RolelessUserSerializer,
+    LoginLogSerializer, SamlAttributeLogSerializer,
 )
 from cis.services import user_deletion
 from cis.services.role_access import is_roleless, roleless_users
@@ -80,6 +82,8 @@ ROLELESS_BULK_ACTIONS = {
 }
 ROLELESS_ACTIONS = ('preview_delete', 'delete_account')
 ROLELESS_API_URL = '/ce/api/user-roleless?format=datatables'
+LOGIN_LOG_API_URL = '/ce/api/user-login-log?format=datatables'
+SAML_LOG_API_URL = '/ce/api/user-saml-log?format=datatables'
 
 
 class StaffUserViewSet(viewsets.ReadOnlyModelViewSet):
@@ -149,6 +153,71 @@ class RolelessUserViewSet(viewsets.ReadOnlyModelViewSet):
         if not self.request.user.can_edit_users:
             return CustomUser.objects.none()
         return roleless_users().order_by('last_name', 'first_name')
+
+
+class LoginLogViewSet(viewsets.ReadOnlyModelViewSet):
+    """Sign-ins of CE staff accounts, behind the Login Log tab of /ce/users/.
+
+    Gated like StaffUserViewSet: CIS role via the permission class, plus
+    `can_edit_users` on the queryset.
+    """
+    serializer_class = LoginLogSerializer
+    permission_classes = [CIS_user_only]
+
+    def get_queryset(self):
+        if not self.request.user.can_edit_users:
+            return Login.objects.none()
+        return Login.objects.filter(
+            user__in=CustomUser.objects.filter(groups__name='ce'),
+        ).select_related('user').order_by('-date')
+
+
+class SamlAttributeLogViewSet(viewsets.ReadOnlyModelViewSet):
+    """SAML attributes received at sign-in (sp.IdPAttributeLog), behind the
+    SAML Attributes tab of /ce/users/. The rows are keyed by nameid, not an
+    account, so this covers every SSO sign-in, not only staff.
+
+    Gated like StaffUserViewSet. Empty on a tenant without the sp app.
+    """
+    serializer_class = SamlAttributeLogSerializer
+    permission_classes = [CIS_user_only]
+
+    def get_queryset(self):
+        if not apps.is_installed('sp'):
+            return Login.objects.none()
+        model = apps.get_model('sp', 'IdPAttributeLog')
+        if not self.request.user.can_edit_users:
+            return model.objects.none()
+        return model.objects.select_related('idp').order_by('-created_on')
+
+
+def _optional_table_config(module_name, **kwargs):
+    """The tenant's config for an opt-in /ce/users/ tab, or None when the
+    tenant does not ship `module_name` yet -- the tab is then not rendered.
+
+    Same contract as _roleless_users_table_config below: only the module
+    itself being absent means "not adopted"; any other ImportError is a real
+    breakage and propagates.
+    """
+    try:
+        module = get_table_config(module_name)
+    except ModuleNotFoundError as exc:
+        if exc.name == f'{settings.TABLE_CONFIGS_APP}.services.{module_name}':
+            return None
+        raise
+    return module.build_config(**kwargs)
+
+
+def _login_log_table_config():
+    return _optional_table_config(
+        'login_log_table', variant='login_log_index', api_url=LOGIN_LOG_API_URL)
+
+
+def _saml_log_table_config():
+    if not apps.is_installed('sp'):
+        return None
+    return _optional_table_config(
+        'saml_log_table', variant='saml_log_index', api_url=SAML_LOG_API_URL)
 
 
 def _roleless_users_table_config():
@@ -469,16 +538,16 @@ def add_new(request):
     if request.method == 'POST':
         form = UserForm(request.POST, user=request.user)
 
-        existing = form.is_valid() and CustomUser.existing_by_username(
-            form.cleaned_data['username'])
+        existing = form.is_valid() and CustomUser.existing_by_email(
+            form.cleaned_data['email'])
 
         if existing:
             # Never overwrite an account from here: an existing staff member
             # only gains the campuses ticked; anyone else is refused.
             if 'ce' not in existing.get_roles():
                 form.add_error(
-                    'username',
-                    'This username belongs to an account that is not a staff account.')
+                    'email',
+                    'This email belongs to an account that is not a staff account.')
             else:
                 existing.add_process_campuses(form.cleaned_data['process_campus'])
                 messages.add_message(
@@ -567,7 +636,7 @@ def detail(request, record_id):
             'first_name':record.first_name,
             'last_name':record.last_name,
             'email':record.email,
-            'username':record.username,
+            'uses_sso': 'Yes' if record.uses_sso else 'No',
             'is_active':'Yes' if record.is_active else 'No',
             'process_campus': [str(pk) for pk in record.process_campuses.values_list('pk', flat=True)],
             'manage_settings': campus.get('manage_settings'),
@@ -614,6 +683,10 @@ def index(request):
         return CustomUser.export_to_excel(
             CustomUser.objects.filter(groups__name='ce').order_by('-created_at'))
 
+    roleless_users_table = _roleless_users_table_config()
+    login_log_table = _login_log_table_config()
+    saml_log_table = _saml_log_table_config()
+
     return render(
         request,
         template,
@@ -636,7 +709,10 @@ def index(request):
                     'bulk_actions_url': reverse('cis:users_bulk_action'),
                 }),
             ),
-            # None when the tenant has not adopted the No Role tab yet; the
-            # template then renders the staff table alone, as before.
-            'roleless_users_table': _roleless_users_table_config(),
+            # Each is None when the tenant has not adopted that tab yet; with
+            # none of them the template renders the staff table alone.
+            'roleless_users_table': roleless_users_table,
+            'login_log_table': login_log_table,
+            'saml_log_table': saml_log_table,
+            'has_tabs': bool(roleless_users_table or login_log_table or saml_log_table),
         })

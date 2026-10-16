@@ -332,8 +332,12 @@ class UsersPageTabTests(_Base):
             return self.client.get(reverse('cis:users'))
 
     def test_tab_rendered_and_wired_when_the_tenant_ships_the_config(self):
+        from cis.services.table_configs import get_table_config
         module, calls = self.stub_module()
-        resp = self.get_page(lambda name: module)
+        # Only the No Role config is stubbed; the page's other tabs resolve
+        # normally, so `calls` records this tab's kwargs alone.
+        resp = self.get_page(
+            lambda name: module if name == 'roleless_users_table' else get_table_config(name))
 
         self.assertEqual(resp.status_code, 200)
         page = resp.content.decode()

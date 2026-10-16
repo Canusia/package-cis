@@ -358,7 +358,8 @@ from cis.views.users import (
     do_locked_bulk_action,
     do_roleless_bulk_action,
     do_users_bulk_action,
-    StaffUserViewSet, LockedUserViewSet, RolelessUserViewSet
+    StaffUserViewSet, LockedUserViewSet, RolelessUserViewSet,
+    LoginLogViewSet, SamlAttributeLogViewSet,
 )
 
 from cis.views.ajax import (
@@ -467,6 +468,8 @@ router_viewsets = {
     'user': StaffUserViewSet,
     'locked-user': LockedUserViewSet,
     'user-roleless': RolelessUserViewSet,
+    'user-login-log': LoginLogViewSet,
+    'user-saml-log': SamlAttributeLogViewSet,
 }
 
 for router_key in router_viewsets.keys():

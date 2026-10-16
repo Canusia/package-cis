@@ -122,7 +122,7 @@ class StaffFormTests(TestCase):
             password='x')
         form = SimpleNamespace(cleaned_data={
             'first_name': 'F', 'last_name': 'L', 'email': user.email,
-            'username': user.username, 'is_active': 'Yes', 'password': '',
+            'is_active': 'Yes', 'password': '',
             'process_campus': [str(c1.id)], 'default_campus': str(c1.id),
             'manage_settings': 'No', 'manage_staff_accounts': 'No'})
         user.update(form)

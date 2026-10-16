@@ -140,6 +140,52 @@ def roleless_users_table_check(app_configs, **kwargs):
     ]
 
 
+def _optional_users_tab_check(module_name, tab, files, check_id):
+    """Warn when the tenant has not shipped the table config for an opt-in
+    /ce/users/ tab. Same contract as W005: without it the tab is not shown."""
+    app = getattr(settings, 'TABLE_CONFIGS_APP', 'myce_tenant_configs')
+    module = f'{app}.services.{module_name}'
+    try:
+        found = importlib.util.find_spec(module) is not None
+    except ModuleNotFoundError:
+        found = False
+    if found:
+        return []
+    return [
+        CheckWarning(
+            f'{module} is missing.',
+            hint=(
+                f'cis expects the tenant to ship {files} for the {tab} tab on '
+                f'/ce/users/ (copy them from Canusia/ewu). Without them the tab '
+                f'is not shown.'
+            ),
+            id=check_id,
+        )
+    ]
+
+
+@register()
+def login_log_table_check(app_configs, **kwargs):
+    """W007: the Login Log tab's table config on /ce/users/."""
+    return _optional_users_tab_check(
+        'login_log_table', 'Login Log',
+        'login_log_table.py, users/_login_log_table.html and js/login_log_table.js',
+        'cis.W007')
+
+
+@register()
+def saml_log_table_check(app_configs, **kwargs):
+    """W008: the SAML Attributes tab's table config on /ce/users/. Silent on
+    a tenant without the sp app, which never shows the tab."""
+    from django.apps import apps
+    if not apps.is_installed('sp'):
+        return []
+    return _optional_users_tab_check(
+        'saml_log_table', 'SAML Attributes',
+        'saml_log_table.py, users/_saml_log_table.html and js/saml_log_table.js',
+        'cis.W008')
+
+
 @register()
 def branding_check(app_configs, **kwargs):
     """E001-E003, W004 (package-cis #61): the tenant's per-campus branding map

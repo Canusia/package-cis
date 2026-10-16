@@ -61,6 +61,16 @@
                             {{ form | crispy }}
                             <input type="submit" class="btn btn-primary btn-sm" value="Update">
                         </form>
+<script>
+    jQuery(function ($) {
+        // Password only applies to accounts that do not log in with SSO.
+        function togglePassword() {
+            $('#div_id_password').toggle($('#id_uses_sso').val() === 'No');
+        }
+        $('#id_uses_sso').on('change', togglePassword);
+        togglePassword();
+    });
+</script>
                     </div>
                 </div>
             </div>

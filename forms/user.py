@@ -3,6 +3,7 @@ from django import forms
 from django.core.exceptions import ValidationError
 
 from django.conf import settings
+from django.db.models import Q
 from ..models.section import Campus
 
 class UserForm(forms.Form):
@@ -23,20 +24,25 @@ class UserForm(forms.Form):
         label='Campus Email',
         widget=forms.TextInput(attrs={'class': 'col-md-9 col-sm-12'}))
 
-    username = forms.CharField(
-        label='Username',
-        widget=forms.TextInput(attrs={'class': 'col-md-9 col-sm-12'}))
-
-    password = forms.CharField(
-        label='Password',
-        required=False,
-        widget=forms.TextInput(attrs={'class': 'col-md-9 col-sm-12'}))
-
     STATUS_OPTIONS = [
         ('', 'Select'),
         ('Yes', 'Yes'),
         ('No', 'No')
     ]
+
+    # The username is not asked for: it is always the email, lowercased.
+    # SAML sign-in matches the account by username == the IdP's nameid, and
+    # the IdPs send the email as the nameid.
+    uses_sso = forms.ChoiceField(
+        choices=STATUS_OPTIONS,
+        label='Logs in with SSO',
+        help_text='SSO accounts have no password and can only sign in through single sign-on.',
+        widget=forms.Select(attrs={'class': 'col-md-4 col-sm-12'}))
+
+    password = forms.CharField(
+        label='Password',
+        required=False,
+        widget=forms.TextInput(attrs={'class': 'col-md-9 col-sm-12'}))
 
     is_active = forms.ChoiceField(
         choices=STATUS_OPTIONS,
@@ -75,6 +81,7 @@ class UserForm(forms.Form):
         passing no user, see every campus). ``record`` is the staff member
         being edited, whose campuses outside that set are kept, not dropped."""
         super().__init__(*args, **kwargs)
+        self.record = record
 
         from cis.campus_gate import get_accessible_campuses
         if user is not None:
@@ -103,6 +110,28 @@ class UserForm(forms.Form):
                     default_choices.append((current.id, current.name))
 
         self.fields['default_campus'].choices = default_choices
+
+    def clean_email(self):
+        email = self.cleaned_data['email'].strip().lower()
+        if self.record is not None:
+            from cis.models.customuser import CustomUser
+            taken = CustomUser.objects.filter(
+                Q(email__iexact=email) | Q(username__iexact=email)
+            ).exclude(pk=self.record.pk).exists()
+            if taken:
+                raise ValidationError(
+                    'Another account already uses this email address.')
+        return email
+
+    def clean(self):
+        cleaned = super().clean()
+        # A new password account needs a password. On edit a blank password
+        # keeps the current one.
+        if (self.record is None
+                and cleaned.get('uses_sso') == 'No'
+                and not cleaned.get('password')):
+            self.add_error('password', 'A password is required when the user does not log in with SSO.')
+        return cleaned
 
     def clean_process_campus(self):
         return list(self.cleaned_data['process_campus']) + self._kept_campuses

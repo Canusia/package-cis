@@ -26,14 +26,26 @@
 
         <div class="table-responsive">
             {% include "cis/messages.html" with messages=messages %}
-            {% if roleless_users_table %}
+            {% if has_tabs %}
             <ul class="nav nav-tabs" role="tablist">
                 <li class="nav-item">
                     <a class="nav-link active" data-toggle="tab" href="#staff" role="tab">CE Users</a>
                 </li>
+                {% if roleless_users_table %}
                 <li class="nav-item">
                     <a class="nav-link" data-toggle="tab" href="#no_role" role="tab">No Role</a>
                 </li>
+                {% endif %}
+                {% if login_log_table %}
+                <li class="nav-item">
+                    <a class="nav-link" data-toggle="tab" href="#login_log" role="tab">Login Log</a>
+                </li>
+                {% endif %}
+                {% if saml_log_table %}
+                <li class="nav-item">
+                    <a class="nav-link" data-toggle="tab" href="#saml_log" role="tab">SAML Attributes</a>
+                </li>
+                {% endif %}
             </ul>
             <div class="tab-content">
             <div class="tab-pane active" id="staff" role="tabpanel">
@@ -67,10 +79,11 @@
 
                 </div>
             </div>
-            {% if roleless_users_table %}
+            {% if has_tabs %}
             </div>
             {% comment %} end tab #staff {% endcomment %}
 
+            {% if roleless_users_table %}
             <div class="tab-pane" id="no_role" role="tabpanel">
                 <div class="card border-top-0">
                     <div class="card-body">
@@ -90,6 +103,35 @@
                 </div>
             </div>
             {% comment %} end tab #no_role {% endcomment %}
+            {% endif %}
+
+            {% if login_log_table %}
+            <div class="tab-pane" id="login_log" role="tabpanel">
+                <div class="card border-top-0">
+                    <div class="card-body">
+                        <p class="text-muted">Sign-ins by CE staff accounts, newest first.</p>
+                        {% include login_log_table.partial_template with config=login_log_table %}
+                    </div>
+                </div>
+            </div>
+            {% comment %} end tab #login_log {% endcomment %}
+            {% endif %}
+
+            {% if saml_log_table %}
+            <div class="tab-pane" id="saml_log" role="tabpanel">
+                <div class="card border-top-0">
+                    <div class="card-body">
+                        <p class="text-muted">
+                            Attributes each single sign-on response carried, newest first, for
+                            everyone who signed in through SSO &mdash; not only staff. Recorded
+                            only while the IdP has <strong>Log response attributes</strong> on.
+                        </p>
+                        {% include saml_log_table.partial_template with config=saml_log_table %}
+                    </div>
+                </div>
+            </div>
+            {% comment %} end tab #saml_log {% endcomment %}
+            {% endif %}
             </div>
             {% endif %}
         </div>

@@ -225,9 +225,31 @@ class CustomUser(AbstractUser):
         return cls.objects.filter(username__iexact=username).first()
 
     @classmethod
+    def existing_by_email(cls, email):
+        """The account already holding ``email`` as its email or its
+        username (both case-insensitive), or None. Staff usernames are the
+        email, so either one blocks creating a new staff account with it."""
+        return cls.objects.filter(
+            Q(email__iexact=email) | Q(username__iexact=email)).first()
+
+    def _apply_staff_password(self, data):
+        """SSO staff get an unusable password; otherwise a non-blank
+        password replaces the current one and a blank one keeps it."""
+        if data.get('uses_sso') == 'Yes':
+            self.set_unusable_password()
+        elif data.get('password'):
+            self.set_password(data.get('password'))
+
+    @property
+    def uses_sso(self):
+        """True when the account cannot sign in with a password -- no
+        password at all, or an unusable one."""
+        return not self.password or not self.has_usable_password()
+
+    @classmethod
     def add_new_staff(cls, form):
         """Create a new staff account. Never updates an existing one: callers
-        check existing_by_username() first and use add_process_campuses()."""
+        check existing_by_email() first and use add_process_campuses()."""
         staff_group = Group.objects.get(name='ce')
 
         user = CustomUser()
@@ -237,15 +259,14 @@ class CustomUser(AbstractUser):
         user.first_name = form.cleaned_data['first_name']
         user.last_name = form.cleaned_data['last_name']
         user.email = form.cleaned_data['email']
-        user.username = form.cleaned_data['username'].lower()
+        user.username = form.cleaned_data['email'].lower()
         user.is_staff = True
         user.is_active = True if form.cleaned_data['is_active'] == 'Yes' else False
 
         if not user.campus:
             user.campus = {}
 
-        if data.get('password'):
-            user.set_password(data.get('password'))
+        user._apply_staff_password(data)
 
         user.campus['default_campus'] = form.cleaned_data['default_campus']
 
@@ -266,14 +287,13 @@ class CustomUser(AbstractUser):
         self.last_name = form.cleaned_data['last_name']
         self.email = form.cleaned_data['email']
         self.is_staff = True
-        self.username = form.cleaned_data['username'].lower()
+        self.username = form.cleaned_data['email'].lower()
         self.is_active = True if form.cleaned_data['is_active'] == 'Yes' else False
 
         if not self.campus:
             self.campus = {}
 
-        if data.get('password'):
-            self.set_password(data.get('password'))
+        self._apply_staff_password(data)
 
         self.campus['default_campus'] = form.cleaned_data['default_campus']
         self.campus['manage_settings'] = form.cleaned_data['manage_settings']
