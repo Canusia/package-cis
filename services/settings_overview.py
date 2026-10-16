@@ -7,11 +7,13 @@ setting. Purely read-only; editing is handled separately via the setting app's
 record_details/run_record endpoints.
 """
 import importlib
+import json
 import logging
 
 from django import forms
 from django.conf import settings
 from django.forms import HiddenInput
+from django.utils.html import format_html
 from django.utils.module_loading import import_string
 
 import importlib.util
@@ -71,6 +73,36 @@ def _render_value(value):
     if isinstance(value, (list, tuple)):
         return ', '.join(str(v) for v in value)
     return str(value)
+
+
+def _as_json(value):
+    """Pretty-printed JSON text when `value` is (or parses as) a JSON object
+    or list, else None.
+
+    Textarea settings such as SIS GUIDS (cis.settings.sis_settings `guids`)
+    hold a JSON blob rather than rich text; rendering that as trusted HTML
+    collapses its newlines and lets anything HTML-like inside it reach the
+    page. Strings that parse to a scalar ("42", "true", '"x"') return None so
+    ordinary Textarea values keep rendering as before.
+    """
+    if isinstance(value, (dict, list)):
+        parsed = value
+    elif isinstance(value, str):
+        text = value.strip()
+        if not text or text[0] not in '[{':
+            return None
+        try:
+            parsed = json.loads(text)
+        except ValueError:
+            return None
+        if not isinstance(parsed, (dict, list)):
+            return None
+    else:
+        return None
+    try:
+        return json.dumps(parsed, indent=2, ensure_ascii=False)
+    except (TypeError, ValueError):
+        return None
 
 
 def _resolve_choice(form, key, field, raw):
@@ -153,7 +185,12 @@ def _build_item(cfg_item, request=None):
                 elif isinstance(field, forms.ChoiceField) and form is not None:
                     rendered = _resolve_choice(form, key, field, raw)
                 elif is_html:
-                    rendered = str(raw)          # trusted admin HTML
+                    as_json = _as_json(raw)
+                    if as_json is not None:
+                        # JSON blob in a Textarea: escaped + pretty-printed.
+                        rendered = format_html('<pre class="mb-0 small">{}</pre>', as_json)
+                    else:
+                        rendered = str(raw)      # trusted admin HTML
                 else:
                     rendered = _render_value(raw)
             fields.append({

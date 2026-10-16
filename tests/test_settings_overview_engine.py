@@ -304,3 +304,58 @@ class DescriptionTests(TestCase):
         for s in ov['sections']:
             for it in s['items']:
                 self.assertIn('description', it)          # present even with no SettingRecord
+
+
+class JsonTextareaRenderTests(TestCase):
+    """package-cis#75: a Textarea holding a JSON object/list (e.g. SIS GUIDS)
+    renders escaped and pretty-printed in <pre>; other Textarea values keep
+    rendering as trusted HTML."""
+
+    def _render(self, value):
+        class TaForm(forms.Form):
+            blob = forms.CharField(label='Blob', widget=forms.Textarea)
+
+            @classmethod
+            def from_db(cls):
+                return {'blob': value}
+
+        prof = {'title': 'X', 'sections': [{'title': 'S', 'items': [{'app': 'cis', 'name': 'ta'}]}]}
+        real = __import__('django.utils.module_loading', fromlist=['import_string']).import_string
+
+        def fake(path):
+            return TaForm if path == 'cis.settings.ta.ta' else real(path)
+        with patch('cis.services.settings_overview._get_profile', return_value=prof), \
+                patch('cis.services.settings_overview.import_string', side_effect=fake):
+            ov = build_overview('anything')
+        return ov['sections'][0]['items'][0]['fields'][0]
+
+    def test_json_object_string_rendered_escaped_in_pre(self):
+        f = self._render('{"A": "11111111-aaaa", "B": "<script>alert(1)</script>"}')
+        self.assertTrue(f['is_html'])
+        self.assertTrue(f['value'].startswith('<pre class="mb-0 small">'))
+        self.assertTrue(f['value'].endswith('</pre>'))
+        self.assertIn('&quot;A&quot;: &quot;11111111-aaaa&quot;', f['value'])
+        self.assertIn('\n', f['value'])                      # pretty-printed
+        self.assertNotIn('<script>', f['value'])
+        self.assertIn('&lt;script&gt;', f['value'])
+
+    def test_json_list_string_rendered_in_pre(self):
+        f = self._render('[1, 2]')
+        self.assertEqual(f['value'], '<pre class="mb-0 small">[\n  1,\n  2\n]</pre>')
+
+    def test_already_parsed_dict_rendered_in_pre(self):
+        f = self._render({'k': '<b>v</b>'})
+        self.assertTrue(f['value'].startswith('<pre class="mb-0 small">'))
+        self.assertIn('&lt;b&gt;v&lt;/b&gt;', f['value'])
+        self.assertNotIn('<b>', f['value'])
+
+    def test_ordinary_html_textarea_unchanged(self):
+        html = '<p>Hello <strong>world</strong></p>'
+        f = self._render(html)
+        self.assertTrue(f['is_html'])
+        self.assertEqual(f['value'], html)
+
+    def test_json_scalar_and_invalid_json_unchanged(self):
+        for value in ('42', 'true', '"quoted"', '{not json', '[unclosed'):
+            with self.subTest(value=value):
+                self.assertEqual(self._render(value)['value'], value)
