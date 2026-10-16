@@ -8,12 +8,13 @@ from model_utils import FieldTracker
 from cron_validator import CronValidator
 
 from cis.storage_backend import PrivateMediaStorage
+from cis.utils import safe_upload_filename
 
 
 logger = logging.getLogger(__name__)
 
 def cron_log_upload_path(instance, filename):
-    return f'cron_logs/{instance.id}/{filename}'
+    return f'cron_logs/{instance.id}/{safe_upload_filename(filename)}'
 
 class CronLog(models.Model):
     cron = models.ForeignKey('cis.CronTab', on_delete=models.CASCADE)
@@ -28,7 +29,8 @@ class CronLog(models.Model):
     log_file = models.FileField(
         storage=PrivateMediaStorage(),
         blank=True,
-        upload_to=cron_log_upload_path
+        upload_to=cron_log_upload_path,
+        max_length=255
     )
 
     class Meta:

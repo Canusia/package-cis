@@ -1102,29 +1102,50 @@ def extract_class_times(meeting_time):
 def format_emplid(id):
     return id.rjust(8, '0')
 
-# Media FileFields use Django's default max_length.
-MAX_UPLOAD_PATH_LENGTH = 100
+# The cis private-media FileFields declare max_length=255 (migration 0106).
+# Fields in other packages that reuse these helpers may still be at Django's
+# default of 100. That works because the generated name has one extension:
+# get_available_name can trim the root to fit.
+MAX_UPLOAD_PATH_LENGTH = 255
 
 # Room for the "_xxxxxxx" suffix Django appends when a name is taken.
 UPLOAD_NAME_SUFFIX_LENGTH = 8
+
+
+def safe_upload_filename(filename):
+    """
+    Reduce an uploaded filename to `<root><.ext>` with exactly one extension.
+
+    Django's get_available_name takes the extension from
+    PurePath(name).suffixes, so it counts every period. For
+    "HIS 103 Syllabus - T. Little - Fall 2026.docx" the "extension" is
+    "._Little_-_Fall_2026.docx". When the name has to be shortened to fit
+    max_length, Django only trims the root ("HIS_103_Syllabus_-_T"). That
+    root runs out before the path fits, and the upload fails with
+    SuspiciousFileOperation (Canusia/package-cis#73, Canusia/ewu#65).
+
+    Drops any directory part, keeps only the last suffix as the extension,
+    and replaces runs of characters other than letters, digits, '_' and '-'
+    in the root (inner periods included) with '_'.
+    """
+    root, ext = os.path.splitext(os.path.basename(filename or ''))
+    root = re.sub(r'[^A-Za-z0-9_-]+', '_', root).strip('_') or 'file'
+    ext = re.sub(r'[^A-Za-z0-9.]+', '', ext)[:10]
+    return f'{root}{ext}'
 
 
 def upload_path(prefix, instance, filename):
     """
     Build `<prefix>/<year>/<month>/<instance id>/<filename>` for an upload_to.
 
-    The filename is collapsed to a single extension and trimmed so the whole
-    path fits in MAX_UPLOAD_PATH_LENGTH. Django derives the extension from
-    every suffix in the name, so `a.b.pdf` leaves it a one character root to
-    truncate against the ~65 character prefix, and the upload dies with
-    SuspiciousFileOperation instead of being stored.
+    safe_upload_filename() reduces the filename to a single extension, and the
+    root is trimmed so the whole path fits in MAX_UPLOAD_PATH_LENGTH, leaving
+    room for Django's collision suffix.
     """
     now = datetime.datetime.now().strftime("%Y/%m")
     directory = f'{prefix}/{now}/{instance.id}'
 
-    root, ext = os.path.splitext(os.path.basename(filename))
-    root = re.sub(r'[^A-Za-z0-9_-]+', '_', root).strip('_') or 'file'
-    ext = re.sub(r'[^A-Za-z0-9.]+', '', ext)[:10]
+    root, ext = os.path.splitext(safe_upload_filename(filename))
 
     budget = (
         MAX_UPLOAD_PATH_LENGTH - len(directory) - len('/')

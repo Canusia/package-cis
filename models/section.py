@@ -1526,7 +1526,8 @@ class ClassSectionSyllabi(models.Model):
     description = models.TextField(blank=True)
     media = models.FileField(
         storage=PrivateMediaStorage(),
-        upload_to=syllabus_upload_path
+        upload_to=syllabus_upload_path,
+        max_length=255
     )
 
     class_sections = models.ManyToManyField(ClassSection)

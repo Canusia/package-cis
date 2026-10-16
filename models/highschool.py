@@ -44,7 +44,8 @@ class HighSchoolTranscript(models.Model):
     description = models.TextField(blank=True)
     media = models.FileField(
         storage=PrivateMediaStorage(),
-        upload_to=hs_transcript_upload_path
+        upload_to=hs_transcript_upload_path,
+        max_length=255
     )
 
     highschool = models.ForeignKey('cis.HighSchool', on_delete=models.PROTECT)

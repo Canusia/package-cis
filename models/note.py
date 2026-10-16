@@ -232,6 +232,7 @@ class TeacherNote(Note, models.Model):
     media = models.FileField(
         storage=PrivateMediaStorage(),
         upload_to=teacher_notes_media_upload_path,
+        max_length=255,
         blank=True,
         null=True
     )
@@ -312,6 +313,7 @@ class StudentNote(Note, models.Model):
     media = models.FileField(
         storage=PrivateMediaStorage(),
         upload_to=student_notes_media_upload_path,
+        max_length=255,
         blank=True,
         null=True
     )

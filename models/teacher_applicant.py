@@ -1027,7 +1027,8 @@ class ApplicantRecommendation(models.Model):
 
     upload = models.FileField(
         storage=PrivateMediaStorage(),
-        upload_to=recommendation_upload_path
+        upload_to=recommendation_upload_path,
+        max_length=255
     )
 
     @property
@@ -1047,6 +1048,7 @@ class ApplicationUpload(models.Model):
     upload = models.FileField(
         storage=PrivateMediaStorage(),
         upload_to=teacher_app_upload_path,
+        max_length=255,
         blank=True)
 
     @property

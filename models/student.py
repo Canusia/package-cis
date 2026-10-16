@@ -2426,7 +2426,8 @@ class StudentTuitionAssistanceDocument(models.Model):
     description = models.TextField(blank=True)
     media = models.FileField(
         storage=PrivateMediaStorage(),
-        upload_to=student_tuition_assistance_upload_path
+        upload_to=student_tuition_assistance_upload_path,
+        max_length=255
     )
 
     tuition_assistance = models.ForeignKey('cis.StudentTuitionAssistance', on_delete=models.CASCADE)
@@ -2798,6 +2799,7 @@ class StudentRecommendation(models.Model):
     upload = models.FileField(
         storage=PrivateMediaStorage(),
         upload_to=student_recommendation_upload_path,
+        max_length=255,
         blank=True)
 
     class Meta:
@@ -3036,7 +3038,8 @@ class StudentSupportingDocument(models.Model):
     status = models.CharField(max_length=255, blank=True, default='')
     media = models.FileField(
         storage=PrivateMediaStorage(),
-        upload_to=student_supporting_doc_upload_path
+        upload_to=student_supporting_doc_upload_path,
+        max_length=255
     )
 
     term = models.ForeignKey('cis.Term', on_delete=models.PROTECT)
