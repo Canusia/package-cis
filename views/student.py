@@ -2041,9 +2041,16 @@ def change_application_status(request):
         form = ChangeApplicationStatusForm(student_ids=ids, data=request.POST)
         if form.is_valid():
             updated = form.save(request)
+            # scope=['detail', 'bulk']: the response must name a callback that
+            # exists on both pages. onActionComplete is defined only on
+            # cis/students/detail.html, so /ce/students threw "not defined on
+            # window" (package-cis#78). onBulkActionComplete is global
+            # (action_registry.js): it reloads every DataTable on the page and
+            # shows the message, which on the detail page refreshes the Notes
+            # table that gains the status-change note.
             return JsonResponse({
                 'outcome': 'call',
-                'fn': 'onActionComplete',
+                'fn': 'onBulkActionComplete',
                 'args': {'title': 'Done',
                          'message': f'Updated application status for {updated} student(s).',
                          'status': 'success'},
