@@ -28,7 +28,8 @@
                 <div class="card-body">
                     <h5 class="card-title">Details <small class="float-right"><a  target="_parent"
                                 href='{% url 'impersonate-start' record.user.id %}'><i
-                                    class="fa fa-ghost"></i></a></small></h5>
+                                    class="fa fa-ghost"></i></a>&nbsp;&nbsp;<a href="{% url 'cis:hs_admin_relink_user' record.id %}"
+                                title="Change Linked Account"><i class="fa fa-user-friends"></i></a></small></h5>
                     <div class="card-text">
                         {% if messages %}
                         <ul class="messages list-group">

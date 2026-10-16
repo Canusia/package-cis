@@ -63,6 +63,7 @@
                         <h5 class="card-title mb-3">Details <small class="float-right">
                                 <a target="_parent" href='{% url 'impersonate-start' record.user.id %}'><i
                                         class="fa fa-ghost"></i></a>&nbsp;&nbsp;
+                <a href="{% url 'cis:instructor_relink_user' record.id %}" title="Change Linked Account"><i class="fa fa-user-friends"></i></a>&nbsp;&nbsp;
                 <a data-url="{% url 'cis:instructor_delete' record.id%}" class="instructor-delete"><i class="fa fa-trash-alt"></i></a>
             </small></h5>
                         <div class="card-text">

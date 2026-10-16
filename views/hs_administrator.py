@@ -475,7 +475,9 @@ def detail(request, record_id):
                     'list-group-item-success') 
                 return redirect('cis:hs_admin', record_id=record_id)
             except IntegrityError:
-                form._errors['email'] = ['An account with this email already exists.']
+                form._errors['email'] = [
+                    'An account with this email already exists. '
+                    'Use Change Linked Account to link this administrator to it.']
     else:
         form = HSAdministratorForm(initial={
             'first_name':record.user.first_name,

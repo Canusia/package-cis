@@ -895,7 +895,9 @@ def detail(request, record_id):
                         'list-group-item-success') 
                     return redirect('cis:instructor', record_id=record_id)
                 except IntegrityError:
-                    form._errors['email'] = ['An account with this email/username already exists.']
+                    form._errors['email'] = [
+                        'An account with this email/username already exists. '
+                        'Use Change Linked Account to link this instructor to it.']
     
 
     return render(

@@ -1,0 +1,60 @@
+{% extends "cis/logged-base.html" %}
+{% block title %}{{ page_title }} => {{ record }}{% endblock %}
+
+{% block body %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="h3 mt-3 text-gray-800 mb-3">{{ page_title }}: {{ record }}</h1>
+    </div>
+</div>
+<main>
+    <div class="row">
+        <div class="col-md-6 col-sm-12 mb-4">
+            <div class="card">
+                <div class="card-body">
+                    <p>
+                        This {{ policy.label }} is currently linked to
+                        <strong>{{ record.user.get_full_name }} &lt;{{ record.user.email }}&gt;</strong>.
+                    </p>
+                    <p class="small text-muted">
+                        Enter the email of an existing account to move this {{ policy.label }}
+                        record to it. School links, certificates and notes move with the record.
+                        The current account loses the {{ policy.label }} role and is deactivated
+                        if it has no other role. Nothing is deleted.
+                    </p>
+
+                    {% if error %}
+                    <div class="alert alert-danger">{{ error }}</div>
+                    {% endif %}
+
+                    <form method="post">
+                        {% csrf_token %}
+                        <div class="form-group">
+                            <label for="relink-email">Existing account email</label>
+                            <input type="email" name="email" id="relink-email" class="form-control"
+                                   value="{{ email }}" required {% if target %}readonly{% endif %}>
+                        </div>
+
+                        {% if target %}
+                        <div class="card mb-3">
+                            <div class="card-body bg-gray-200">
+                                <div><strong>{{ target.get_full_name }}</strong> &lt;{{ target.email }}&gt;</div>
+                                <div class="small">Roles: {{ target_roles|join:", "|default:"none" }}</div>
+                                {% if not target.is_active %}
+                                <div class="small text-warning">This account is inactive and will be reactivated.</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <input type="hidden" name="confirm" value="1">
+                        <input type="submit" class="btn btn-danger btn-sm" value="Link to this account">
+                        {% else %}
+                        <input type="submit" class="btn btn-primary btn-sm" value="Find account">
+                        {% endif %}
+                        <a href="{{ detail_url }}" class="btn btn-sm btn-link">Cancel</a>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+{% endblock %}

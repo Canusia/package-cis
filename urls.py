@@ -210,6 +210,10 @@ from cis.views.teacher import (
     do_dangling_bulk_action as instructor_do_dangling_bulk_action,
 )
 
+from cis.views.relink_user import (
+    relink_instructor_user, relink_hs_admin_user,
+)
+
 from cis.views.college_instructor import (
     index as college_instructors,
     detail as college_instructor
@@ -642,6 +646,10 @@ urlpatterns = [
 
     path('highschool_admins/', user_passes_test(user_has_cis_role, login_url='/')(hs_admins), name='hs_admins'),
     path('highschool_admin/<uuid:record_id>', user_passes_test(user_has_cis_role, login_url='/')(hs_admin), name='hs_admin'),
+    path(
+        'highschool_admin/<uuid:record_id>/relink_user',
+        user_passes_test(user_has_cis_role, login_url='/')(relink_hs_admin_user),
+        name='hs_admin_relink_user'),
     path('highschool_admin/<uuid:record_id>/tab/<slug:tab_slug>/', user_passes_test(user_has_cis_role, login_url='/')(hs_admin_tab), name='hs_admin_tab'),
     path('highschool_admin/add_new', user_passes_test(user_has_cis_role, login_url='/')(hs_admin_add_new), name='hs_admin_add_new'),
     path('highschool_admin/download_template', user_passes_test(user_has_cis_role, login_url='/')(download_hs_member_template), name='hs_admin_download_template'),
@@ -884,6 +892,10 @@ urlpatterns = [
         'instructor/<uuid:record_id>',
         user_passes_test(user_has_cis_role, login_url='/')(instructor),
         name='instructor'),
+    path(
+        'instructor/<uuid:record_id>/relink_user',
+        user_passes_test(user_has_cis_role, login_url='/')(relink_instructor_user),
+        name='instructor_relink_user'),
     path('instructor/<uuid:record_id>/tab/<slug:tab_slug>/', user_passes_test(user_has_cis_role, login_url='/')(instructor_tab), name='instructor_tab'),
     path('instructor/add_new', user_passes_test(user_has_cis_role, login_url='/')(instructor_add_new), name='instructor_add_new'),
     path('instructor/download_template', user_passes_test(user_has_cis_role, login_url='/')(download_instructor_template), name='instructor_download_template'),
