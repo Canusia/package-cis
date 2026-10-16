@@ -27,6 +27,18 @@ from cis.models.section import ClassSection, StudentRegistration
 from cis.integrations.grades import grade_scale
 from cis.campus_gate import get_accessible_campuses, scope_report_by_campus
 
+GRADE_STATUS_LABELS = {
+    '': 'Not Started',
+    'saved': 'Draft',
+    'submitted': 'Submitted',
+}
+
+
+def grade_status_label(grade_status):
+    """Grade-tab label for ClassSection.grade_status (None -> Not Started)."""
+    return GRADE_STATUS_LABELS.get(grade_status or '', grade_status)
+
+
 class class_export(forms.Form):
     campus = forms.ModelMultipleChoiceField(
         queryset=Campus.objects.none(), required=True, label='Campus',
@@ -82,6 +94,7 @@ class class_export(forms.Form):
             'term', 'course', 'highschool', 'teacher__user'
         ).only(
             'id', 'class_number', 'section_number', 'instruction_mode', 'roster_status',
+            'grade_status',
             'term__code', 'term__label',
             'course__name', 'course__title', 'course__credit_hours',
             'highschool__name',
@@ -167,13 +180,18 @@ class class_export(forms.Form):
         stream = io.StringIO()
         writer = csv.writer(stream, delimiter=',')
 
-        writer.writerow(list(fields.values()) + status_list + grade_list)
+        # Grade Status sits right after Roster Status (the last ``fields``
+        # column). Labels match the CE Grades tab, not the model's choices;
+        # '' and None are both Not Started.
+        writer.writerow(
+            list(fields.values()) + ['Grade Status'] + status_list + grade_list)
         for record in records.iterator():
             row = []
             for key in fields.keys():
                 row.append(
                     force_str(get_field(record, key))
                 )
+            row.append(grade_status_label(record.grade_status))
 
             for k, v in StudentRegistration.STATUS_OPTIONS:
                 row.append(
