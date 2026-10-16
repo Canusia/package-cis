@@ -189,11 +189,13 @@ class LoginLogFeedTests(_Base):
     def setUp(self):
         self.client = APIClient(REMOTE_ADDR='127.0.0.1')
 
-    def test_lists_staff_sign_ins_only(self):
+    def test_lists_every_accounts_sign_ins(self):
         self.client.force_login(self.manager)
         rows = json.loads(self.client.get(self.URL).content)['data']
-        self.assertEqual([r['ip'] for r in rows], ['10.0.0.1'])
-        self.assertEqual(rows[0]['user']['email'], 'sso_plain@example.com')
+        self.assertEqual(sorted(r['ip'] for r in rows), ['10.0.0.1', '10.0.0.2'])
+        self.assertEqual(
+            {r['user']['email'] for r in rows},
+            {'sso_plain@example.com', 'sso_stu@example.com'})
         self.assertIn('date', rows[0])
 
     def test_empty_without_can_edit_users(self):
@@ -227,8 +229,22 @@ class SamlLogFeedTests(_Base):
         self.client.force_login(self.plain_ce)
         self.assertEqual(json.loads(self.client.get(self.URL).content)['data'], [])
 
+    def test_empty_for_a_staff_manager_who_is_not_a_superuser(self):
+        self.client.force_login(self.plain_ce)
+        with mock.patch.object(User, 'can_edit_users', new_callable=mock.PropertyMock,
+                               return_value=True):
+            self.assertEqual(json.loads(self.client.get(self.URL).content)['data'], [])
+
 
 class UsersPageLogTabsTests(_Base):
+    def test_saml_tab_hidden_from_a_staff_manager_who_is_not_a_superuser(self):
+        self.client.force_login(self.plain_ce)
+        with mock.patch.object(User, 'can_edit_users', new_callable=mock.PropertyMock,
+                               return_value=True):
+            page = self.client.get(reverse('cis:users')).content.decode()
+        self.assertIn('href="#login_log"', page)
+        self.assertNotIn('href="#saml_log"', page)
+
     def get_page(self, get_table_config):
         self.client.force_login(self.manager)
         with mock.patch('cis.views.users.get_table_config', get_table_config):

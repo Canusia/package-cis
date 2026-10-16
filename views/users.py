@@ -156,7 +156,7 @@ class RolelessUserViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class LoginLogViewSet(viewsets.ReadOnlyModelViewSet):
-    """Sign-ins of CE staff accounts, behind the Login Log tab of /ce/users/.
+    """Every account's sign-ins, behind the Login Log tab of /ce/users/.
 
     Gated like StaffUserViewSet: CIS role via the permission class, plus
     `can_edit_users` on the queryset.
@@ -167,9 +167,7 @@ class LoginLogViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         if not self.request.user.can_edit_users:
             return Login.objects.none()
-        return Login.objects.filter(
-            user__in=CustomUser.objects.filter(groups__name='ce'),
-        ).select_related('user').order_by('-date')
+        return Login.objects.select_related('user').order_by('-date')
 
 
 class SamlAttributeLogViewSet(viewsets.ReadOnlyModelViewSet):
@@ -177,7 +175,8 @@ class SamlAttributeLogViewSet(viewsets.ReadOnlyModelViewSet):
     SAML Attributes tab of /ce/users/. The rows are keyed by nameid, not an
     account, so this covers every SSO sign-in, not only staff.
 
-    Gated like StaffUserViewSet. Empty on a tenant without the sp app.
+    Superusers only: the attributes are raw IdP data for every SSO sign-in.
+    Empty on a tenant without the sp app.
     """
     serializer_class = SamlAttributeLogSerializer
     permission_classes = [CIS_user_only]
@@ -186,7 +185,7 @@ class SamlAttributeLogViewSet(viewsets.ReadOnlyModelViewSet):
         if not apps.is_installed('sp'):
             return Login.objects.none()
         model = apps.get_model('sp', 'IdPAttributeLog')
-        if not self.request.user.can_edit_users:
+        if not self.request.user.is_superuser:
             return model.objects.none()
         return model.objects.select_related('idp').order_by('-created_on')
 
@@ -685,7 +684,8 @@ def index(request):
 
     roleless_users_table = _roleless_users_table_config()
     login_log_table = _login_log_table_config()
-    saml_log_table = _saml_log_table_config()
+    # Superusers only, like SamlAttributeLogViewSet.
+    saml_log_table = _saml_log_table_config() if request.user.is_superuser else None
 
     return render(
         request,
