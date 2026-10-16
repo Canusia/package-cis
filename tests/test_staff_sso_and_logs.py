@@ -168,7 +168,8 @@ class StaffPagesTests(_Base):
         resp = self.client.post(reverse('cis:user_add_new'), _form_data(
             email='Post.New@example.com', uses_sso='Yes'))
         self.assertEqual(resp.status_code, 302)
-        user = User.objects.get(email='Post.New@example.com')
+        # The form lowercases the email before saving.
+        user = User.objects.get(email='post.new@example.com')
         self.assertEqual(user.username, 'post.new@example.com')
         self.assertFalse(user.has_usable_password())
 

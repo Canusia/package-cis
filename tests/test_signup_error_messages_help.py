@@ -17,7 +17,7 @@ class SignupErrorMessagesHelpTextTests(TestCase):
             'success', 'error', 'form_validation_fail',
             'dup_email.account_unverified', 'dup_email.being_processed',
             'dup_email.incomplete_application',
-            'dup_email.pending_ernie_login',
+            'dup_email.account_exists_login',
             'dup_email.non_student_account_exists',
         ],
         'verify_email': ['invalid_token', 'account_already_verified', 'success'],
