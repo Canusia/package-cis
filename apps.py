@@ -361,6 +361,14 @@ class CisConfig(AppConfig):
             ]
         },
         {
+            'name': 'student_email_change',
+            'title': 'Student Portal - Change Email',
+            'description': 'Verification code and confirmation emails for student email changes',
+            'categories': [
+                '1'
+            ]
+        },
+        {
             'name': 'signup',
             'title': 'Student Portal - New Student Signup Page Template',
             'description': '-',

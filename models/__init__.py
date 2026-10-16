@@ -58,3 +58,4 @@ from .crontab import CronTab
 # )
 from .student_import import StudentImportBatch, StudentImportRow
 from .bulk_enroll import BulkEnrollBatch, BulkEnrollRow
+from .email_change import EmailChangeRequest

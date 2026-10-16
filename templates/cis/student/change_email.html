@@ -1,0 +1,47 @@
+{% extends base_template %}
+{% comment %}
+cis/templates/cis/student/change_email.html (#79). Rendered by cis.views.student_email_change.change_email.
+base_template and profile_url_name come from the view (defaults: student/base_student.html, student:profile).
+{% endcomment %}
+{% load crispy_forms_tags %}
+
+{% block title %}Change Email{% endblock %}
+
+{% block page_header %}
+{% include "student/partials/_breadcrumb.html" with page_name="Change Email" %}
+{% endblock %}
+
+{% block content %}
+<div class="card bg-white">
+    <div class="card-body">
+        <p>Current email: <strong>{{ student.user.email }}</strong></p>
+
+        {% if locked %}
+            <p class="alert alert-warning">{{ locked_message }}</p>
+            <a href="{% url profile_url_name %}" class="btn btn-link">Back to Profile</a>
+        {% elif not pending %}
+            <p class="alert alert-info">
+                Enter your new email address and current password. We'll send a 6-digit code to your new address. Your email won't change until you enter that code.
+            </p>
+            <form method="post">
+                {% csrf_token %}
+                {{ email_form|crispy }}
+                <input type="submit" name="request_code" value="Send Verification Code" class="btn btn-primary" />
+                <a href="{% url profile_url_name %}" class="btn btn-link">Back to Profile</a>
+            </form>
+        {% else %}
+            <p class="alert alert-info">
+                We sent a code to <strong>{{ pending.new_email }}</strong>. It expires at {{ pending.expires_at|time:"g:i A" }}.
+                {% if pending.attempts_remaining < max_attempts %}{{ pending.attempts_remaining }} attempt(s) remaining.{% endif %}
+            </p>
+            <form method="post">
+                {% csrf_token %}
+                {{ code_form|crispy }}
+                <input type="submit" name="verify_code" value="Verify & Change Email" class="btn btn-primary" />
+                <input type="submit" name="resend_code" value="Resend Code" class="btn btn-outline-secondary" formnovalidate />
+                <input type="submit" name="cancel" value="Cancel" class="btn btn-link" formnovalidate />
+            </form>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
