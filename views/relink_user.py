@@ -7,6 +7,7 @@ cis.services.relink_role_user for what moves and what stays.
 from django.contrib import messages
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.views.decorators.clickjacking import xframe_options_sameorigin
 
 from cis.models.highschool_administrator import HSAdministrator
 from cis.models.teacher import Teacher
@@ -56,6 +57,7 @@ def _relink_view(request, policy, record, detail_url_name, page_title):
     return render(request, 'cis/relink_user.html', context)
 
 
+@xframe_options_sameorigin
 def relink_instructor_user(request, record_id):
     record = get_object_or_404(Teacher.objects.select_related('user'), pk=record_id)
     return _relink_view(
@@ -63,6 +65,7 @@ def relink_instructor_user(request, record_id):
         'Change Linked Account')
 
 
+@xframe_options_sameorigin
 def relink_hs_admin_user(request, record_id):
     record = get_object_or_404(HSAdministrator.objects.select_related('user'), pk=record_id)
     return _relink_view(
