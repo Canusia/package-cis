@@ -7,6 +7,12 @@ runtime regardless; this check additionally warns at startup/deploy so the
 misconfiguration is visible. It is a Warning (not an Error) so it does not
 block management commands / CI in environments where the secret isn't set.
 
+W006 (package-cis#77): django's plain ModelBackend must not be listed in
+AUTHENTICATION_BACKENDS. It checks username + password without the PT-40
+lockout, so a locked account refused by EmailAuthBackend would sign in through
+it. EmailAuthBackend covers username logins itself. A Warning, so a tenant that
+pins this cis before editing its settings still builds and migrates.
+
 W002 (v0.0.42+): the tenant's table-config app should ship
 `services/document_types_table.py` for the CE Document Types page. The page
 falls back to a plain list without it, so this warns rather than errors.
@@ -35,6 +41,27 @@ def stripe_webhook_secret_check(app_configs, **kwargs):
             )
         ]
     return []
+
+
+PLAIN_MODEL_BACKEND = 'django.contrib.auth.backends.ModelBackend'
+
+
+@register()
+def lockout_bypass_backend_check(app_configs, **kwargs):
+    if PLAIN_MODEL_BACKEND not in settings.AUTHENTICATION_BACKENDS:
+        return []
+    return [
+        CheckWarning(
+            f'{PLAIN_MODEL_BACKEND} is in AUTHENTICATION_BACKENDS.',
+            hint=(
+                'Remove it from myce/settings.py. It signs in locked accounts '
+                'on username + password, bypassing the PT-40 login lockout '
+                '(package-cis#77). cis.email_backend.EmailAuthBackend already '
+                'handles username logins such as /ce/ldap/.'
+            ),
+            id='cis.W006',
+        )
+    ]
 
 
 @register()

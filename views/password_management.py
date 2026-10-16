@@ -279,6 +279,10 @@ def reset_password(request, uidb64, token):
 
                 user.require_password_reset = False
                 user.save()
+                # PT-40 (package-cis#77): proving control of the mailbox
+                # clears a failed-login lock; the login failure message
+                # points users here.
+                user.unlock()
 
                 post_reset_redirect = reverse('password_reset_complete')
                 return HttpResponseRedirect(post_reset_redirect)

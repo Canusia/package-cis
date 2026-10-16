@@ -57,22 +57,21 @@ class MyCELoginForm(forms.Form):
 
         user = auth.authenticate(request=request, username=email, password=password)
         if not user:
-            locked = CustomUser.objects.filter(
-                email__iexact=email, account_locked=True).exists()
-            if locked:
-                message = (
-                    'Your account is locked after too many failed sign-in '
-                    'attempts. Please reset your password or contact support.'
+            # PT-40 (package-cis#77): one message whether the account is
+            # unknown, the password is wrong or the account is locked, so the
+            # response never reveals which emails are registered.
+            message = (
+                'Invalid email/password combination, or your account is '
+                'temporarily locked after too many failed sign-in attempts. '
+            )
+            minutes = CustomUser.lockout_minutes()
+            if minutes:
+                message += (
+                    f'Please try again in {minutes} minutes or reset your '
+                    'password.'
                 )
-                minutes = CustomUser.lockout_minutes()
-                if minutes:
-                    message = (
-                        'Your account is locked after too many failed sign-in '
-                        f'attempts. Please try again in {minutes} minutes, '
-                        'reset your password or contact support.'
-                    )
             else:
-                message = 'Invalid email/password combination, please try again.'
+                message += 'Please try again or reset your password.'
             messages.add_message(
                 request,
                 messages.SUCCESS,

@@ -17,7 +17,6 @@ class CustomUserAdmin(UserAdmin):
 
     @admin.action(description='Unlock selected accounts (clear login lock)')
     def unlock_accounts(self, request, queryset):
-        for user in queryset:
-            user.unlock()
+        queryset.update(**CustomUser.UNLOCKED_FIELDS)
 
 admin.site.register(CustomUser, CustomUserAdmin)

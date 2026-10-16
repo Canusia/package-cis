@@ -108,6 +108,13 @@ class CustomUser(AbstractUser):
         return f"{self.last_name}, {self.first_name} "
 
     MAX_FAILED_LOGINS = 3
+    # Field values of an account with no lock and no failures; bulk unlocks
+    # pass this straight to QuerySet.update().
+    UNLOCKED_FIELDS = {
+        'failed_login_attempts': 0,
+        'account_locked': False,
+        'account_locked_at': None,
+    }
 
     @staticmethod
     def lockout_minutes():
@@ -159,12 +166,11 @@ class CustomUser(AbstractUser):
                 'failed_login_attempts', 'account_locked', 'account_locked_at'])
 
     def unlock(self):
-        """Clear lock and counter (staff unlock, or a timed-out lock)."""
-        self.failed_login_attempts = 0
-        self.account_locked = False
-        self.account_locked_at = None
-        self.save(update_fields=[
-            'failed_login_attempts', 'account_locked', 'account_locked_at'])
+        """Clear lock and counter (staff unlock, a password reset through the
+        emailed link, or a timed-out lock)."""
+        for field, value in self.UNLOCKED_FIELDS.items():
+            setattr(self, field, value)
+        self.save(update_fields=list(self.UNLOCKED_FIELDS))
 
     def has_login_password(self):
         """True when this account has a password someone can log in with.

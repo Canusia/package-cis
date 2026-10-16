@@ -249,19 +249,17 @@ def do_locked_bulk_action(request):
             'message': 'You do not have permission to unlock accounts.',
         }, status=403)
 
-    valid_ids = []
+    # A set, so an id sent twice is neither unlocked nor skipped twice.
+    valid_ids = set()
     for record_id in ids:
         try:
-            valid_ids.append(int(record_id))
+            valid_ids.add(int(record_id))
         except (ValueError, TypeError):
             continue
 
-    users = CustomUser.objects.filter(id__in=valid_ids, account_locked=True)
-
-    unlocked = 0
-    for user in users:
-        user.unlock()
-        unlocked += 1
+    unlocked = CustomUser.objects.filter(
+        id__in=valid_ids, account_locked=True
+    ).update(**CustomUser.UNLOCKED_FIELDS)
 
     skipped = len(valid_ids) - unlocked
 
