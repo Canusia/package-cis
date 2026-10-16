@@ -79,7 +79,15 @@
                                                 success: function(response) {
                                                     $.unblockUI();
                                                     swal('', response.message, response.status === 'success' ? 'success' : 'warning');
-                                                    if (typeof window.refreshTable === 'function') { window.refreshTable(); }
+                                                    // Reload the Course Requests table by id. window.refreshTable is
+                                                    // last-writer-wins: the Supporting Documents table (and Notes,
+                                                    // once opened) overwrite it on this page (package-cis#74).
+                                                    var $registrations = $('#{{ registrations_table.table_id }}');
+                                                    if ($registrations.length && $.fn.dataTable.isDataTable($registrations)) {
+                                                        $registrations.DataTable().ajax.reload(null, false);
+                                                    } else if (typeof window.refreshTable === 'function') {
+                                                        window.refreshTable();
+                                                    }
                                                 },
                                                 error: function() {
                                                     $.unblockUI();
