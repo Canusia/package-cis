@@ -53,6 +53,13 @@ Change log
     dashboards, so they agree. Tenants may narrow it with
     pending_roster_sections(queryset, notif_settings) in
     myce_tenant_configs/services/roster_verification.py.
+
+Unreleased -- package-cis#83
+  * "What is verified?" (`verification_level`): the whole class (default,
+    also for a setting saved before this), each student, or both. Read it
+    through verification_level() / allows_class_verification() /
+    allows_student_verification(). With 'student' a class is pending while
+    any rostered registration is pending; with 'both' either rule applies.
 """
 import json
 from django import forms
@@ -79,6 +86,13 @@ VERIFIER_CHOICES = (
     ('highschool_admin', 'High School Admin(s)'),
 )
 DEFAULT_VERIFIERS = ['instructor']
+
+VERIFICATION_LEVELS = (
+    ('class', 'Whole class (the roster is accurate / not accurate)'),
+    ('student', 'Each student (enrolled / not enrolled)'),
+    ('both', 'Both'),
+)
+DEFAULT_VERIFICATION_LEVEL = 'class'
 
 REMINDER_TERM_CHOICES = (
     ('active_and_registration', 'Active term and registration terms'),
@@ -116,6 +130,19 @@ class SettingForm(forms.Form):
         help_text=(
             'High school admins also need "Verify Class Rosters" set to Yes on '
             'their role at the section\'s high school.'
+        ),
+    )
+
+    verification_level = forms.ChoiceField(
+        choices=VERIFICATION_LEVELS,
+        initial=DEFAULT_VERIFICATION_LEVEL,
+        required=False,
+        label='What is verified?',
+        help_text=(
+            'Whole class: the verifier marks the roster accurate or not. Each '
+            'student: the verifier marks every student enrolled or not '
+            'enrolled, and a class stays pending while any student is pending. '
+            'Both: either one keeps the class pending.'
         ),
     )
 
@@ -409,6 +436,7 @@ class roster_verification(SettingForm):
             'verify_confirmation_email': '{{teacher_first_name}}, {{teacher_last_name}}, {{crn}}, {{highschool}}, {{course_name}}, {{section_number}}, {{term}}, {{roster_status}}', 'verify_confirmation_subject': 'verified', 
             'notify_verify_confirmation_subject': 'roster status changed',
             'verifiers': list(DEFAULT_VERIFIERS),
+            'verification_level': DEFAULT_VERIFICATION_LEVEL,
             'hsadmin_request_verify_subject': 'Requesting roster verification ({{section_count}})',
             'hsadmin_request_verify_email': '{{recipient_first_name}}, please verify the roster for these {{section_count}} class(es): {{section_list}}',
         }
@@ -452,6 +480,25 @@ def get_verifiers(values=None):
 def can_verify(role, values=None):
     """True if `role` ('instructor' or 'highschool_admin') may verify rosters."""
     return role in get_verifiers(values)
+
+
+def verification_level(values=None):
+    """'class', 'student' or 'both'. A setting saved before #83 has no
+    `verification_level` key and means 'class' -- read it through here."""
+    if values is None:
+        values = roster_verification.from_db()
+    level = values.get('verification_level')
+    return level if level in dict(VERIFICATION_LEVELS) else DEFAULT_VERIFICATION_LEVEL
+
+
+def allows_class_verification(values=None):
+    """True if verifiers mark the whole roster accurate / not accurate."""
+    return verification_level(values) in ('class', 'both')
+
+
+def allows_student_verification(values=None):
+    """True if verifiers mark each student enrolled / not enrolled."""
+    return verification_level(values) in ('student', 'both')
 
 
 def roster_registration_statuses(values=None):

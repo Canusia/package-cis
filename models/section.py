@@ -105,7 +105,9 @@ class ClassSectionQuerySet(models.QuerySet):
 
         Narrows *this* queryset (callers keep their own scope: a teacher's
         classes, an admin's visible sections, the current campus) to: roster
-        status Pending Verification; the chosen class statuses
+        status Pending Verification -- or, by verification_level, any
+        rostered registration still pending ('student'), or either ('both');
+        the chosen class statuses
         (reminder_section_statuses, none = all); and the chosen terms
         (reminder_terms, default the active + registration terms, sub-terms
         included).
@@ -119,11 +121,25 @@ class ClassSectionQuerySet(models.QuerySet):
         from cis.settings.roster_verification import (
             roster_verification as roster_verification_settings,
             reminder_section_statuses, reminder_term_ids,
+            roster_registration_statuses, verification_level,
         )
         if notif_settings is None:
             notif_settings = roster_verification_settings.from_db()
 
-        records = self.filter(roster_status__iexact='pending verification')
+        from django.db.models import Exists, OuterRef, Q
+        class_pending = Q(roster_status__iexact='pending verification')
+        level = verification_level(notif_settings)
+        if level == 'class':
+            records = self.filter(class_pending)
+        else:
+            student_rows = StudentRegistration.objects.filter(
+                class_section=OuterRef('pk'), verification_status='pending')
+            statuses = roster_registration_statuses(notif_settings)
+            if statuses:
+                student_rows = student_rows.filter(status__in=statuses)
+            student_pending = Exists(student_rows)
+            records = self.filter(
+                student_pending if level == 'student' else class_pending | student_pending)
 
         section_statuses = reminder_section_statuses(notif_settings)
         if section_statuses:
