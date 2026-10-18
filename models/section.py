@@ -720,15 +720,15 @@ class ClassSection(MyCEBaseModel):
         return notifications.get(notif_type) if notifications.get(notif_type) else '11/18/2018'
 
     def needs_roster_verification_reminder(self, notif_settings=None):
-        if self.roster_status != 'pending verification':
-            return False
-
         # The cron passes the setting in, so it isn't re-read per section.
         if notif_settings is None:
             from cis.settings.roster_verification import (
                 roster_verification as roster_verification_settings
             )
             notif_settings = roster_verification_settings.from_db()
+
+        if not self.is_pending_roster_verification(notif_settings):
+            return False
 
         last_notified = self.last_notified('roster_verification')
         current_date = datetime.datetime.now()
@@ -737,6 +737,24 @@ class ClassSection(MyCEBaseModel):
         last_notified = datetime.datetime.strptime(last_notified, "%m/%d/%Y")
 
         return True if abs((current_date - last_notified).days) >= num_days else False
+
+    def is_pending_roster_verification(self, notif_settings):
+        """Pending by the verification level (#83): the roster status for
+        'class', a rostered registration still pending for 'student', either
+        for 'both'. The rule pending_roster_verification() applies, without its
+        term and class-status narrowing."""
+        from cis.settings.roster_verification import (
+            roster_registration_statuses, verification_level)
+        level = verification_level(notif_settings)
+        class_pending = (self.roster_status or '').lower() == 'pending verification'
+        if level == 'class' or (level == 'both' and class_pending):
+            return class_pending
+        rows = StudentRegistration.objects.filter(
+            class_section=self, verification_status='pending')
+        statuses = roster_registration_statuses(notif_settings)
+        if statuses:
+            rows = rows.filter(status__in=statuses)
+        return rows.exists()
 
     def needs_ce_notificaton_on_roster_change(self):
         from cis.settings.roster_verification import (
