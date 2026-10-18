@@ -54,12 +54,17 @@ Change log
     pending_roster_sections(queryset, notif_settings) in
     myce_tenant_configs/services/roster_verification.py.
 
-Unreleased -- package-cis#83
+v0.1.26a -- package-cis#83
   * "What is verified?" (`verification_level`): the whole class (default,
     also for a setting saved before this), each student, or both. Read it
     through verification_level() / allows_class_verification() /
     allows_student_verification(). With 'student' a class is pending while
     any rostered registration is pending; with 'both' either rule applies.
+    Reminders follow the same rule (is_pending_roster_verification()).
+  * Behaviour change on upgrade: the default is 'class', so portals that
+    honour the level (package-instructor_portal, package-highschool_admin)
+    hide the per-student Enrolled / Not Enrolled / Move actions until CE
+    sets the level to 'student' or 'both'.
 """
 import json
 from django import forms
