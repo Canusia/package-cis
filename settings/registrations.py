@@ -61,9 +61,14 @@ class RegistrationForm(forms.Form):
     starting_date = forms.DateField(label="Opens On")
     ending_date = forms.DateField(label="Open Until")
     
-    # instructor_review_ending_date = forms.DateField(
-    #     label="Instructor Review Open Until"
-    # )
+    instructor_review_ending_date = forms.DateField(
+        required=False,
+        label="Instructor Review Open Until",
+        help_text=(
+            'Last day instructors can mark students enrolled / not enrolled '
+            '(review opens on the "Opens On" date). Leave empty for no end date.'
+        ),
+    )
 
     starting_birth_date = forms.DateField(
         label="Starting Birth Date"
@@ -120,7 +125,7 @@ class RegistrationForm(forms.Form):
             'tuition_assistance_ending_date': self.cleaned_data['tuition_assistance_ending_date'],
             'tuition_pay_end_date': self.cleaned_data['tuition_pay_end_date'],
             'ending_date': self.cleaned_data['ending_date'],
-            # 'instructor_review_ending_date': self.cleaned_data['instructor_review_ending_date'],
+            'instructor_review_ending_date': self.cleaned_data.get('instructor_review_ending_date') or '',
             'starting_birth_date': self.cleaned_data['starting_birth_date'],
             'ending_birth_date': self.cleaned_data['ending_birth_date'],
         }
@@ -138,8 +143,8 @@ class RegistrationForm(forms.Form):
         return data.strftime('%m/%d/%Y')
     
     def clean_instructor_review_ending_date(self):
-        data = self.cleaned_data['instructor_review_ending_date']
-        return data.strftime('%m/%d/%Y')
+        data = self.cleaned_data.get('instructor_review_ending_date')
+        return data.strftime('%m/%d/%Y') if data else ''
 
     def clean_ending_date(self):
         starting_date = datetime.datetime.strptime(

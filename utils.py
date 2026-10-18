@@ -1681,32 +1681,37 @@ def is_pay_type_review_open(test_date_time=None):
 
 def is_instructor_review_open(test_date_time=None):
     """
-    Returns True if registration today is after registration starting date and
-    before registration ending date.
+    True while instructors may review student registrations: on or after the
+    registration setting's `starting_date` and through its
+    `instructor_review_ending_date` (inclusive).
 
-    False otherwise
+    A missing, empty or unparseable date leaves that side of the window open,
+    and with no registration setting the window is open -- this returned True
+    unconditionally before, so tenants that never set the dates keep reviewing.
     """
-    return True
-
     from datetime import datetime
     if not test_date_time:
         test_date_time = datetime.now()
-        
-    try:
-        key = getattr(settings, 'CAMPUS_CODE_PREFIX')+"_cis_registrations"
-        setting = Setting.objects.get(key=key)
+
+    key = getattr(settings, 'CAMPUS_CODE_PREFIX', '') + "_cis_registrations"
+    setting = Setting.objects.filter(key=key).first()
+    values = setting.value if setting and isinstance(setting.value, dict) else {}
+
+    def _date(name):
         try:
-            if datetime.strptime(setting.value.get('starting_date'), "%m/%d/%Y") > test_date_time:
-                return False
-            
-            if datetime.strptime(setting.value.get('instructor_review_ending_date'), "%m/%d/%Y") < test_date_time:
-                return False
-        except:
-            return False
-        return True
-    except Setting.DoesNotExist:
+            return datetime.strptime(values.get(name) or '', "%m/%d/%Y")
+        except (TypeError, ValueError):
+            return None
+
+    starts = _date('starting_date')
+    if starts and starts > test_date_time:
         return False
-    
+
+    ends = _date('instructor_review_ending_date')
+    if ends and ends.date() < test_date_time.date():
+        return False
+    return True
+
 def get_field(instance, field):
     """
     Access related model fields

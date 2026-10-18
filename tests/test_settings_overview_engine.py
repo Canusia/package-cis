@@ -181,7 +181,7 @@ class StudentRegistrationRegressionTests(TestCase):
     """student_registration renders the de550f6 labels minus the two escaped heading rows
     (<h3> Parent/Student Notification(s) pseudo-fields), which are skipped everywhere."""
     EXPECTED = [
-        ['Active Academic Year', 'Home School', 'Active Term', 'Registration Term(s)', 'Scholarship App Open Until', 'Tuition Pay Open Until', 'Message when Registration is Closed', 'Opens On', 'Open Until', 'Starting Birth Date', 'Ending Birth Date'],
+        ['Active Academic Year', 'Home School', 'Active Term', 'Registration Term(s)', 'Scholarship App Open Until', 'Tuition Pay Open Until', 'Message when Registration is Closed', 'Opens On', 'Open Until', 'Instructor Review Open Until', 'Starting Birth Date', 'Ending Birth Date'],
         ['Student Verify Email Form Field Labels', 'Pre-Email Verify Page Intro.', 'Awaiting Verification Page Intro.', 'Confirm Verification Page Intro.', 'Post Email Verify Page Intro.', 'Agreement Terms', 'Alert/Error Messages'],
         ['Profile Fields — Order, Editability, Label & Help Text', 'Profile Not Editable Message', 'Profile Editable Message', 'Profile Review Intro.', 'Profile Review Display Template', 'Student Detail Layout (advanced)'],
         ['Intro.'],
