@@ -1,4 +1,26 @@
+import importlib.util
+
 from django.apps import AppConfig
+
+
+# cis settings whose page text now belongs to a portal package (#81, #82).
+# cis stops registering its copy when the package's own setting is importable.
+PORTAL_TEXT_OWNERS = {
+    'faculty_portal': ('faculty.faculty.settings.faculty_portal_text',
+                       'faculty.settings.faculty_portal_text'),
+    'instructor_portal': ('instructor.instructor.settings.instructor_portal',
+                          'instructor.settings.instructor_portal'),
+}
+
+
+def portal_text_owned_by_package(name):
+    for module in PORTAL_TEXT_OWNERS.get(name, ()):
+        try:
+            if importlib.util.find_spec(module) is not None:
+                return True
+        except ModuleNotFoundError:  # parent package missing
+            pass
+    return False
 
 
 class CisConfig(AppConfig):
@@ -641,6 +663,10 @@ class CisConfig(AppConfig):
                 'ce'
             ]
         },
+    ]
+    CONFIGURATORS = [
+        record for record in CONFIGURATORS
+        if not portal_text_owned_by_package(record['name'])
     ]
 
     def ready(self):

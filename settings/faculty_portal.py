@@ -1,4 +1,12 @@
 import json
+import warnings
+
+warnings.warn(
+    'cis.settings.faculty_portal is deprecated: the faculty portal text is '
+    "owned by package-faculty ('faculty.settings.faculty_portal'). Read it "
+    'through a portal_text helper (package-cis#81).',
+    DeprecationWarning, stacklevel=2)
+
 from django import forms
 from django.conf import settings
 from django.http import JsonResponse

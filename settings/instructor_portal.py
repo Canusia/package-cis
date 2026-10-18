@@ -1,4 +1,12 @@
 import json
+import warnings
+
+warnings.warn(
+    'cis.settings.instructor_portal is deprecated: the instructor portal text '
+    'is owned by package-instructor_portal. Read it through a portal_text '
+    'helper (package-cis#82).',
+    DeprecationWarning, stacklevel=2)
+
 from django import forms
 from django.conf import settings
 from django.http import JsonResponse

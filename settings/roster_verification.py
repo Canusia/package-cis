@@ -304,7 +304,8 @@ class roster_verification(SettingForm):
         from django.shortcuts import render, get_object_or_404
 
         from cis.settings.registration_email import registration_email
-        from cis.settings.instructor_portal import instructor_portal as portal_lang
+        from cis.portal_text import portal_text
+        instructor_text = portal_text('instructor_portal')
 
         email_settings = self.from_db()
 
@@ -316,12 +317,12 @@ class roster_verification(SettingForm):
                 'instructor/class_section.html',
                 {
                     'menu': None,
-                    'intro': portal_lang(request).from_db().get('classes_blurb', 'Change me'),
+                    'intro': instructor_text.get('classes_blurb', 'Change me'),
                     'class_section': None,
                     'students_in_class': None,
                     'syllabi': None,
                     'verify_roster_form': None,
-                    'intro': portal_lang(request).from_db().get('class_blurb', 'Change me'),
+                    'intro': instructor_text.get('class_blurb', 'Change me'),
                     'schedule_form': None,
                     'notes': [],
                     'roster_intro': grade_settings.get('intro'),

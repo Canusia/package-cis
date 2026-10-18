@@ -75,7 +75,8 @@ class footer(SettingForm):
         from cis.models.term import AcademicYear
         from cis.models.course import Cohort, Course
         from cis.forms.student import StudentForm
-        from cis.settings.faculty_portal import faculty_portal as portal_lang
+        from cis.portal_text import portal_text
+        faculty_text = portal_text('faculty_portal')
 
         
         if field_name in ['non_logged']:
@@ -87,7 +88,7 @@ class footer(SettingForm):
                     'page_title': 'Class Sections',
                     'urls': {},
                     'menu': None,
-                    'intro': portal_lang(request).from_db().get('classes_blurb', 'Change me'),
+                    'intro': faculty_text.get('classes_blurb', 'Change me'),
                     'class_sections_api': '/ce/api/class_section?format=datatables',
                     'academic_years': AcademicYear.objects.all().order_by('-name'),
                     'active_academic_year': None,
@@ -102,7 +103,7 @@ class footer(SettingForm):
                     'page_title': 'Class Sections',
                     'urls': {},
                     'menu': None,
-                    'intro': portal_lang(request).from_db().get('classes_blurb', 'Change me'),
+                    'intro': faculty_text.get('classes_blurb', 'Change me'),
                     'class_sections_api': '/ce/api/class_section?format=datatables',
                     'academic_years': AcademicYear.objects.all().order_by('-name'),
                     'active_academic_year': None,
