@@ -219,3 +219,52 @@ class DeleteCourseUploadScopeTests(_Fixture):
             with self.subTest(user=user.username):
                 response = self._delete(user, 'not-a-uuid')
                 self.assertEqual(response.status_code, 404)
+
+
+class DeleteCourseUploadRoleTests(_Fixture):
+    """Deleting follows the faculty app's Course Resources roles
+    (faculty.settings.course_resources, package-faculty#1)."""
+
+    KEY = 'faculty.settings.course_resources'
+
+    def setUp(self):
+        self.client = self.client_class(REMOTE_ADDR='127.0.0.1')
+        self.url = reverse('cis:add_new_ajax')
+        self.visitor = _user_in('faculty')
+        CourseAdministrator.objects.create(
+            course=self.course_a, user=self.visitor, role='Visitor', status='Active')
+
+    def _delete(self, user, upload_id):
+        self.client.force_login(user)
+        return self.client.get(self.url, {
+            'model': 'delete_course_upload', 'upload_id': str(upload_id)})
+
+    def _gone(self):
+        return not CourseUpload.objects.filter(pk=self.upload_a.pk).exists()
+
+    def test_default_roles_are_pinned(self):
+        from cis.views.course import DEFAULT_COURSE_RESOURCE_ROLES
+        self.assertEqual(list(DEFAULT_COURSE_RESOURCE_ROLES), ['Faculty', 'Dept. Chair', 'Dean'])
+
+    def test_visitor_gets_404_under_the_default(self):
+        self.assertEqual(self._delete(self.visitor, self.upload_a.pk).status_code, 404)
+        self.assertFalse(self._gone())
+
+    def test_a_saved_setting_flips_visitor_and_faculty(self):
+        from cis.models.settings import Setting
+        Setting.objects.create(key=self.KEY, value={'upload_roles': ['Visitor']})
+        self.assertEqual(self._delete(self.faculty_a, self.upload_a.pk).status_code, 404)
+        self.assertEqual(self._delete(self.visitor, self.upload_a.pk).status_code, 200)
+        self.assertTrue(self._gone())
+
+    def test_malformed_setting_uses_the_default(self):
+        from cis.models.settings import Setting
+        Setting.objects.create(key=self.KEY, value='garbage')
+        self.assertEqual(self._delete(self.visitor, self.upload_a.pk).status_code, 404)
+        self.assertEqual(self._delete(self.faculty_a, self.upload_a.pk).status_code, 200)
+
+    def test_ce_deletes_whatever_the_setting(self):
+        from cis.models.settings import Setting
+        Setting.objects.create(key=self.KEY, value={'upload_roles': []})
+        self.assertEqual(self._delete(self.ce, self.upload_a.pk).status_code, 200)
+        self.assertTrue(self._gone())

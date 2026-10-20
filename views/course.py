@@ -157,6 +157,32 @@ def _administered_course_ids(user):
     ).values('course_id')
 
 
+# The faculty app's Course Resources setting (package-faculty#1): which
+# Course(s) roles may manage a course's resources. Read by key, never by
+# importing the faculty app, so cis works without it; the default must match
+# faculty/settings/course_resources.py DEFAULT_ROLES.
+COURSE_RESOURCES_SETTING_KEY = 'faculty.settings.course_resources'
+DEFAULT_COURSE_RESOURCE_ROLES = ('Faculty', 'Dept. Chair', 'Dean')
+
+
+def course_resource_roles():
+    """Roles allowed to manage Course Resources; the default for a missing or
+    malformed row. A saved empty list is honoured (nobody)."""
+    from cis.models.settings import Setting
+    value = Setting.objects.filter(
+        key=COURSE_RESOURCES_SETTING_KEY).values_list('value', flat=True).first()
+    roles = value.get('upload_roles') if isinstance(value, dict) else None
+    return list(roles) if isinstance(roles, list) else list(DEFAULT_COURSE_RESOURCE_ROLES)
+
+
+def _resource_managed_course_ids(user):
+    # Narrower than _administered_course_ids: the active row's role must be
+    # one the Course Resources setting allows.
+    return CourseAdministrator.objects.filter(
+        user=user, status__iexact='active', role__in=course_resource_roles()
+    ).values('course_id')
+
+
 def _certified_course_ids(user):
     # The instructor portal's Course Resources page treats every course with a
     # non-Inactive TeacherCourseCertificate as the teacher's own.
@@ -166,12 +192,13 @@ def _certified_course_ids(user):
 
 
 def manageable_course_uploads(user):
-    """CourseUploads `user` may delete: CE all, faculty their courses' only."""
+    """CourseUploads `user` may delete: CE all; faculty only on courses where
+    their active row's role may manage Course Resources (package-faculty#1)."""
     if user_has_cis_role(user):
         return CourseUpload.objects.all()
     if user_has_faculty_role(user):
         return CourseUpload.objects.filter(
-            course_id__in=_administered_course_ids(user))
+            course_id__in=_resource_managed_course_ids(user))
     return CourseUpload.objects.none()
 
 
