@@ -168,7 +168,9 @@ class PasswordResetTabRemovalTests(HsAdminRoleFixtureMixin, TestCase):
         from myce.component_registry.hs_administrator import hs_administrator_tabs
         resp = self.client.get(reverse('cis:hs_admin', args=[self.admin_a.id]))
         tabs = resp.context['detail_tabs']
-        self.assertEqual(list(tabs.keys()), ['highschools', 'notes'])
+        # Packages may add their own tabs (ses_tracking's Emails); cis's own are these two.
+        self.assertNotIn('passwd_reset', tabs)
+        self.assertEqual([k for k in tabs if k in ('highschools', 'notes')], ['highschools', 'notes'])
 
     def test_the_tab_slug_404s(self):
         resp = self.client.get(
