@@ -17,10 +17,10 @@ A plain service function rather than a ``Teacher`` manager method: ``Teacher``
 has no custom manager today and this is not a good enough reason for it to get
 one.
 """
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q
 
 from cis.models.course import CourseAdministrator
-from cis.models.faculty import FacultyTeacherAssignment
+from cis.models.faculty import FacultyCourseAssignment, FacultyTeacherAssignment
 from cis.models.teacher import Teacher, TeacherCourseCertificate
 from cis.utils import active_academic_year
 
@@ -64,9 +64,11 @@ def default_visible_teachers(user, academic_year=None):
         course_id__in=overseen_courses,
     )
 
-    # Courses this faculty member has configured for this year. Their teacher
-    # list is exactly what was picked; every other overseen course falls back.
-    configured_courses = assignments.values('course_id')
+    # Courses this faculty member has configured for this year: assignment rows,
+    # or a FacultyCourseAssignment row (which may have no assignments -- "no
+    # instructors"). Their teacher list is exactly what was picked; every other
+    # overseen course falls back.
+    configured_courses = configured_course_ids(user, academic_year)
 
     assigned_teachers = assignments.values('teacher_id')
 
@@ -97,3 +99,71 @@ def visible_teachers(user, academic_year=None):
     if override is not None and override is not visible_teachers:
         return override(user, academic_year=academic_year)
     return default_visible_teachers(user, academic_year=academic_year)
+
+
+def configured_course_ids(user, academic_year):
+    """Course ids `user` has configured for `academic_year` (values queryset).
+
+    A course is configured when it has FacultyTeacherAssignment rows, or a
+    FacultyCourseAssignment row (which may stand alone: "no instructors"). The
+    first half keeps assignments saved before FacultyCourseAssignment existed.
+    """
+    from cis.models.course import Course
+    return Course.objects.filter(
+        Q(id__in=FacultyCourseAssignment.objects.filter(
+            user=user, academic_year=academic_year).values('course_id'))
+        | Q(id__in=FacultyTeacherAssignment.objects.filter(
+            user=user, academic_year=academic_year).values('course_id'))
+    ).values('id')
+
+
+def visible_pairs_q(user, *, course_field, teacher_field, year_field=None,
+                    academic_year=None, require_certificate=True):
+    """A Q that keeps rows whose (course, teacher) pair `user` may see.
+
+    For any queryset whose rows carry a course and a teacher -- class sections,
+    course certificates. The pair is visible when the user actively oversees
+    the course and either:
+
+    - the course is configured for the year and the teacher is assigned to it, or
+    - the course is not configured for the year (the fallback), and -- when
+      `require_certificate` -- the teacher is certified for the course.
+
+    The year is the row's own (`year_field`, e.g. 'term__academic_year') when
+    given -- a section is judged against its own term's year -- else
+    `academic_year`, else the active year. Correlated EXISTS subqueries, so it
+    stays one query however many courses are overseen.
+    """
+    year = OuterRef(year_field) if year_field else (
+        academic_year if academic_year is not None else active_academic_year())
+    course = OuterRef(course_field)
+    teacher = OuterRef(teacher_field)
+
+    overseen = Exists(CourseAdministrator.objects.filter(
+        user=user, status__iexact='active', course_id=course))
+    assigned = Exists(FacultyTeacherAssignment.objects.filter(
+        user=user, course_id=course, teacher_id=teacher, academic_year=year))
+    configured = (
+        Exists(FacultyCourseAssignment.objects.filter(
+            user=user, course_id=course, academic_year=year))
+        | Exists(FacultyTeacherAssignment.objects.filter(
+            user=user, course_id=course, academic_year=year)))
+    fallback = ~configured
+    if require_certificate:
+        fallback &= Exists(TeacherCourseCertificate.objects.filter(
+            course_id=course, teacher_highschool__teacher_id=teacher))
+
+    return overseen & (assigned | fallback)
+
+
+def visible_course_teachers(user, academic_year=None):
+    """{(course_id, teacher_id)} the user may see for one year.
+
+    Built from course certificates, so it is the pairs a picker or a "courses"
+    column can show. Use visible_pairs_q() to filter sections directly.
+    """
+    return set(TeacherCourseCertificate.objects.filter(visible_pairs_q(
+        user, course_field='course_id',
+        teacher_field='teacher_highschool__teacher_id',
+        academic_year=academic_year,
+    )).values_list('course_id', 'teacher_highschool__teacher_id'))

@@ -251,3 +251,51 @@ class FacultyTeacherAssignment(models.Model):
 
     def __str__(self):
         return f'{self.user} / {self.course} / {self.teacher} ({self.academic_year})'
+
+
+class FacultyCourseAssignment(models.Model):
+    """CE has configured this faculty member's instructors for a course and year.
+
+    With a row, the course's instructor list is exactly its
+    FacultyTeacherAssignment rows for that year -- possibly none, which is how
+    CE says "no instructors for this course" (package-faculty#2). A course that
+    has assignment rows but no row here is configured too, so data saved before
+    this model existed keeps its meaning. A course with neither falls back to
+    every certified instructor, as before.
+
+    Deleting this row and the course's assignment rows returns the course to
+    that fallback. Same CASCADE reasoning as FacultyTeacherAssignment.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    user = models.ForeignKey(
+        'cis.CustomUser',
+        on_delete=models.CASCADE,
+        related_name='faculty_course_assignments',
+    )
+    course = models.ForeignKey(
+        'cis.Course',
+        on_delete=models.CASCADE,
+        related_name='faculty_course_assignments',
+    )
+    academic_year = models.ForeignKey(
+        'cis.AcademicYear',
+        on_delete=models.CASCADE,
+        related_name='faculty_course_assignments',
+    )
+
+    created_on = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        'cis.CustomUser',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='faculty_course_assignments_created',
+    )
+
+    class Meta:
+        unique_together = (('user', 'course', 'academic_year'),)
+
+    def __str__(self):
+        return f'{self.user} / {self.course} ({self.academic_year}) configured'
