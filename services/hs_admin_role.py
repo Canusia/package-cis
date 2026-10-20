@@ -72,3 +72,14 @@ def revoke_hs_admin_access(user):
         logger.info('Revoked %s role for user %s', HS_ADMIN_GROUP, user.pk)
 
     return True
+
+
+def dangling_hs_admins():
+    """Users in the HS admin group with no HSAdministrator record: what the
+    Dangling Accounts tab lists, and all its bulk actions may touch (ewu#99)."""
+    from cis.models.customuser import CustomUser
+
+    return CustomUser.objects.filter(
+        groups__name=HS_ADMIN_GROUP,
+        hsadministrator__isnull=True,
+    ).prefetch_related('groups').distinct()

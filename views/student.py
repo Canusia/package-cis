@@ -957,9 +957,11 @@ def do_dangling_bulk_action(request):
             continue
 
     from cis.services.student_role import STUDENT
-    from cis.services.role_access import revoke_access
+    from cis.services.role_access import (
+        dangling_targets, dangling_users, revoke_access, with_ignored,
+    )
 
-    users = CustomUser.objects.filter(id__in=valid_ids)
+    users, not_listed = dangling_targets(dangling_users(STUDENT), valid_ids, request.user)
 
     if action == 'revoke_access':
         revoked = skipped = 0
@@ -971,10 +973,10 @@ def do_dangling_bulk_action(request):
 
         return JsonResponse({
             'status': 'success',
-            'message': (
+            'message': with_ignored(not_listed, (
                 f'{revoked} account(s) no longer have student access, '
                 f'{skipped} skipped (they still hold a Student record).'
-            ),
+            )),
         })
 
     from django.db.models import ProtectedError
@@ -1014,6 +1016,8 @@ def do_dangling_bulk_action(request):
     )
     if errored:
         message += f' {errored} account(s) failed unexpectedly.'
+
+    message = with_ignored(not_listed, message)
 
     return JsonResponse({
         'status': 'success',

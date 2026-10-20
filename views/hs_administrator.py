@@ -121,12 +121,9 @@ class DanglingHSAdminViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [CIS_user_only]
 
     def get_queryset(self):
-        from cis.services.hs_admin_role import HS_ADMIN_GROUP
+        from cis.services.hs_admin_role import dangling_hs_admins
 
-        return CustomUser.objects.filter(
-            groups__name=HS_ADMIN_GROUP,
-            hsadministrator__isnull=True,
-        ).prefetch_related('groups').distinct()
+        return dangling_hs_admins()
 
 class HSAdministratorAccessRequestViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = HSAdministratorAccessRequestSerializer
@@ -1201,9 +1198,10 @@ def do_dangling_bulk_action(request):
         except (ValueError, TypeError):
             continue
 
-    from cis.services.hs_admin_role import revoke_hs_admin_access
+    from cis.services.hs_admin_role import dangling_hs_admins, revoke_hs_admin_access
+    from cis.services.role_access import dangling_targets, with_ignored
 
-    users = CustomUser.objects.filter(id__in=valid_ids)
+    users, not_listed = dangling_targets(dangling_hs_admins(), valid_ids, request.user)
 
     if action == 'revoke_access':
         revoked = skipped = 0
@@ -1215,10 +1213,10 @@ def do_dangling_bulk_action(request):
 
         return JsonResponse({
             'status': 'success',
-            'message': (
+            'message': with_ignored(not_listed, (
                 f'{revoked} account(s) no longer have high school administrator '
                 f'access, {skipped} skipped (they still hold high school roles).'
-            ),
+            )),
         })
 
     from django.db.models import ProtectedError
@@ -1258,6 +1256,8 @@ def do_dangling_bulk_action(request):
     )
     if errored:
         message += f' {errored} account(s) failed unexpectedly.'
+
+    message = with_ignored(not_listed, message)
 
     return JsonResponse({
         'status': 'success',

@@ -159,7 +159,8 @@ class DanglingBulkActionTests(DanglingAccountFixtureMixin, TestCase):
         })
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(CustomUser.objects.filter(pk=self.user_a.pk).exists())
-        self.assertIn('1 skipped', resp.json()['message'])
+        # Not on the Dangling tab, so ignored rather than skipped (ewu#99).
+        self.assertIn('1 not on this tab (ignored)', resp.json()['message'])
 
     def test_unknown_action_is_a_400(self):
         resp = self.client.post(self.url, {'action': 'nope', 'ids[]': []})

@@ -70,6 +70,30 @@ def dangling_users(policy):
     ).prefetch_related('groups').distinct()
 
 
+def dangling_targets(listed, ids, requester):
+    """The accounts a Dangling Accounts bulk action may touch (ewu#99).
+
+    Only accounts the tab itself lists (`listed`, the tab's own queryset),
+    never a superuser -- full access with no group, so one would otherwise
+    pass the "no record, no other role" checks -- and never the requester.
+    Returns (users, not_listed), where `not_listed` counts the posted ids
+    that fell outside.
+    """
+    users = list(
+        listed.filter(id__in=ids)
+        .exclude(is_superuser=True)
+        .exclude(pk=requester.pk)
+    )
+    return users, len(set(ids)) - len(users)
+
+
+def with_ignored(not_listed, message):
+    """`message`, plus a note on posted ids the tab does not list."""
+    if not not_listed:
+        return message
+    return f'{message} {not_listed} not on this tab (ignored).'
+
+
 def revoke_access(policy, user):
     """Drop the role's group once the user holds no role record.
 
