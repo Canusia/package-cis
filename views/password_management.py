@@ -42,7 +42,7 @@ from django.contrib.auth.forms import PasswordResetForm, SetPasswordForm
 
 from cis.models.customuser import CustomUser
 
-from django_recaptcha.fields import ReCaptchaField
+from cis.captcha import CaptchaField
 
 from cis.utils import allowed_to_reset_password, password_reset_email_template
 
@@ -104,7 +104,7 @@ class cisPasswordResetForm(PasswordResetForm):
         super().__init__(*args, **kwargs)
         
         if request and not getattr(settings, 'DEBUG'):
-            self.fields['captcha'] = ReCaptchaField(
+            self.fields['captcha'] = CaptchaField(
                 label=''
             )
 

@@ -38,7 +38,6 @@ from cis.utils import (
 )
 from form_fields import fields as FFields
 
-from django_recaptcha.fields import ReCaptchaField
 
 from cis.settings.signup import signup as signup_settings
 from cis.forms.utils import with_meta

@@ -8,7 +8,7 @@ from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
 from django.core.validators import validate_email
 
-from django_recaptcha.fields import ReCaptchaField
+from cis.captcha import CaptchaField
 
 from cis.models.customuser import CustomUser
 from ..models.highschool import HighSchool
@@ -143,7 +143,7 @@ class NoteReplyForm(forms.Form):
         help_text=''
     )
 
-    captcha = ReCaptchaField(
+    captcha = CaptchaField(
         label=''
     )
 
@@ -1237,7 +1237,7 @@ class TeacherApplicantForm(forms.Form):
         widget=forms.PasswordInput(attrs={'class': 'col-md-6, col-sm-12'})
     )
 
-    captcha = ReCaptchaField(
+    captcha = CaptchaField(
         label=''
     )
 

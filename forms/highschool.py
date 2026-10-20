@@ -6,7 +6,7 @@ from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
 from django.utils.safestring import mark_safe
 
-from django_recaptcha.fields import ReCaptchaField
+from cis.captcha import CaptchaField
 
 from form_fields import fields as FFields
 
@@ -339,7 +339,7 @@ def apply_scope_field(form, highschools):
 
 
 class HSAdminAccessRequestModelForm(ModelForm):
-    captcha = ReCaptchaField(
+    captcha = CaptchaField(
         label=''
     )
   

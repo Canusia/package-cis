@@ -14,7 +14,7 @@ from django.template.loader import get_template, render_to_string
 
 from django.contrib.auth.models import Group
 
-from django_recaptcha.fields import ReCaptchaField
+from cis.captcha import CaptchaField
 
 
 
@@ -44,9 +44,9 @@ class MyCELoginForm(forms.Form):
 
         # PT-40: only exempt local development from CAPTCHA. Production hosts
         # (e.g. *.canusiaplatform.com) must enforce it. e2e/CI still works via
-        # the RECAPTCHA_TESTING shim in settings.
+        # the CAPTCHA_TESTING shim in settings.
         if '127.0.0.1' not in req_host:
-            self.fields['captcha'] = ReCaptchaField(
+            self.fields['captcha'] = CaptchaField(
                 label=''
             )
 
@@ -117,7 +117,7 @@ class DemoRequestForm(forms.Form):
         help_text='Briefly describe your program'
     )
 
-    captcha = ReCaptchaField(
+    captcha = CaptchaField(
         label=''
     )
 
