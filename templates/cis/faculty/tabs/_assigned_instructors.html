@@ -3,14 +3,14 @@ Assigned Instructor(s) -- the CE screen that writes cis.FacultyTeacherAssignment
 
 Two things this fragment must keep saying out loud:
 
-1. A course with nothing picked renders the words "All instructors
-   (unassigned)". An empty picker on its own is ambiguous -- "nobody" and
-   "everybody" are opposite readings of the same blank box -- and the fallback
-   is "everybody".
+1. A course with nothing configured renders the words "All instructors
+   (unassigned)"; "No instructors" is its own, explicit state
+   (package-faculty#2). "Nobody" and "everybody" are opposite readings of an
+   empty list, so neither is left to be inferred.
 2. Every course rendered also emits a hidden `course` input. Saving only
-   touches the courses in that list, which is the only thing separating a
-   picker the user cleared from a course that was never on the form (a browser
-   omits an empty multi-select from the POST entirely).
+   touches the courses in that list, which is the only thing separating
+   nothing-ticked from a course that was never on the form (a browser omits
+   unticked checkboxes from the POST entirely).
 {% endcomment %}
 <div class="card border-top-0">
     <div class="card-body">
@@ -69,8 +69,9 @@ Two things this fragment must keep saying out loud:
         {% endcomment %}
         <p class="alert alert-warning">
             <strong>{{ academic_year }}</strong> is not the active academic year
-            ({{ active_year }}). Assignments saved here have no effect on what
-            faculty see until {{ academic_year }} becomes active.
+            ({{ active_year }}). Assignments saved here apply to sections in
+            {{ academic_year }} terms; the faculty member's instructor list keeps
+            using {{ active_year }} until {{ academic_year }} becomes active.
         </p>
         {% endif %}
 
@@ -85,53 +86,116 @@ Two things this fragment must keep saying out loud:
         </p>
         {% else %}
         <p class="alert alert-info">
-            Instructors assigned here are the only ones this faculty member sees for
-            that course in {{ academic_year }}. A course with nothing picked falls
-            back to every certified instructor.
+            For each course, choose who this faculty member sees in {{ academic_year }}:
+            <strong>All certified instructors</strong> (nothing configured),
+            <strong>Only these instructors</strong>, or <strong>No instructors</strong>.
+            Sections are matched by instructor <em>and</em> course.
         </p>
+
+        {% if summary %}
+        <p class="js-ai-summary">{{ faculty_user.get_full_name|default:faculty_user }} sees <strong>{{ summary.instructors }}</strong> instructor{{ summary.instructors|pluralize }} across <strong>{{ summary.courses }}</strong> course{{ summary.courses|pluralize }} in {{ academic_year }}.</p>
+        {% endif %}
+
+        <div class="form-row align-items-end mb-3">
+            <div class="col-md-4">
+                <label for="ai_cert_status">Certificate status</label>
+                <select id="ai_cert_status" class="form-control form-control-sm js-ai-cert">
+                    {% for value, label in cert_filters %}
+                    <option value="{{ value }}"{% if value == cert_filter %} selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-8 text-md-right">
+                <div class="btn-group btn-group-sm" role="group" aria-label="View">
+                    <button type="button" class="btn js-ai-view {% if view == 'course' %}btn-primary{% else %}btn-outline-primary{% endif %}" data-view="course">By course</button>
+                    <button type="button" class="btn js-ai-view {% if view == 'instructor' %}btn-primary{% else %}btn-outline-primary{% endif %}" data-view="instructor">By instructor</button>
+                </div>
+            </div>
+        </div>
+
+        {% if view == 'course' %}
         <form method="post" action="{{ tab_url }}" class="js-ai-form">
             {% csrf_token %}
             <input type="hidden" name="action" value="save_assigned_instructors">
             <input type="hidden" name="academic_year" value="{{ academic_year.id }}">
-            <table class="table table-striped">
-                <thead>
-                    <tr>
-                        <th scope="col">Course</th>
-                        <th scope="col">Assigned Instructor(s)</th>
-                    </tr>
-                </thead>
+            <input type="hidden" name="cert_status" value="{{ cert_filter }}">
+            <input type="hidden" name="view" value="course">
+            {% for row in rows %}
+            <fieldset class="card mb-2" data-ai-course="{{ row.course.id }}">
+                <div class="card-body py-2">
+                    <input type="hidden" name="course" value="{{ row.course.id }}">
+                    <legend class="h6 mb-2">
+                        {{ row.course.catalog_number }} &mdash; {{ row.course.title }}
+                        {% if row.unassigned %}<span class="badge badge-warning">All instructors (unassigned)</span>{% endif %}
+                        {% if row.mode == 'none' %}<span class="badge badge-secondary">No instructors</span>{% endif %}
+                    </legend>
+                    <div class="mb-2">
+                        <div class="custom-control custom-radio custom-control-inline">
+                            <input type="radio" class="custom-control-input js-ai-mode" id="mode_all_{{ row.course.id }}" name="mode_{{ row.course.id }}" value="all"{% if row.mode == 'all' %} checked{% endif %}>
+                            <label class="custom-control-label" for="mode_all_{{ row.course.id }}">All certified instructors</label>
+                        </div>
+                        <div class="custom-control custom-radio custom-control-inline">
+                            <input type="radio" class="custom-control-input js-ai-mode" id="mode_selected_{{ row.course.id }}" name="mode_{{ row.course.id }}" value="selected"{% if row.mode == 'selected' %} checked{% endif %}>
+                            <label class="custom-control-label" for="mode_selected_{{ row.course.id }}">Only these instructors</label>
+                        </div>
+                        <div class="custom-control custom-radio custom-control-inline">
+                            <input type="radio" class="custom-control-input js-ai-mode" id="mode_none_{{ row.course.id }}" name="mode_{{ row.course.id }}" value="none"{% if row.mode == 'none' %} checked{% endif %}>
+                            <label class="custom-control-label" for="mode_none_{{ row.course.id }}">No instructors</label>
+                        </div>
+                    </div>
+                    {% if row.teachers %}
+                    <div class="js-ai-teachers"{% if row.mode != 'selected' %} hidden{% endif %}>
+                        {% for teacher in row.teachers %}
+                        <div class="custom-control custom-checkbox">
+                            <input type="checkbox" class="custom-control-input" id="t_{{ row.course.id }}_{{ teacher.id }}" name="teachers_{{ row.course.id }}" value="{{ teacher.id }}"{% if teacher.id|stringformat:"s" in row.selected %} checked{% endif %}>
+                            <label class="custom-control-label" for="t_{{ row.course.id }}_{{ teacher.id }}">{{ teacher }}{% if teacher.cert_inactive %} <span class="badge badge-light">certificate inactive</span>{% endif %}</label>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <em class="text-muted">No instructor is certified for this course.</em>
+                    {% endif %}
+                </div>
+            </fieldset>
+            {% endfor %}
+            <input type="submit" class="btn btn-primary btn-sm" value="Save Assignments">
+        </form>
+        {% else %}
+        <form method="post" action="{{ tab_url }}" class="js-ai-form">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="save_assigned_instructors">
+            <input type="hidden" name="academic_year" value="{{ academic_year.id }}">
+            <input type="hidden" name="cert_status" value="{{ cert_filter }}">
+            <input type="hidden" name="view" value="instructor">
+            {% for row in rows %}<input type="hidden" name="course" value="{{ row.course.id }}">{% endfor %}
+            <p class="text-muted small">
+                Tick each instructor's courses. A ticked course switches to
+                "Only these instructors"; a configured course with nothing ticked
+                switches to "No instructors".
+            </p>
+            <table class="table table-striped table-sm">
+                <thead><tr><th scope="col">Instructor</th><th scope="col">Courses</th></tr></thead>
                 <tbody>
-                    {% for row in rows %}
+                    {% for entry in by_instructor %}
                     <tr>
+                        <td>{{ entry.teacher }}</td>
                         <td>
-                            <input type="hidden" name="course" value="{{ row.course.id }}">
-                            {{ row.course.catalog_number }} &mdash; {{ row.course.title }}
-                            {% if row.unassigned %}
-                            <div><span class="badge badge-warning">All instructors (unassigned)</span></div>
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if row.teachers %}
-                            <select name="teachers_{{ row.course.id }}" multiple size="5"
-                                    class="form-control form-control-sm">
-                                {% for teacher in row.teachers %}
-                                <option value="{{ teacher.id }}"{% if teacher.id|stringformat:"s" in row.selected %} selected{% endif %}>{{ teacher }}</option>
-                                {% endfor %}
-                            </select>
-                            <small class="form-text text-muted">
-                                Ctrl/Cmd-click to select more than one. Clear the
-                                selection to fall back to all certified instructors.
-                            </small>
-                            {% else %}
-                            <em class="text-muted">No instructor is certified for this course.</em>
-                            {% endif %}
+                            {% for item in entry.courses %}
+                            <div class="custom-control custom-checkbox custom-control-inline">
+                                <input type="checkbox" class="custom-control-input" id="p_{{ item.course.id }}_{{ entry.teacher.id }}" name="pair" value="{{ item.course.id }}:{{ entry.teacher.id }}"{% if item.checked %} checked{% endif %}>
+                                <label class="custom-control-label" for="p_{{ item.course.id }}_{{ entry.teacher.id }}">{{ item.course.catalog_number }}{% if item.cert_inactive %} <span class="badge badge-light">certificate inactive</span>{% endif %}</label>
+                            </div>
+                            {% endfor %}
                         </td>
                     </tr>
+                    {% empty %}
+                    <tr><td colspan="2"><em class="text-muted">No instructor is certified for these courses.</em></td></tr>
                     {% endfor %}
                 </tbody>
             </table>
             <input type="submit" class="btn btn-primary btn-sm" value="Save Assignments">
         </form>
+        {% endif %}
         {% endif %}
     </div>
 </div>
@@ -153,7 +217,28 @@ jQuery(function ($) {
     // Changing the year reloads the tab for that year; the year round-trips as
     // the `academic_year` parameter, the same name the save and copy forms post.
     $pane.find('.js-ai-year').on('change', function () {
-        reload({ academic_year: $(this).val() }, 'GET');
+        var data = state();
+        data.academic_year = $(this).val();
+        reload(data, 'GET');
+    });
+
+    function state() {
+        return {
+            academic_year: '{{ academic_year.id|default:"" }}',
+            cert_status: $pane.find('.js-ai-cert').val(),
+            view: $pane.find('.js-ai-view.btn-primary').data('view') || 'course'
+        };
+    }
+    $pane.find('.js-ai-cert').on('change', function () { reload(state(), 'GET'); });
+    $pane.find('.js-ai-view').on('click', function () {
+        var data = state();
+        data.view = $(this).data('view');
+        reload(data, 'GET');
+    });
+    // "Only these instructors" shows the checkboxes; the other two hide them.
+    $pane.find('.js-ai-mode').on('change', function () {
+        $(this).closest('fieldset').find('.js-ai-teachers')
+            .prop('hidden', $(this).val() !== 'selected');
     });
 
     $pane.find('form.js-ai-form').on('submit', function (e) {

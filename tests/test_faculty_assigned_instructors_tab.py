@@ -26,7 +26,9 @@ from django.test import TestCase
 from django.urls import reverse
 
 from cis.models.course import Cohort, Course, CourseAdministrator
-from cis.models.faculty import FacultyCoordinator, FacultyTeacherAssignment
+from cis.models.faculty import (
+    FacultyCoordinator, FacultyCourseAssignment, FacultyTeacherAssignment,
+)
 from cis.models.highschool import HighSchool
 from cis.models.teacher import Teacher, TeacherCourseCertificate, TeacherHighSchool
 from cis.models.term import AcademicYear
@@ -196,7 +198,7 @@ class AssignedInstructorsRenderTests(AssignedInstructorsTabMixin, TestCase):
         self._certifies(elsewhere, other_course)
 
         html = self._get()
-        options = html.split(f'name="teachers_{course.id}"')[1].split('</select>')[0]
+        options = html.split(f'data-ai-course="{course.id}"')[1].split('</fieldset>')[0]
         self.assertIn(str(certified.id), options)
         self.assertNotIn(str(elsewhere.id), options)
 
@@ -455,3 +457,105 @@ class AssignedInstructorsCopyForwardTests(AssignedInstructorsTabMixin, TestCase)
         html = self._get()
         self.assertIn('source_academic_year', html)
         self.assertIn(str(self.other_year.name), html)
+
+
+class AssignedInstructorsModesTests(AssignedInstructorsTabMixin, TestCase):
+    """All / Only these / No instructors, the By instructor view, the
+    certificate filter and the summary (package-faculty#2)."""
+
+    def setUp(self):
+        super().setUp()
+        self.course = self._course('Modes')
+        self._oversees(self.course)
+        self.a, self.b = self._teacher(), self._teacher()
+        self._certifies(self.a, self.course)
+        self._certifies(self.b, self.course)
+
+    def _configured(self):
+        return FacultyCourseAssignment.objects.filter(
+            user=self.faculty, course=self.course, academic_year=self.year).exists()
+
+    def _save(self, **extra):
+        data = {'action': 'save_assigned_instructors',
+                'academic_year': str(self.year.id), 'course': [str(self.course.id)]}
+        data.update(extra)
+        return self._post(data)
+
+    def test_no_instructors_persists_with_zero_assignment_rows(self):
+        self._assign(self.a, self.course)
+        html = self._save(**{f'mode_{self.course.id}': 'none'})
+        self.assertEqual(self._rows(), set())
+        self.assertTrue(self._configured())
+        self.assertIn('No instructors', html)
+        self.assertNotIn(UNASSIGNED_TEXT, html)
+
+    def test_only_these_with_ticks_saves_exactly_them(self):
+        self._save(**{f'mode_{self.course.id}': 'selected',
+                      f'teachers_{self.course.id}': [str(self.a.id)]})
+        self.assertEqual(self._rows(), {(self.course.id, self.a.id)})
+        self.assertTrue(self._configured())
+
+    def test_ticks_are_ignored_unless_only_these_is_chosen(self):
+        self._save(**{f'mode_{self.course.id}': 'none',
+                      f'teachers_{self.course.id}': [str(self.a.id)]})
+        self.assertEqual(self._rows(), set())
+
+    def test_all_clears_the_configuration(self):
+        self._save(**{f'mode_{self.course.id}': 'none'})
+        html = self._save(**{f'mode_{self.course.id}': 'all'})
+        self.assertFalse(self._configured())
+        self.assertIn(UNASSIGNED_TEXT, html)
+
+    def test_by_instructor_writes_the_same_rows(self):
+        self._save(view='instructor', pair=[f'{self.course.id}:{self.b.id}'])
+        self.assertEqual(self._rows(), {(self.course.id, self.b.id)})
+        self.assertTrue(self._configured())
+
+    def test_by_instructor_unticking_a_configured_course_means_none(self):
+        self._assign(self.a, self.course)
+        self._save(view='instructor')
+        self.assertEqual(self._rows(), set())
+        self.assertTrue(self._configured())
+
+    def test_by_instructor_leaves_an_unconfigured_course_alone(self):
+        self._save(view='instructor')
+        self.assertFalse(self._configured())
+
+    def test_by_instructor_drops_uncertified_pairs(self):
+        stranger = self._teacher()
+        self._save(view='instructor', pair=[f'{self.course.id}:{stranger.id}'])
+        self.assertEqual(self._rows(), set())
+
+    def test_by_instructor_view_renders_a_pair_per_course(self):
+        html = self._get(view='instructor')
+        self.assertIn(f'value="{self.course.id}:{self.a.id}"', html)
+
+    def test_certificate_filter_hides_inactive_by_default(self):
+        TeacherCourseCertificate.objects.filter(
+            teacher_highschool__teacher=self.b).update(status='Inactive')
+        self.assertNotIn(str(self.b.id), self._get())
+        html = self._get(cert_status='all')
+        self.assertIn(str(self.b.id), html)
+        self.assertIn('certificate inactive', html)
+
+    def test_an_assigned_inactive_certificate_is_shown_and_kept(self):
+        TeacherCourseCertificate.objects.filter(
+            teacher_highschool__teacher=self.b).update(status='Inactive')
+        self._assign(self.b, self.course)
+        self.assertIn(str(self.b.id), self._get())
+        self._save(**{f'mode_{self.course.id}': 'selected',
+                      f'teachers_{self.course.id}': [str(self.b.id)]})
+        self.assertEqual(self._rows(), {(self.course.id, self.b.id)})
+
+    def test_copy_carries_a_no_instructors_course(self):
+        FacultyCourseAssignment.objects.create(
+            user=self.faculty, course=self.course, academic_year=self.other_year)
+        self._post({'action': 'copy_assigned_instructors',
+                    'academic_year': str(self.year.id),
+                    'source_academic_year': str(self.other_year.id)})
+        self.assertTrue(self._configured())
+
+    def test_summary_counts_what_the_mentor_sees(self):
+        self.assertIn('<strong>2</strong> instructors across <strong>1</strong> course in', self._get())
+        self._assign(self.a, self.course)
+        self.assertIn('<strong>1</strong> instructor across <strong>1</strong> course in', self._get())
