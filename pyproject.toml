@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "myce_cis"
-version = "0.1.26a"
+version = "0.1.27a"
 authors = [
   { name="Avinash Kadaji", email="avi@canusia.com" },
 ]
@@ -30,6 +30,10 @@ dependencies = [
     # fails the install loudly rather than silently keeping old code.
     "myce_student_onboarding>=0.0.16",
 ]
+
+[project.optional-dependencies]
+# Tenants that set CAPTCHA_PROVIDER = 'altcha' (cis/captcha.py, ewu#87).
+altcha = ["django-altcha==1.0.0"]
 
 [project.urls]
 "Homepage" = "https://github.com/Canusia/package-cis"
