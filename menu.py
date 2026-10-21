@@ -341,7 +341,17 @@ cis_menu = [
                 'name': 'school_roles',
                 'url': 'cis:hs_roles'
             },
-            
+            {
+                'label': 'Consortiums',
+                'name': 'consortiums',
+                'url': 'cis:consortiums'
+            },
+            {
+                'label': 'Course Types',
+                'name': 'course_types',
+                'url': 'cis:course_types'
+            },
+
             # {
                 # 'label': 'Instructor Applicants',
                 # 'name': 'all_applicants',

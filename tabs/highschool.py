@@ -31,6 +31,41 @@ def campuses_tab(request, record):
     return {'campus_links': links, 'can_add_campus': can_add}
 
 
+@highschool_tabs.tab(slug='consortiums', title='Consortiums', order=16,
+                     template='cis/highschools/tabs/_consortiums.html')
+def consortiums_tab(request, record):
+    from django.db.models import Prefetch
+    from cis.models.consortium import ConsortiumMembership
+    memberships = list(
+        record.consortium_memberships.select_related('consortium')
+        .prefetch_related(Prefetch(
+            'consortium__memberships',
+            queryset=ConsortiumMembership.objects.filter(status='Active')
+            .exclude(highschool=record).select_related('highschool')
+            .order_by('highschool__name'),
+            to_attr='other_active_members'))
+        .order_by('consortium__name'))
+    return {'memberships': memberships}
+
+
+@highschool_tabs.tab(slug='course_types', title='Course Types', order=17,
+                     template='cis/highschools/tabs/_course_types.html')
+def course_types_tab(request, record):
+    from cis.campus_context import is_multi_campus
+    from cis.highschool_scope import can_manage_link
+    from cis.settings.course_type_gate import course_type_gate
+    links = list(record.course_type_links.select_related('course_type', 'campus')
+                 .order_by('course_type__sort_order', 'course_type__name', 'campus__name'))
+    for link in links:
+        link.can_manage = can_manage_link(request.user, link.campus)
+    return {
+        'course_type_links': links,
+        'multi_campus': is_multi_campus(),
+        'gate_blocks_school': (course_type_gate.is_enabled()
+                               and not any(link.status == 'Active' for link in links)),
+    }
+
+
 @highschool_tabs.tab(slug='instructors', title='Instructors', order=20,
                      template='cis/highschools/tabs/_instructors.html', active=True)
 def instructors_tab(request, record):

@@ -1,0 +1,92 @@
+{% extends "cis/logged-base.html" %}
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block body %}
+<main>
+    <div class="row">
+        <div class="col-sm-8 col-xs-12">
+            <h1 class="h3 mb-2 text-gray-800">{{ page_title }}&nbsp;
+                <button type="button" class="btn btn-primary btn-sm"
+                    onclick="ActionRegistry.doAction('{% url 'cis:course_type_add' %}', 'add_course_type', '')">
+                    <i class="fas fa-plus"></i>&nbsp;Add Course Type</button>
+            </h1>
+            <p class="text-muted">
+                How sections are classified (the SIS importer stores the code) and what a high
+                school can be approved to offer. Approve types for a school from its Course Types tab.
+                The course-type gate is <strong>{% if gate.enabled %}on{% else %}off{% endif %}</strong>
+                (Settings &gt; Student Portal - Course Type Gate).
+            </p>
+        </div>
+    </div>
+
+    {% include "cis/messages.html" with messages=messages %}
+
+    <div class="card mb-3">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table id="course_types" class="table table-striped" style="width:100%">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Code</th>
+                            <th>Approvable</th>
+                            <th>Sort</th>
+                            <th>Schools approved</th>
+                            <th>Sections</th>
+                            <th>Status</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for record in records %}
+                        <tr>
+                            <td>{{ record.name }}</td>
+                            <td><code>{{ record.code }}</code></td>
+                            <td>{{ record.approvable|yesno:"Yes,No" }}</td>
+                            <td>{{ record.sort_order }}</td>
+                            <td>{{ record.school_count }}</td>
+                            <td>{{ record.section_count }}</td>
+                            <td>{{ record.status }}</td>
+                            <td class="text-right">
+                                <button type="button" class="btn btn-sm btn-primary"
+                                    onclick="ActionRegistry.doAction('{% url 'cis:course_type_edit' record.id %}', 'edit_course_type', '{{ record.id }}')">Edit</button>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="8" class="text-muted">No course types yet.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <h2 class="h5">College sections with no course type</h2>
+            <p class="text-muted">
+                Sections with no high school and no course type, for the most recent terms.
+                While the gate is on, students don't see these.
+            </p>
+            <table class="table table-sm" style="width:auto">
+                <thead><tr><th>Term</th><th>Sections</th></tr></thead>
+                <tbody>
+                    {% for row in unclassified %}
+                    <tr><td>{{ row.term__label }}</td><td>{{ row.count }}</td></tr>
+                    {% empty %}
+                    <tr><td colspan="2" class="text-muted">None.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</main>
+<script>
+    window.reloadCourseTypes = function (args) {
+        var span = document.createElement('span');
+        span.textContent = (args && args.message) || '';
+        swal({ title: (args && args.title) || 'Done', content: span, icon: 'success' })
+            .then(function () { window.location.reload(); });
+    };
+</script>
+{% endblock %}

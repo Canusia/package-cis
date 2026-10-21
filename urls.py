@@ -144,6 +144,8 @@ from cis.views.course_cohort import (
     download_cohort_template,
 )
 
+from cis.views import consortium as consortium_views
+from cis.views import course_type as course_type_views
 from cis.views.campus import (
     index as campuses,
     detail as campus, add_new as campus_add_new,
@@ -642,6 +644,19 @@ urlpatterns = [
     path('highschool/<uuid:record_id>/campus/add', user_passes_test(user_has_cis_role, login_url='/')(highschool_campus_add), name='highschool_campus_add'),
     path('highschool/campus-link/<uuid:link_id>/edit', user_passes_test(user_has_cis_role, login_url='/')(highschool_campus_edit), name='highschool_campus_edit'),
     path('highschool/campus-link/<uuid:link_id>/delete', user_passes_test(user_has_cis_role, login_url='/')(highschool_campus_delete), name='highschool_campus_delete'),
+    path('highschool/<uuid:record_id>/consortium/add', user_passes_test(user_has_cis_role, login_url='/')(consortium_views.membership_add), name='highschool_consortium_add'),
+    path('highschool/consortium-membership/<uuid:membership_id>/edit', user_passes_test(user_has_cis_role, login_url='/')(consortium_views.membership_edit), name='consortium_membership_edit'),
+    path('highschool/consortium-membership/<uuid:membership_id>/delete', user_passes_test(user_has_cis_role, login_url='/')(consortium_views.membership_delete), name='consortium_membership_delete'),
+    path('highschool/<uuid:record_id>/course-type/add', user_passes_test(user_has_cis_role, login_url='/')(course_type_views.highschool_course_type_add), name='highschool_course_type_add'),
+    path('highschool/course-type-link/<uuid:link_id>/edit', user_passes_test(user_has_cis_role, login_url='/')(course_type_views.highschool_course_type_edit), name='highschool_course_type_edit'),
+    path('highschool/course-type-link/<uuid:link_id>/delete', user_passes_test(user_has_cis_role, login_url='/')(course_type_views.highschool_course_type_delete), name='highschool_course_type_delete'),
+    path('consortiums/', user_passes_test(user_has_cis_role, login_url='/')(consortium_views.index), name='consortiums'),
+    path('consortium/add', user_passes_test(user_has_cis_role, login_url='/')(consortium_views.consortium_add), name='consortium_add'),
+    path('consortium/<uuid:record_id>', user_passes_test(user_has_cis_role, login_url='/')(consortium_views.detail), name='consortium'),
+    path('consortium/<uuid:record_id>/edit', user_passes_test(user_has_cis_role, login_url='/')(consortium_views.consortium_edit), name='consortium_edit'),
+    path('course-types/', user_passes_test(user_has_cis_role, login_url='/')(course_type_views.index), name='course_types'),
+    path('course-type/add', user_passes_test(user_has_cis_role, login_url='/')(course_type_views.course_type_add), name='course_type_add'),
+    path('course-type/<uuid:record_id>/edit', user_passes_test(user_has_cis_role, login_url='/')(course_type_views.course_type_edit), name='course_type_edit'),
     path('highschool_roles/', user_passes_test(user_has_cis_role, login_url='/')(hs_roles), name='hs_roles'),
     path('highschool_role/add_new', user_passes_test(user_has_cis_role, login_url='/')(hs_role_add_new), name='hs_role_add_new'),
     path('highschool_role/<uuid:record_id>', user_passes_test(user_has_cis_role, login_url='/')(hs_role), name='hs_role'),

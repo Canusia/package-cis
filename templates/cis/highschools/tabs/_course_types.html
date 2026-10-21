@@ -1,0 +1,58 @@
+<div class="card border-top-0">
+    <div class="card-body">
+        {% if gate_blocks_school %}
+        <div class="alert alert-warning">
+            The course-type gate is on and this school has no active approvals:
+            its students see no on-campus or online sections until a course type is approved.
+        </div>
+        {% endif %}
+        <div class="table-responsive">
+            <table id="highschool_course_types" class="table table-striped" style="width:100%">
+                <thead>
+                    <tr>
+                        <th>Course Type</th>
+                        <th>Code</th>
+                        {% if multi_campus %}<th>Campus</th>{% endif %}
+                        <th>Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for link in course_type_links %}
+                    <tr>
+                        <td>
+                            {{ link.course_type.name }}
+                            {% if link.course_type.status != 'Active' %}<span class="badge badge-secondary">Type {{ link.course_type.status }}</span>{% endif %}
+                        </td>
+                        <td><code>{{ link.course_type.code }}</code></td>
+                        {% if multi_campus %}<td>{% if link.campus %}{{ link.campus.name }}{% else %}All campuses{% endif %}</td>{% endif %}
+                        <td>{{ link.status }}</td>
+                        <td class="text-right text-nowrap">
+                            {% if link.can_manage %}
+                            <button type="button" class="btn btn-sm btn-primary"
+                                onclick="ActionRegistry.doAction('{% url 'cis:highschool_course_type_edit' link.id %}', 'edit_course_type_link', '{{ link.id }}')">Edit</button>
+                            <button type="button" class="btn btn-sm btn-danger"
+                                onclick="ActionRegistry.doAction('{% url 'cis:highschool_course_type_delete' link.id %}', 'remove_course_type_link', '{{ link.id }}')">Remove</button>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="{% if multi_campus %}5{% else %}4{% endif %}" class="text-muted">No course types approved.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <button type="button" class="btn btn-sm btn-primary"
+            onclick="ActionRegistry.doAction('{% url 'cis:highschool_course_type_add' record.id %}', 'approve_course_types', '{{ record.id }}')">
+            <i class="fas fa-plus"></i> Approve course types</button>
+    </div>
+</div>
+<script>
+    // Called by ActionRegistry after an approval action succeeds.
+    window.reloadHighschoolCourseTypes = function (args) {
+        var span = document.createElement('span');
+        span.textContent = (args && args.message) || '';
+        swal({ title: (args && args.title) || 'Done', content: span, icon: 'success' })
+            .then(function () { window.location.reload(); });
+    };
+</script>

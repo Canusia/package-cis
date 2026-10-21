@@ -1,0 +1,63 @@
+<div class="card border-top-0">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table id="highschool_consortiums" class="table table-striped" style="width:100%">
+                <thead>
+                    <tr>
+                        <th>Consortium</th>
+                        <th>Status</th>
+                        <th>Joined</th>
+                        <th>Billing basis</th>
+                        <th>Other members</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for membership in memberships %}
+                    <tr>
+                        <td>
+                            <a href="{% url 'cis:consortium' membership.consortium.id %}">{{ membership.consortium.name }}</a>
+                            {% if membership.consortium.status != 'Active' %}<span class="badge badge-secondary">Consortium {{ membership.consortium.status }}</span>{% endif %}
+                        </td>
+                        <td>{{ membership.status }}</td>
+                        <td>{{ membership.joined_on|date:"m/d/Y"|default:"-" }}</td>
+                        <td>{{ membership.get_billing_basis_display }}</td>
+                        <td>
+                            {% with others=membership.consortium.other_active_members %}
+                            {% if others %}
+                            <a href="#members-{{ membership.id }}" data-toggle="collapse">{{ others|length }} school{{ others|length|pluralize }}</a>
+                            <ul id="members-{{ membership.id }}" class="collapse list-unstyled mb-0 mt-1">
+                                {% for other in others %}
+                                <li><a href="{% url 'cis:hs_detail' other.highschool.id %}">{{ other.highschool.name }}</a></li>
+                                {% endfor %}
+                            </ul>
+                            {% else %}<span class="text-muted">None</span>{% endif %}
+                            {% endwith %}
+                        </td>
+                        <td class="text-right text-nowrap">
+                            <button type="button" class="btn btn-sm btn-primary"
+                                onclick="ActionRegistry.doAction('{% url 'cis:consortium_membership_edit' membership.id %}', 'edit_consortium_membership', '{{ membership.id }}')">Edit</button>
+                            <button type="button" class="btn btn-sm btn-danger"
+                                onclick="ActionRegistry.doAction('{% url 'cis:consortium_membership_delete' membership.id %}', 'remove_consortium_membership', '{{ membership.id }}')">Remove</button>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="6" class="text-muted">Not a member of any consortium.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <button type="button" class="btn btn-sm btn-primary"
+            onclick="ActionRegistry.doAction('{% url 'cis:highschool_consortium_add' record.id %}', 'add_consortium_membership', '{{ record.id }}')">
+            <i class="fas fa-plus"></i> Add to consortium</button>
+    </div>
+</div>
+<script>
+    // Called by ActionRegistry after a membership action succeeds.
+    window.reloadHighschoolConsortiums = function (args) {
+        var span = document.createElement('span');
+        span.textContent = (args && args.message) || '';
+        swal({ title: (args && args.title) || 'Done', content: span, icon: 'success' })
+            .then(function () { window.location.reload(); });
+    };
+</script>

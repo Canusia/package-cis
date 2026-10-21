@@ -287,6 +287,14 @@ class CisConfig(AppConfig):
             ]
         },
         {
+            'name': 'course_type_gate',
+            'title': 'Student Portal - Course Type Gate',
+            'description': 'Limit the sections students see to the course types their high school is approved for. Off by default.',
+            'categories': [
+                '1'
+            ]
+        },
+        {
             'name': 'counselor_recommendation',
             'title': 'Counselor - Recommendation Page Blurb',
             'description': '-',

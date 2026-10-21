@@ -73,7 +73,8 @@ class TabTests(_Base):
         slugs = [slug for slug, _t in sorted(
             highschool_tabs._tabs.items(), key=lambda kv: kv[1]['order'])]
         self.assertEqual(slugs[slugs.index('campuses') - 1], 'details')
-        self.assertEqual(slugs[slugs.index('campuses') + 1], 'instructors')
+        # Consortiums and Course Types (order 16/17) follow Campuses.
+        self.assertEqual(slugs[slugs.index('campuses') + 1], 'consortiums')
 
     def test_tab_renders_links(self):
         resp = self._call(views.tab, self.staff, record_id=self.hs.id,

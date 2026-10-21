@@ -1,0 +1,64 @@
+{% extends "cis/logged-base.html" %}
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block body %}
+<main>
+    <div class="row">
+        <div class="col-sm-8 col-xs-12">
+            <h1 class="h3 mb-2 text-gray-800">{{ page_title }}&nbsp;
+                <button type="button" class="btn btn-primary btn-sm"
+                    onclick="ActionRegistry.doAction('{% url 'cis:consortium_add' %}', 'add_consortium', '')">
+                    <i class="fas fa-plus"></i>&nbsp;Add Consortium</button>
+            </h1>
+            <p class="text-muted">
+                High schools whose students may take sections hosted at each other's schools.
+                Add a school to a consortium from its Consortiums tab.
+            </p>
+        </div>
+    </div>
+
+    {% include "cis/messages.html" with messages=messages %}
+
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table id="consortiums" class="table table-striped" style="width:100%">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Description</th>
+                            <th>Active members</th>
+                            <th>Status</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for record in records %}
+                        <tr>
+                            <td><a href="{% url 'cis:consortium' record.id %}">{{ record.name }}</a></td>
+                            <td>{{ record.description|truncatechars:120 }}</td>
+                            <td>{{ record.member_count }}</td>
+                            <td>{{ record.status }}</td>
+                            <td class="text-right">
+                                <button type="button" class="btn btn-sm btn-primary"
+                                    onclick="ActionRegistry.doAction('{% url 'cis:consortium_edit' record.id %}', 'edit_consortium', '{{ record.id }}')">Edit</button>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="5" class="text-muted">No consortiums yet.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</main>
+<script>
+    window.reloadConsortiums = function (args) {
+        var span = document.createElement('span');
+        span.textContent = (args && args.message) || '';
+        swal({ title: (args && args.title) || 'Done', content: span, icon: 'success' })
+            .then(function () { window.location.reload(); });
+    };
+</script>
+{% endblock %}
