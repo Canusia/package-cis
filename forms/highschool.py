@@ -904,7 +904,9 @@ class HSModelForm(ModelForm):
         exclude = [
             'country',
             'access_approver',
-            'oncampus_sections'
+            'oncampus_sections',
+            'consortiums',
+            'approved_course_types',
         ]
         labels = {
             'district': _('District'),

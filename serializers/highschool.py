@@ -39,6 +39,9 @@ class DistrictListSerializer(serializers.ModelSerializer):
         ]
 
 
+_HS_M2M_FIELDS = ('campuses', 'consortiums', 'approved_course_types')
+
+
 class HighSchoolSerializer(serializers.ModelSerializer):
     district = DistrictSerializer()
 
@@ -47,10 +50,10 @@ class HighSchoolSerializer(serializers.ModelSerializer):
     hs_type_display = serializers.CharField(read_only=True)
 
     def get_field_names(self, declared_fields, info):
-        # fields='__all__' would pick up the HighSchool.campuses M2M, one
-        # query per row wherever a school is nested. Keep the pre-link shape.
+        # fields='__all__' would pick up the HighSchool M2Ms, one query each
+        # per row wherever a school is nested. Keep the pre-link shape.
         names = super().get_field_names(declared_fields, info)
-        return [n for n in names if n != 'campuses']
+        return [n for n in names if n not in _HS_M2M_FIELDS]
 
     class Meta:
         model = HighSchool

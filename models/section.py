@@ -216,6 +216,11 @@ class ClassSection(MyCEBaseModel):
     room = models.CharField(max_length=50, blank=True)
 
     instruction_mode = models.CharField(max_length=50, blank=True, null=True)
+    # The tenant's classification of the section (set by the SIS importer);
+    # instruction_mode stays the raw SIS value.
+    course_type = models.ForeignKey(
+        'cis.CourseType', on_delete=models.PROTECT, null=True, blank=True,
+        related_name='class_sections')
     prereq = models.TextField(blank=True)
 
     max_enrollment = models.IntegerField(default=0)

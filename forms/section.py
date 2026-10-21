@@ -650,6 +650,7 @@ class ClassSectionForm(forms.ModelForm):
             'start_date',
             'end_date',
             'notifications',
+            'course_type',  # set by the importer; edit field comes with the gate
             # 'class_number',
             # 'section_number',
             # 'teacher',

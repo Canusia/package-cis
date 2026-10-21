@@ -7,6 +7,8 @@ from .highschool import (
     HighSchool, HighSchoolCampus, HighSchoolClassOffering,
     HighSchoolCollegeAdvisor
 )
+from .consortium import Consortium, ConsortiumMembership
+from .course_type import CourseType, HighSchoolCourseType
 
 from .teacher import Teacher, TeacherHighSchool, TeacherCourseCertificate
 from .highschool_administrator import (

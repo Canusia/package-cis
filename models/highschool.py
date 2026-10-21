@@ -241,6 +241,14 @@ class HighSchool(models.Model):
         'cis.Campus', through='cis.HighSchoolCampus',
         related_name='highschools', blank=True)
 
+    # Managed from the Consortiums and Course Types tabs, not the Details form.
+    consortiums = models.ManyToManyField(
+        'cis.Consortium', through='cis.ConsortiumMembership',
+        related_name='highschools', blank=True)
+    approved_course_types = models.ManyToManyField(
+        'cis.CourseType', through='cis.HighSchoolCourseType',
+        related_name='highschools', blank=True)
+
     objects = HighSchoolManager()
     
     class Meta:
