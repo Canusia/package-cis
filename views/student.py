@@ -2189,6 +2189,54 @@ def resend_verification_link(request):
 
     return JsonResponse({'outcome': 'alert', 'status': 'success', 'title': 'Send Verification Link', 'message': message})
 
+@student_actions.action('verification', label='Send Continue Application Link', icon='fa fa-paper-plane', scope=['detail', 'bulk'])
+def send_continue_application_link(request):
+    """Get each selected student back into their application in one step.
+
+    Unverified: the verification email. Verified but unfinished: a
+    continue-application link (valid for CONTINUE_LINK_MAX_AGE). Anyone who
+    already finished is skipped -- they log in or use Forgot Password.
+    """
+    from cis.services import continue_application
+
+    ids = request.POST.getlist('ids[]')
+    students = Student.objects.filter(id__in=ids).select_related('user')
+
+    verification, continuing, skipped, failed = [], [], [], []
+    for student in students:
+        email = escape(student.user.email)
+        if not student.account_verified:
+            try:
+                student.send_verification_request_email()
+            except Exception:
+                logger.exception('Could not send verification email to %s', student.id)
+                failed.append(email)
+                continue
+            student.add_note(request.user, 'Resent account verification link')
+            verification.append(email)
+        elif continue_application.can_continue(student):
+            if continue_application.send_link(student, sent_by=request.user):
+                continuing.append(email)
+            else:
+                failed.append(email)
+        else:
+            skipped.append(email)
+
+    sections = [
+        ('Continue application link sent to', continuing),
+        ('Verification email sent to (not verified yet)', verification),
+        ('Skipped (application already finished)', skipped),
+        ('Could not send to', failed),
+    ]
+    message = '<br><br>'.join(
+        f'{title}:<br>' + '<br>'.join(emails) for title, emails in sections if emails)
+    return JsonResponse({
+        'outcome': 'alert',
+        'status': 'warning' if failed or not (continuing or verification) else 'success',
+        'title': 'Send Continue Application Link',
+        'message': message or 'No students selected.',
+    })
+
 @student_actions.action('verification', label='Get Verification Link', icon='fa fa-link', scope=['detail', 'bulk'])
 def get_verification_link(request):
     ids = request.POST.getlist('ids[]')

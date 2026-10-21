@@ -38,11 +38,20 @@ SIGNUP_ERROR_MESSAGE_KEYS = {
          'Email already on file on a non-student account.'),
     ],
     'verify_email': [
-        ('invalid_token', 'The verification link does not match the student.'),
-        ('account_already_verified', 'The email was verified previously.'),
+        ('invalid_token', 'The verification link does not match the student '
+                          '(shown on the Get a new link page).'),
+        ('account_already_verified', 'The email was verified previously '
+                                     '(shown on the Get a new link page).'),
         ('success', 'The email was verified just now.'),
     ],
+    'new_link': [
+        ('sent', 'Get a new link page submitted. The same text shows whether or not '
+                 'the email has an application, so it does not reveal accounts.'),
+        ('expired', 'A continue-application link was expired or already used.'),
+    ],
     'complete_signup': [
+        ('link_required', 'The application page was opened without a valid link '
+                          'or login (shown on the Get a new link page).'),
         ('awaiting_processing_error', 'The application is still being processed.'),
         ('error', 'The application could not be completed.'),
         ('success', 'The application was received.'),
@@ -96,6 +105,20 @@ class SettingForm(forms.Form):
         help_text='Displayed at top of Awaiting Verification Page',
         label="Awaiting Verification Page Intro.")
 
+    new_link_intro = forms.CharField(
+        max_length=None,
+        required=False,
+        widget=forms.Textarea,
+        help_text='Displayed at top of the Get a new link page (/student/new_link/).',
+        label="Get a New Link Page Intro.")
+
+    new_link_prompt = forms.CharField(
+        max_length=None,
+        required=False,
+        widget=forms.Textarea,
+        help_text='Shown under the Start Application form, linking to the Get a new link page. Use {{new_link_url}}. Leave blank to hide.',
+        label="Start Page: Get a New Link Prompt")
+
     confirm_verify_intro = forms.CharField(
         max_length=None,
         widget=forms.Textarea,
@@ -139,6 +162,8 @@ class SettingForm(forms.Form):
             'email_verify_intro': self.cleaned_data['email_verify_intro'],
             'awaiting_verify_intro': self.cleaned_data['awaiting_verify_intro'],
             'confirm_verify_intro': self.cleaned_data['confirm_verify_intro'],
+            'new_link_intro': self.cleaned_data.get('new_link_intro', ''),
+            'new_link_prompt': self.cleaned_data.get('new_link_prompt', ''),
             'intro': self.cleaned_data['intro'],
             'error_messages': self.cleaned_data['error_messages'],
             'verify_form_field_messages': self.cleaned_data['verify_form_field_messages'],
@@ -204,7 +229,7 @@ class signup(SettingForm):
             return {}
 
     def install(self):
-        defaults = {'email_verify_intro': 'Change Me', 'awaiting_verify_intro': '', 'intro': '<section class="jumbotron text-center bg-transparent">\r\n <div class="container">\r\n <div class="trans-bg rounded p-2">\r\n <h1 class="jumbotron-heading">Welcome to MyCE Demo Portal</h1>\r\n <h3>Your portal to concurrent enrollment</h3>\r\n<p class="alert alert-info">Please complete the form to start your application</p>\r\n </div>\r\n </div>\r\n </section>', 'signup_terms': 'Change this in Settings -> Students -> Signup Page', 'student_terms': 'Change this in Settings -> Students -> Signup Page', 'error_messages': '{"start_app": {"success": "Please check your email for further instructions","error": "Unable to create application. The administrator has been notified.","form_validation_fail": "Unable to complete request. Please correct the error(s) and try again","dup_email": {"non_student_account_exists": "An account with this email already exists. Unable to create a student account. Please contact our office for further assistance","account_unverified": "An account with this email already exists. A verification link has been emailed to this address. Please see that email for further instructions","being_processed": "An account with this email already exists. We will contact you once your application has been processed","incomplete_application": "You started an application with this email but did not finish it. A new link has been emailed to this address. Please use it to continue your application","account_exists_login": "An account with this email already exists. Please log in to continue"}' + '},"verify_email": {"invalid_token": "The verification token is not associated with the student. Please contact our office for further assistance","account_already_verified": "Your email has already been verified. Please contact our office for further assistance","success": "Your email has been successfully verified. Please continue"},"complete_signup": {"awaiting_processing_error": "Your application is currently being processed. Please contact our office for further assistance","error": "Unable to create application. The administrator has been notified.","success": "We have received your application. You will receive an email once you are ready to register for classes.","form_validation_fail": "Unable to complete request. Please correct the error(s) and try again"}' + '}'}
+        defaults = {'email_verify_intro': 'Change Me', 'awaiting_verify_intro': '', 'new_link_intro': '<p>Already started an application? Enter the email you applied with and we will send you a link back in.</p>', 'new_link_prompt': '<p class="mt-3">Already started an application and your link expired? <a href="{{new_link_url}}">Get a new link</a>.</p>', 'intro': '<section class="jumbotron text-center bg-transparent">\r\n <div class="container">\r\n <div class="trans-bg rounded p-2">\r\n <h1 class="jumbotron-heading">Welcome to MyCE Demo Portal</h1>\r\n <h3>Your portal to concurrent enrollment</h3>\r\n<p class="alert alert-info">Please complete the form to start your application</p>\r\n </div>\r\n </div>\r\n </section>', 'signup_terms': 'Change this in Settings -> Students -> Signup Page', 'student_terms': 'Change this in Settings -> Students -> Signup Page', 'error_messages': '{"start_app": {"success": "Please check your email for further instructions","error": "Unable to create application. The administrator has been notified.","form_validation_fail": "Unable to complete request. Please correct the error(s) and try again","dup_email": {"non_student_account_exists": "An account with this email already exists. Unable to create a student account. Please contact our office for further assistance","account_unverified": "An account with this email already exists. A verification link has been emailed to this address. Please see that email for further instructions","being_processed": "An account with this email already exists. We will contact you once your application has been processed","incomplete_application": "You started an application with this email but did not finish it. A new link has been emailed to this address. Please use it to continue your application","account_exists_login": "An account with this email already exists. Please log in to continue"}' + '},"verify_email": {"invalid_token": "That link is no longer valid. Enter your email below and we will send you a new one.","account_already_verified": "Your email is already verified. Enter your email below to get a link back into your application.","success": "Your email has been successfully verified. Please continue"},"new_link": {"sent": "If that email has an application in progress, we have sent it a link. Please check your inbox.","expired": "That link has expired or was already used. Enter your email below and we will send you a new one."},"complete_signup": {"link_required": "Please use the link in your email to continue your application. Enter your email below to get a new one.","awaiting_processing_error": "Your application is currently being processed. Please contact our office for further assistance","error": "Unable to create application. The administrator has been notified.","success": "We have received your application. You will receive an email once you are ready to register for classes.","form_validation_fail": "Unable to complete request. Please correct the error(s) and try again"}' + '}'}
 
         Setting.install_defaults(self.key, defaults)
 

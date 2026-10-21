@@ -181,10 +181,16 @@ class cisPasswordResetForm(PasswordResetForm):
             if 'student' in user_roles:
                 # Student has not completed part 2 of the student app
                 if not user.has_usable_password() or user.psid in ['', None]:
+                    from cis.services import continue_application
                     student = user.student
 
-                    student.reset_verification_id()
-                    student.send_verification_request_email()
+                    # Verified but unfinished: a link straight back into the
+                    # application, so they need not verify a second time.
+                    # Otherwise (never verified) a fresh verification email.
+                    if not (continue_application.can_continue(student)
+                            and continue_application.send_link(student)):
+                        student.reset_verification_id()
+                        student.send_verification_request_email()
 
                     email_sent_to.append(user.email)
                     continue

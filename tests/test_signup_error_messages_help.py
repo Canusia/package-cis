@@ -21,8 +21,9 @@ class SignupErrorMessagesHelpTextTests(TestCase):
             'dup_email.non_student_account_exists',
         ],
         'verify_email': ['invalid_token', 'account_already_verified', 'success'],
+        'new_link': ['sent', 'expired'],
         'complete_signup': [
-            'awaiting_processing_error', 'error', 'success',
+            'link_required', 'awaiting_processing_error', 'error', 'success',
             'form_validation_fail',
         ],
     }

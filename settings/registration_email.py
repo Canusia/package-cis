@@ -38,6 +38,20 @@ class SettingForm(forms.Form):
         help_text='Email template sent in verification email. Customize with {{student_first_name}}, {{student_last_name}}, {{verification_link}}. <a href="#" class="float-right" onClick="do_bulk_action(\'registration_email\', \'verification_email\')" >See Preview</a>',
         label="Verification Email")
 
+    continue_link_subject = forms.CharField(
+        max_length=200,
+        required=False,
+        help_text='Leave blank for "Continue your application".',
+        label="Continue Application Email Subject")
+
+    continue_link_email = forms.CharField(
+        max_length=None,
+        required=False,
+        widget=forms.Textarea,
+        validators=[validate_html_short_code],
+        help_text='Sent to a student who verified their email but has not finished the application (Get a new link page, Forgot Password, start page, staff action). Customize with {{student_first_name}}, {{student_last_name}}, {{continue_link}}, {{expires_in_days}}. Leave blank for the built-in wording. <a href="#" class="float-right" onClick="do_bulk_action(\'registration_email\', \'continue_link_email\')" >See Preview</a>',
+        label="Continue Application Email")
+
     # new_user_email_subject = forms.CharField(
     #     max_length=200,
     #     help_text='',
@@ -128,6 +142,9 @@ class SettingForm(forms.Form):
             'verify_email_subject': self.cleaned_data['verify_email_subject'],
             'verification_email': self.cleaned_data['verification_email'],
 
+            'continue_link_subject': self.cleaned_data.get('continue_link_subject', ''),
+            'continue_link_email': self.cleaned_data.get('continue_link_email', ''),
+
             # 'new_user_email_subject': self.cleaned_data['new_user_email_subject'],
             # 'new_user_email': self.cleaned_data['new_user_email'],
 
@@ -189,6 +206,10 @@ class registration_email(SettingForm):
         elif field_name == 'id_assigned_email':
             subject = email_settings.get('id_assigned_subject')
             email = email_settings.get('id_assigned_email')
+        elif field_name == 'continue_link_email':
+            from cis.services.continue_application import DEFAULT_EMAIL
+            subject = email_settings.get('continue_link_subject')
+            email = email_settings.get('continue_link_email') or DEFAULT_EMAIL
    
         message = Template(email)
         context = Context({
@@ -199,7 +220,9 @@ class registration_email(SettingForm):
             'campus': "Campus Name",
             'registration_status': 'Registration Status',
             'parent_consent_url': 'https://custom-url-for-student',
-            'verification_link': 'https://custom-url-for-student'
+            'verification_link': 'https://custom-url-for-student',
+            'continue_link': 'https://custom-url-for-student',
+            'expires_in_days': 3,
         })
         
         text_body = message.render(context)
@@ -216,6 +239,10 @@ class registration_email(SettingForm):
         defaults = {
             'verify_email_subject': 'Change Me',
             'verification_email': 'Change Me',
+
+            # Blank = cis.services.continue_application's built-in wording.
+            'continue_link_subject': '',
+            'continue_link_email': '',
 
             'is_active': "Change this in Settings -> Students -> Registration Email",
             'new_user_email_subject': 'No',
