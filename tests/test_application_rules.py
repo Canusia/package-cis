@@ -145,6 +145,24 @@ class UniqueStudentTests(TestCase):
                                          student=self.existing, data=self._data())
         self.assertTrue(form.is_valid(), form.errors.as_json())
 
+    def test_an_applicant_bound_to_their_stub_is_still_checked(self):
+        """complete_signup binds the stub made at the email step. Binding
+        used to skip the check, so it never ran on a real application."""
+        user = User.objects.create_user(
+            username=f'stub_{_sfx()}', email=f'stub_{_sfx()}@x.com', password='x')
+        stub = Student.objects.create(user=user)
+        form = SpecDrivenApplicationForm(spec=self.SPEC, rules=self.RULES,
+                                         student=stub, data=self._data())
+        self.assertFalse(form.is_valid())
+        self.assertTrue(form.non_field_errors())
+        self.assertIn('first_name', form.errors)
+
+    def test_without_fields_the_tenant_rules_apply(self):
+        form = SpecDrivenApplicationForm(
+            spec=self.SPEC, rules=[{'rule': 'unique_student'}], data=self._data())
+        self.assertFalse(form.is_valid())
+        self.assertTrue(form.non_field_errors())
+
 
 class TenantValidatorTests(TestCase):
     """The escape hatch, and the ownership handoff."""

@@ -24,7 +24,8 @@ class SignupErrorMessagesHelpTextTests(TestCase):
         'new_link': ['sent', 'expired'],
         'complete_signup': [
             'link_required', 'awaiting_processing_error', 'error', 'success',
-            'form_validation_fail',
+            'form_validation_fail', 'dup_student.default', 'dup_student.ssn',
+            'dup_student.identity',
         ],
     }
 

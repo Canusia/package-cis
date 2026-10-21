@@ -83,42 +83,23 @@ def fields_must_differ(form, cleaned_data, config):
 
 
 def unique_student(form, cleaned_data, config):
-    """Reject a new applicant who matches an existing student on every field
-    named. Skipped when the form is bound to a student — that person editing
-    their own record is not a duplicate.
+    """Reject an applicant who matches another student, using the shared
+    duplicate-student rules (cis.services.duplicate_students).
 
-    fields: [first_name, last_name, date_of_birth, highschool] — each name is
-    both the form field and the lookup, resolved against Student via the
-    field's own storage metadata (user attrs go through `user__`).
+    With `fields`, those fields are the one rule checked (named by `name`,
+    default 'identity'); without, the tenant's duplicate-student RULES are.
+    The form's bound student is excluded rather than skipping the check —
+    complete_signup always binds the student created at the email step, so
+    skipping it meant the check never ran on a real application.
     """
-    if getattr(form, 'student', None):
-        return
+    from cis.services import duplicate_students
 
-    from cis.models.student import Student
-
-    lookups = {}
-    for name in _positional(config):
-        value = cleaned_data.get(name)
-        if value in (None, ''):
-            return  # an incomplete answer cannot be a confirmed duplicate
-        field = form.fields.get(name)
-        target = getattr(field, 'storage_target', None)
-        path = getattr(field, 'storage_path', None) or name
-        if target == 'user':
-            lookups[f'user__{path}'] = value
-        elif target == 'student':
-            lookups[path] = value
-        else:
-            return  # not a stored field; nothing to compare against
-
-    if not lookups:
-        return
-
-    if Student.objects.filter(**lookups).exists():
-        message = config.get('message', _(
-            'There is already an account for a student with the same details.'))
-        for name in _positional(config):
-            form.add_error(name, message)
+    rules = None
+    if config.get('fields'):
+        rules = [{'name': config.get('name', 'identity'),
+                  'fields': _positional(config)}]
+    duplicate_students.add_duplicate_errors(
+        form, cleaned_data, exclude=getattr(form, 'student', None), rules=rules)
 
 
 RULES = {

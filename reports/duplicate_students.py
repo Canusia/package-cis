@@ -11,75 +11,75 @@ from cis.backends.storage_backend import PrivateMediaStorage
 from crispy_forms.helper import FormHelper
 from crispy_forms.layout import Submit
 
-from cis.utils import get_field
-from cis.models.customuser import CustomUser
+from cis.services import duplicate_students as dup
+
 
 class duplicate_students(forms.Form):
-    
+    """Students who match each other under the tenant's duplicate-student
+    rules — the same rules that block a duplicate signup, so the report and
+    the application never disagree about what a duplicate is."""
 
     roles = []
     request = None
+
+    COLUMNS = [
+        'Group', 'Matched On', 'Canusia Id', 'User ID', 'Last Name',
+        'First Name', 'Middle Name', 'Date of Birth', 'High School', 'Email',
+        'Account Verified', 'Application Completed', 'Joined On',
+    ]
+
     def __init__(self, request=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.request = request
 
         self.helper = FormHelper()
-        # self.helper.attrs = {'target':'_blank'}
         self.helper.form_method = 'POST'
         self.helper.add_input(Submit('submit', 'Generate Export'))
 
-        # for cis users only show their campus
         if self.request:
             self.helper.form_action = reverse_lazy(
                 'report:run_report', args=[request.GET.get('report_id')]
             )
-        
-    def get_result(self, data):
-        # filter students who have same first name, last name, and date of birth but different email
-        records = CustomUser.objects.raw('''
-            SELECT u1.*
-            FROM cis_customuser u1
-            JOIN cis_customuser u2
-            ON u1.first_name = u2.first_name
-            AND u1.last_name = u2.last_name
-            AND u1.email <> u2.email
-            WHERE u1.id <> u2.id
-            ORDER BY u1.last_name, u1.first_name
-        ''')
-        return records
+
+    @staticmethod
+    def _matched_on(rule):
+        return ', '.join(
+            name.replace('_', ' ').capitalize() for name in rule['fields'])
+
+    def get_rows(self, data=None):
+        """One row per student per group. The matched values themselves
+        (an SSN, notably) are never written — only which fields matched."""
+        rows = []
+        for number, (rule, students) in enumerate(dup.find_duplicate_groups(), 1):
+            matched_on = self._matched_on(rule)
+            for student in sorted(students, key=lambda s: s.user.date_joined):
+                user = student.user
+                rows.append([
+                    number,
+                    matched_on,
+                    user.id,
+                    user.psid or '',
+                    user.last_name,
+                    user.first_name,
+                    user.middle_name or '',
+                    user.date_of_birth.strftime('%m/%d/%Y') if user.date_of_birth else '',
+                    student.highschool.name if student.highschool_id else '',
+                    user.email,
+                    'Yes' if student.account_verified else 'No',
+                    'Yes' if user.psid else 'No',
+                    user.date_joined.strftime('%m/%d/%Y'),
+                ])
+        return rows
 
     def run(self, task, data):
-        records = self.get_result(data)
-        
         file_name = "potential-dup-student-export.csv"
-        fields = {
 
-            'id': 'Canusia Id',
-            'psid': 'User ID',
-
-            'first_name': 'First Name',
-            'last_name': 'Last Name',
-            'middle_name': 'Middle Name',
-            'suffix': 'Suffix',
-            'preferred_name': 'Preferred Name',
-            'email': 'Email'
-        }
-        
-        result = []
         stream = io.StringIO()
         writer = csv.writer(stream, delimiter=',')
-
-        writer.writerow(list(fields.values()))
-        for record in records:
-            row = []
-            for key in fields.keys():
-                
-                row.append(
-                    force_str(get_field(record, key))
-                )
-
-            writer.writerow(row)
+        writer.writerow(self.COLUMNS)
+        for row in self.get_rows(data):
+            writer.writerow([force_str(value) for value in row])
 
         now = datetime.datetime.now().strftime("%Y/%m")
         path = f"reports/{now}/" + str(task.id) + "/" + file_name

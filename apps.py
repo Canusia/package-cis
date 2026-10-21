@@ -484,7 +484,7 @@ class CisConfig(AppConfig):
         {
             'name': 'duplicate_students',
             'title': 'Potential Duplicate Students Export',
-            'description': '-',
+            'description': 'Students who match each other under the duplicate-student rules that block a duplicate application (by default: same SSN, or same name, date of birth and high school).',
             'categories': [
                 'Students'
             ],
