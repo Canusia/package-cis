@@ -431,9 +431,9 @@ def assigned_instructors_tab(request, record):
         summary = {'instructors': len({t for _, t in pairs}),
                    'courses': len({c for c, _ in pairs})}
 
-    # The faculty portal's instructor list resolves through
-    # active_academic_year(); sections use their own term's year (package-
-    # faculty#2, D1). The fallback over-shows by design, so a wrong-year
+    # The faculty portal resolves through active_academic_year(), for the
+    # instructor list and for sections of every term (package-faculty#3,
+    # superseding #2's D1). The fallback over-shows by design, so a wrong-year
     # configuration is easy to miss -- QA hit exactly this within minutes, so
     # the page names the active year rather than leaving it to be inferred.
     active_year = active_academic_year()
