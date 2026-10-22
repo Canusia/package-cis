@@ -106,6 +106,19 @@ def tenant_non_importable_fields():
     return tuple(getattr(_tenant_module(), 'NON_IMPORTABLE_FIELDS', ()) or ())
 
 
+def tenant_import_blank_as_no_fields():
+    """Optional Yes/No fields whose blank CSV cell this tenant stores as "No".
+
+    Opt-in by name, read by StudentImportRowForm. A counselor's SIS export
+    often leaves the "no"s blank (IEP, 504), but for self-identification or
+    attestation fields blank means "not reported", and cis cannot tell the two
+    apart — so nothing is defaulted unless the tenant lists it here.
+
+    Absent export -> (), i.e. blanks stay blank.
+    """
+    return tuple(getattr(_tenant_module(), 'IMPORT_BLANK_AS_NO_FIELDS', ()) or ())
+
+
 class EditableProfileMixin:
     """Post-SIS editable profile: restrict the field set by application status.
 

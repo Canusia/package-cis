@@ -310,10 +310,13 @@ class syllabi_review(forms.Form):
 
         # A field the saved setting has no value for shows the copy readers
         # would actually send (legacy key, else default), so saving the form
-        # keeps it rather than dropping it (#110).
+        # keeps it rather than dropping it (#110). Copied first: callers pass
+        # the stored Setting.value itself as initial.
+        stored = self.initial
+        self.initial = dict(stored)
         for key in self.DEFAULTS:
             if key in self.fields and not self.initial.get(key):
-                self.initial[key] = self.resolve(key, self.initial)
+                self.initial[key] = self.resolve(key, stored)
 
     def install(self):
         defaults = {"mode": "test", "testers": "kadaji@gmail.com", **self.DEFAULTS}

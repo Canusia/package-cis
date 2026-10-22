@@ -86,6 +86,28 @@
       });
     }
 
+    // Email previews are whole documents (cis/email.html) with global
+    // <style> rules; inlined, they would restyle this page. Those go in a
+    // sandboxed iframe (no scripts) sized to its content; fragments inline.
+    var FULL_DOCUMENT = /<(html|head|body|style|link)\b/i;
+    function previewContent(html) {
+      if (!FULL_DOCUMENT.test(html || '')) {
+        return $('<div class="so-preview-content"></div>').html(html);
+      }
+      var frame = document.createElement('iframe');
+      frame.className = 'so-preview-content w-100 border-0 bg-white';
+      frame.setAttribute('sandbox', 'allow-same-origin');
+      frame.setAttribute('title', 'Preview');
+      frame.style.minHeight = '200px';
+      frame.onload = function () {
+        try {
+          frame.style.height = (frame.contentDocument.documentElement.scrollHeight + 16) + 'px';
+        } catch (e) { /* keep the min-height */ }
+      };
+      frame.srcdoc = html;
+      return $(frame);
+    }
+
     // Load the preview into a pane right under the field the link belongs to.
     function showPreview(setting, field, anchor) {
       var url = $('#so-preview-config').data('url-show-preview');
@@ -108,7 +130,7 @@
             $pane.append('<p class="small text-warning mb-2">This shows the saved text. ' +
                          'Save the form to preview your changes.</p>');
           }
-          $pane.append($('<div class="so-preview-content"></div>').html(html));
+          $pane.append(previewContent(html));
         },
         error: function () {
           $pane.children().not($head).remove();

@@ -87,13 +87,14 @@ class StudentImportRowForm(StudentProfileForm):
     DATE_INPUT_FORMATS = ('%m/%d/%Y', '%m-%d-%Y', '%Y-%m-%d', '%Y/%m/%d')
     DATE_FIELDS = ('date_of_birth', 'start_date', 'graduation_date')
 
-    # A blank cell in an optional Yes/No column is stored as "No", so a
-    # counselor can fill in only the yeses. Set False in a subclass to keep
-    # blanks blank. Required Yes/No fields are never defaulted (a blank there
-    # stays a "required" error), nor are the self-identification fields named
-    # in BLANK_YES_NO_EXEMPT, where blank means "not reported", not "No".
-    BLANK_YES_NO_AS_NO = True
-    BLANK_YES_NO_EXEMPT = ('hispanic',)
+    # Optional Yes/No columns whose blank cell is stored as "No", so a
+    # counselor can fill in only the yeses. Opt-in per field: cis cannot know
+    # whether a tenant's blank means "No" or "not reported" (self-
+    # identification, attestations), and recording a "No" nobody gave is the
+    # worse mistake. Tenants list theirs as IMPORT_BLANK_AS_NO_FIELDS in their
+    # student_profile_form module (see tenant_import_blank_as_no_fields());
+    # a subclass may extend this tuple. Required fields are never defaulted.
+    BLANK_AS_NO_FIELDS = ()
 
     # Generic account mechanics only. Anything tenant-specific comes from
     # tenant_non_importable_fields() — 'cte' used to sit in this tuple and is an
@@ -131,7 +132,7 @@ class StudentImportRowForm(StudentProfileForm):
             self.fields['same_as_permanent'].initial = True
 
         # single-cell date binding (base form uses SelectDateWidget/date input)
-        invalid_date = 'Enter a real date as %s.' % self._formats_phrase()
+        invalid_date = 'Enter a real date as %s.' % self._message_formats_phrase()
         for name in self.DATE_FIELDS:
             if name in self.fields:
                 field = self.fields[name]
@@ -185,9 +186,16 @@ class StudentImportRowForm(StudentProfileForm):
     def _formats_phrase(self):
         return ', '.join(self.accepted_date_formats())
 
+    def _message_formats_phrase(self):
+        # For ValidationError messages, which Django (and tenant fields that
+        # re-raise with params) %-format: a directive left untranslated by a
+        # settings override ('%b') would otherwise raise ValueError while the
+        # errors render.
+        return self._formats_phrase().replace('%', '%%')
+
     def _reject_two_digit_year(self, to_python):
         message = ('Use a four-digit year. Accepted formats: %s.'
-                   % self._formats_phrase())
+                   % self._message_formats_phrase())
 
         def wrapped(value):
             if isinstance(value, str):
@@ -199,8 +207,10 @@ class StudentImportRowForm(StudentProfileForm):
         return wrapped
 
     def _blank_defaults_to_no(self, name, field):
-        return (self.BLANK_YES_NO_AS_NO and not field.required
-                and name not in self.BLANK_YES_NO_EXEMPT)
+        if field.required:
+            return False
+        return name in (tuple(self.BLANK_AS_NO_FIELDS)
+                        + _profile.tenant_import_blank_as_no_fields())
 
     def _normalized_data(self, data):
         """A copy of the bound data with yes/no, boolean and choice cells

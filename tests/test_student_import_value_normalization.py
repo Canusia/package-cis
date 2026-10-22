@@ -5,7 +5,8 @@ counselors' own SIS exports produce.
   two-digit years are rejected with a message that names the accepted formats;
 * yes/no choice columns: whitespace and case are ignored, and y/n, true/false,
   1/0 map onto the field's own Yes/No choice values;
-* a blank optional yes/no cell is stored as "No" (class flag, opt-out).
+* a blank optional yes/no cell is stored as "No" only for the fields a tenant
+  opts in (IMPORT_BLANK_AS_NO_FIELDS); everything else keeps its blank.
 
 Asserted on fields declared here rather than on a tenant's field names, so the
 suite holds on every tenant: tests subclass the row form and add the fields.
@@ -13,6 +14,8 @@ suite holds on every tenant: tests subclass the row form and add the fields.
 import datetime
 
 from django import forms
+from unittest import mock
+
 from django.test import TestCase, override_settings
 
 from cis.forms.student_import import StudentImportRowForm
@@ -35,6 +38,8 @@ class _Form(StudentImportRowForm):
     phone_kind = forms.ChoiceField(
         choices=[('Mobile', 'Cell'), ('Home', 'Home')], required=False)
     hispanic = forms.ChoiceField(choices=YES_NO_INT, required=False)
+
+    BLANK_AS_NO_FIELDS = ('iep', 'plan_504', 'coded', 'must_answer')
 
 
 def _clean(form_cls=_Form, **data):
@@ -91,12 +96,22 @@ class YesNoNormalizationTests(TestCase):
         form = _clean(hispanic='')
         self.assertIn(form.cleaned_data.get('hispanic'), ('', None))
 
-    def test_blank_as_no_can_be_switched_off(self):
-        class _OptOut(_Form):
-            BLANK_YES_NO_AS_NO = False
+    def test_blank_stays_blank_unless_the_field_is_opted_in(self):
+        class _NotListed(_Form):
+            BLANK_AS_NO_FIELDS = ()
 
-        form = _clean(_OptOut, iep='')
+        form = _clean(_NotListed, iep='')
         self.assertEqual(form.cleaned_data['iep'], '')
+
+    def test_tenant_seam_opts_fields_in(self):
+        class _NotListed(_Form):
+            BLANK_AS_NO_FIELDS = ()
+
+        with mock.patch('cis.forms.student_profile.tenant_import_blank_as_no_fields',
+                        return_value=('iep',)):
+            form = _clean(_NotListed, iep='', plan_504='')
+        self.assertEqual(form.cleaned_data['iep'], 'No')
+        self.assertEqual(form.cleaned_data['plan_504'], '')
 
     def test_non_binary_choice_fields_get_no_blank_default(self):
         form = _clean(three_way='')
@@ -166,6 +181,15 @@ class DateFormatTests(TestCase):
             self.assertEqual(form.cleaned_data.get('date_of_birth'),
                              datetime.date(2011, 5, 2))
             self.assertIn('date_of_birth', self._dob('05/02/2011').errors)
+
+    def test_untranslated_directive_survives_param_formatting(self):
+        # Tenant date fields re-raise 'invalid' with params={'value': ...};
+        # Django then applies message % params, which a bare '%b' would break.
+        with override_settings(STUDENT_IMPORT_DATE_INPUT_FORMATS=['%b %d, %Y']):
+            form = StudentImportRowForm()
+            message = form.fields['date_of_birth'].error_messages['invalid']
+            rendered = message % {'value': 'x'}
+        self.assertIn('%b', rendered)
 
     def test_display_formats(self):
         self.assertEqual(
