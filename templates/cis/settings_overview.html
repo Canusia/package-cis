@@ -60,7 +60,78 @@
   </div>
 </div>
 
+{# The "See Preview" links inside setting forms call do_bulk_action(setting, field), #}
+{# which only package-setting's own page defines. This page rewires them to its own #}
+{# namespaced handler (package-cis#111), so a tenant global of that name can't shadow it. #}
+<div id="so-preview-config" data-url-show-preview="{% url 'setting:show_preview' %}" style="display:none;"></div>
+
 <script>
+  // "See Preview" support for the forms injected below (package-cis#111).
+  window.cisSettingsOverview = (function ($) {
+    // Matches the inline call package-setting's forms put in their help text.
+    var PREVIEW_CALL = /do_bulk_action\(\s*['"]([^'"]*)['"]\s*,\s*['"]([^'"]*)['"]\s*\)/;
+    var formChanged = false;
+
+    // Swap each inline do_bulk_action(...) onclick for data attributes, so the
+    // click resolves to showPreview below and never to a same-named global.
+    function rewirePreviewLinks($root) {
+      formChanged = false;
+      $root.find('[onclick]').each(function () {
+        var match = PREVIEW_CALL.exec(this.getAttribute('onclick') || '');
+        if (!match) { return; }
+        this.removeAttribute('onclick');
+        $(this).addClass('so-preview')
+          .attr('data-preview-setting', match[1])
+          .attr('data-preview-field', match[2]);
+      });
+    }
+
+    // Load the preview into a pane right under the field the link belongs to.
+    function showPreview(setting, field, anchor) {
+      var url = $('#so-preview-config').data('url-show-preview');
+      var $group = $(anchor).closest('.form-group');
+      if (!$group.length) { $group = $(anchor).parent(); }
+      var $pane = $group.next('.so-preview-pane');
+      if (!$pane.length) {
+        $pane = $('<div class="so-preview-pane border rounded p-2 mb-3 bg-light"></div>');
+        $group.after($pane);
+      }
+      var $head = $('<div class="d-flex justify-content-between align-items-center mb-2">' +
+                    '<strong class="small">Preview</strong>' +
+                    '<a href="#" class="small so-preview-close">Close</a></div>');
+      $pane.empty().append($head).append('<div class="small text-muted">Loading&hellip;</div>');
+      $.ajax({
+        type: 'GET', url: url, data: { setting: setting, field: field },
+        success: function (html) {
+          $pane.children().not($head).remove();
+          if (formChanged) {
+            $pane.append('<p class="small text-warning mb-2">This shows the saved text. ' +
+                         'Save the form to preview your changes.</p>');
+          }
+          $pane.append($('<div class="so-preview-content"></div>').html(html));
+        },
+        error: function () {
+          $pane.children().not($head).remove();
+          $pane.append('<div class="small text-danger">Preview is not available for this field.</div>');
+        },
+      });
+    }
+
+    $(document).on('click', '#so-edit-body .so-preview', function (e) {
+      e.preventDefault();
+      showPreview($(this).attr('data-preview-setting'), $(this).attr('data-preview-field'), this);
+    });
+    $(document).on('click', '#so-edit-body .so-preview-close', function (e) {
+      e.preventDefault();
+      $(this).closest('.so-preview-pane').remove();
+    });
+    $(document).on('input change', '#so-edit-body form :input', function () {
+      formChanged = true;
+    });
+
+    return { showPreview: showPreview, rewirePreviewLinks: rewirePreviewLinks };
+  })(jQuery);
+
   jQuery(function ($) {
     var recordDetailsUrl = "{% url 'setting:record_details' %}";
     // run_record reverses with a placeholder uuid; swap it per-record.
@@ -76,6 +147,7 @@
           // record_details always responds 200; status distinguishes success/error.
           if (resp.status !== 'success') { alert(resp.message || 'Unable to load setting.'); return; }
           $('#so-edit-body').html(resp.report);
+          window.cisSettingsOverview.rewirePreviewLinks($('#so-edit-body'));
           $('#so-edit-modal').modal('show');
         },
         error: function () { alert('Unable to load setting.'); },

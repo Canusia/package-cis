@@ -1,0 +1,8 @@
+<div class="cis-blurb-preview">
+  <p class="text-muted small mb-2">Shown at the top of the <strong>{{ page_label }}</strong> page.</p>
+  <div class="card">
+    <div class="card-body">
+      {% if blurb %}{{ blurb|safe }}{% else %}<span class="text-muted font-italic">Nothing saved yet.</span>{% endif %}
+    </div>
+  </div>
+</div>

@@ -342,24 +342,11 @@ class roster_verification(SettingForm):
         email_settings = self.from_db()
 
         if field_name in ['intro']:
-            grade_settings = self.from_db()
-            
-            return render(
-                request,
-                'instructor/class_section.html',
-                {
-                    'menu': None,
-                    'intro': instructor_text.get('classes_blurb', 'Change me'),
-                    'class_section': None,
-                    'students_in_class': None,
-                    'syllabi': None,
-                    'verify_roster_form': None,
-                    'intro': instructor_text.get('class_blurb', 'Change me'),
-                    'schedule_form': None,
-                    'notes': [],
-                    'roster_intro': grade_settings.get('intro'),
-                    'syllabi_form': None
-                })
+            # Just the roster intro, as it heads the roster: the class-section
+            # page rendered with no section raised NoReverseMatch (package-cis#111).
+            from cis.services.blurb_preview import render_blurb_preview
+            return render_blurb_preview(
+                request, 'instructor roster verification', email_settings.get('intro'))
 
         if field_name in ['request_verify_email' ]:
             subject = email_settings.get('request_verify_subject')

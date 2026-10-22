@@ -13,48 +13,46 @@ from ..models.settings import Setting
 
 from cis.menu import HS_ADMIN_MENU as PORTAL_PAGES
 
+# Pages that show a blurb but have no menu item of their own.
+EXTRA_BLURB_PAGES = (
+    {'name': 'side_bar', 'label': 'Sidebar on Dashboard'},
+    {'name': 'student', 'label': 'Student Page'},
+)
+
+
+def blurb_fields():
+    """``[(field_name, label)]``: one ``<menu item name>_blurb`` per HS admin page.
+
+    The single source for both the form's fields and ``preview()``, so every
+    field the form shows has a preview (package-cis#111). Only visible menu
+    items count; text already stored for a hidden item is left untouched by
+    run_record().
+    """
+    from cis.menu import get_role_menu
+
+    result = []
+    for menu_item in list(get_role_menu('highschool_admin')) + list(EXTRA_BLURB_PAGES):
+        if menu_item.get('name') == 'logout':
+            continue
+        for page in menu_item.get('sub_menu') or [menu_item]:
+            result.append((f'{page["name"]}_blurb', page['label']))
+    return result
+
+
 class SettingForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        from cis.menu import get_role_menu
-
-        # Only visible menu items get a blurb field. Text already stored for a
-        # hidden item is left untouched by run_record().
-        menu = get_role_menu('highschool_admin')
-
-        menu.append({
-            'name': 'side_bar',
-            'label': 'Sidebar on Dashboard'
-        })
-        
-        menu.append({
-            'name': 'student',
-            'label': 'Student Page'
-        })
-        
-        for menu_item in menu:
-            if menu_item.get('name') == 'logout':
-                continue
-
-            if menu_item.get('sub_menu'):
-                for sub_menu in menu_item.get('sub_menu'):
-                    self.fields[
-                        f'{sub_menu["name"]}_blurb'
-                    ] = forms.CharField(
-                        widget=forms.Textarea,
-                        help_text=f'Displayed at the top of {sub_menu["label"]} page',
-                        label=sub_menu['label']
-                    )
-            else:        
-                self.fields[
-                    f'{menu_item["name"]}_blurb'
-                ] = forms.CharField(
-                    widget=forms.Textarea,
-                    help_text=f'Displayed at the top of {menu_item["label"]} page. <a href="#" class="float-right" onClick="do_bulk_action(\'highschool_admin_portal\', \'{menu_item["name"]}_blurb\')" >See Preview</a>',
-                    label=menu_item['label']
-                )
+        for field_name, label in blurb_fields():
+            self.fields[field_name] = forms.CharField(
+                widget=forms.Textarea,
+                help_text=(
+                    f'Displayed at the top of {label} page. '
+                    f'<a href="#" class="float-right" onClick="do_bulk_action('
+                    f'\'highschool_admin_portal\', \'{field_name}\')" >See Preview</a>'),
+                label=label
+            )
 
     def _to_python(self):
         """
@@ -81,44 +79,17 @@ class highschool_admin_portal(SettingForm):
         self.helper.add_input(Submit('submit', 'Save Setting'))
 
     def preview(self, request, field_name):
-        from django.shortcuts import (
-            render
-        )
-        from django.conf import settings
+        """Just the blurb, as it heads its page (package-cis#111).
 
-        from cis.models.student import Student
-        from cis.models.term import AcademicYear
-        from cis.models.course import Cohort, Course
-        from cis.forms.student import StudentForm
-        from cis.settings.highschool_admin_portal import highschool_admin_portal as portal_lang
+        Any field name answers -- an unknown one gets a label derived from
+        its name -- so the preview endpoint never 400s on a field the form
+        builds from the tenant's menu.
+        """
+        from cis.services.blurb_preview import render_blurb_preview
 
-        if field_name in ['home_blurb']:
-            template = 'highschool_admin/dashboard.html'
-        elif field_name in ['students_blurb']:
-            template = 'highschool_admin/students.html'
-        elif field_name in ['notes_blurb']:
-            template = 'highschool_admin/student_notes.html'
-        elif field_name in ['transcripts_blurb']:
-            template = 'highschool_admin/transcripts.html'
-        elif field_name in ['section_requests_blurb']:
-            template = 'highschool_admin/section_requests.html'
-        elif field_name in ['reports_blurb']:
-            template = 'reports/index.html'
-        elif field_name in ['administrators_blurb']:
-            template = 'highschool_admin/personnel.html'
-        elif field_name in ['manage_password_blurb']:
-            template = 'highschool_admin/manage_password.html'
-        return render(
-            request,
-            template,
-            {
-                'menu': None,
-                'pending_applications': [],
-                'form': '',
-                'intro': portal_lang(request).from_db().get(field_name, 'Change me'),
-                'announcements': [],
-                'nav_items': None
-            })
+        label = dict(blurb_fields()).get(field_name) or (
+            field_name.removesuffix('_blurb').replace('_', ' ').title())
+        return render_blurb_preview(request, label, self.from_db().get(field_name))
 
     def install(self):
         defaults = {
