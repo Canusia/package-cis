@@ -559,6 +559,35 @@ class AssignedInstructorsModesTests(AssignedInstructorsTabMixin, TestCase):
         self.assertEqual(self._rows(), set())
         self.assertIn(UNASSIGNED_TEXT, html)
 
+    def test_by_instructor_an_instructor_certified_after_render_does_not_flip_all(self):
+        """The save trusts what the form showed, not today's certificates."""
+        html = self._get(view='instructor')
+        self.assertIn(f'name="was_all" value="{self.course.id}"', html)
+        self.assertIn(f'name="shown" value="{self.course.id}:{self.a.id}"', html)
+        self._certifies(self._teacher(), self.course)   # between render and save
+        self._save(view='instructor', was_all=[str(self.course.id)],
+                   shown=[f'{self.course.id}:{self.a.id}', f'{self.course.id}:{self.b.id}'],
+                   pair=[f'{self.course.id}:{self.a.id}', f'{self.course.id}:{self.b.id}'])
+        self.assertFalse(self._configured())
+
+    def test_a_course_posted_twice_is_saved_once(self):
+        self._assign(self.a, self.course)
+        self._save(course=[str(self.course.id)] * 2,
+                   **{f'mode_{self.course.id}': 'none'})
+        self.assertEqual(self._rows(), set())
+        self.assertTrue(self._configured())
+
+    def test_statuses_differing_only_in_case_badge_once(self):
+        TeacherCourseCertificate.objects.filter(
+            teacher_highschool__teacher=self.b).update(status='Inactive')
+        other_hs = HighSchool.objects.create(name=f'HS-{_suffix()}')
+        ths = TeacherHighSchool.objects.create(teacher=self.b, highschool=other_hs)
+        TeacherCourseCertificate.objects.create(
+            teacher_highschool=ths, course=self.course, status='inactive')
+        html = self._get(cert_status='all')
+        self.assertIn('certificate inactive<', html)
+        self.assertNotIn('inactive, inactive', html)
+
     def test_by_instructor_offers_reset_only_for_configured_courses(self):
         self.assertNotIn('name="reset_all"', self._get(view='instructor'))
         self._assign(self.a, self.course)

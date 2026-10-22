@@ -60,13 +60,22 @@ def default_visible_teachers(user, academic_year=None):
     if academic_year is None:
         academic_year = active_academic_year()
 
-    by_certificate = TeacherCourseCertificate.objects.filter(visible_pairs_q(
+    # Narrowed to the overseen courses first, so the pair rule's correlated
+    # subqueries run over this mentor's rows, not the tenant's whole table.
+    # The pair rule requires an overseen course anyway, so this changes cost,
+    # not results.
+    overseen = CourseAdministrator.objects.filter(
+        user=user, status__iexact='active').values('course_id')
+
+    by_certificate = TeacherCourseCertificate.objects.filter(
+        course_id__in=overseen,
+    ).filter(visible_pairs_q(
         user, course_field='course_id',
         teacher_field='teacher_highschool__teacher_id',
         academic_year=academic_year,
     )).values('teacher_highschool__teacher_id')
     by_assignment = FacultyTeacherAssignment.objects.filter(
-        user=user, academic_year=academic_year,
+        user=user, academic_year=academic_year, course_id__in=overseen,
     ).filter(visible_pairs_q(
         user, course_field='course_id', teacher_field='teacher_id',
         academic_year=academic_year,
@@ -144,9 +153,11 @@ def default_visible_pairs_q(user, *, course_field, teacher_field, year_field=Non
     - the course is not configured for the year (the fallback), and -- when
       `require_certificate` -- the teacher is certified for the course.
 
-    The year is the row's own (`year_field`, e.g. 'term__academic_year') when
-    given -- a section is judged against its own term's year -- else
-    `academic_year`, else the active year. Correlated EXISTS subqueries, so it
+    The year is `academic_year`, else the active year. `year_field` (e.g.
+    'term__academic_year') judges each row against its own year instead; the
+    faculty portal stopped passing it in package-faculty v0.0.4 (#3), and it
+    stays in the signature because v0.0.3 still does -- a tenant override
+    must accept and forward it. Correlated EXISTS subqueries, so it
     stays one query however many courses are overseen.
     """
     year = OuterRef(year_field) if year_field else (

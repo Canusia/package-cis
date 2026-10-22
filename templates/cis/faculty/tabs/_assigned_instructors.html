@@ -69,9 +69,10 @@ Two things this fragment must keep saying out loud:
         {% endcomment %}
         <p class="alert alert-warning">
             <strong>{{ academic_year }}</strong> is not the active academic year
-            ({{ active_year }}). The faculty portal &mdash; instructor list and sections
-            of every term &mdash; uses {{ active_year }}, so assignments saved here
-            take effect only when {{ academic_year }} becomes active.
+            ({{ active_year }}). The faculty member's instructor list uses
+            {{ active_year }}, and so do their sections of every term (with the
+            faculty portal v0.0.4 or later), so assignments saved here take effect
+            when {{ academic_year }} becomes active.
         </p>
         {% endif %}
 
@@ -167,7 +168,7 @@ Two things this fragment must keep saying out loud:
             <input type="hidden" name="academic_year" value="{{ academic_year.id }}">
             <input type="hidden" name="cert_status" value="{{ cert_filter }}">
             <input type="hidden" name="view" value="instructor">
-            {% for row in rows %}<input type="hidden" name="course" value="{{ row.course.id }}">{% endfor %}
+            {% for row in rows %}<input type="hidden" name="course" value="{{ row.course.id }}">{% if row.mode == 'all' %}<input type="hidden" name="was_all" value="{{ row.course.id }}">{% endif %}{% for teacher in row.teachers %}<input type="hidden" name="shown" value="{{ row.course.id }}:{{ teacher.id }}">{% endfor %}{% endfor %}
             <p class="text-muted small">
                 Tick each instructor's courses. A course set to "All certified
                 instructors" shows everyone ticked; untick someone and it switches

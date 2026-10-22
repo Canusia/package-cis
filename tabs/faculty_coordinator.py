@@ -110,11 +110,14 @@ def _certified_teachers(courses):
     from cis.models.teacher import Teacher, TeacherCourseCertificate
 
     active = {s.lower() for s in TeacherCourseCertificate.ACTIVE_STATUSES}
-    statuses = defaultdict(set)
+    # {(course, teacher): {lowercased status: display form}}, so statuses
+    # differing only in case are one badge entry.
+    statuses = defaultdict(dict)
     for course_id, teacher_id, status in TeacherCourseCertificate.objects.filter(
         course__in=courses
     ).values_list('course_id', 'teacher_highschool__teacher_id', 'status'):
-        statuses[(course_id, teacher_id)].add((status or '').strip())
+        status = (status or '').strip()
+        statuses[(course_id, teacher_id)].setdefault(status.lower(), status)
 
     teachers = {
         t.id: t for t in Teacher.objects.filter(
@@ -126,10 +129,9 @@ def _certified_teachers(courses):
         if base is None:
             continue
         teacher = copy.copy(base)
-        teacher.cert_inactive = not any(
-            status.lower() in active for status in course_statuses)
+        teacher.cert_inactive = not (course_statuses.keys() & active)
         teacher.cert_status = (
-            ', '.join(sorted(status or 'No status' for status in course_statuses))
+            ', '.join(sorted(s or 'No status' for s in course_statuses.values()))
             if teacher.cert_inactive else '')
         by_course[course_id].append(teacher)
     for course_id in by_course:
@@ -194,8 +196,12 @@ def _save_assignments(request, faculty_user, academic_year, courses, certified,
     - otherwise the ticks are the selection: some ticked = `selected`, none =
       `none`.
 
-    `listed` is {course id: {teacher id}} of the instructors the form showed,
-    under the same certificate filter.
+    The form posts what it showed: a `shown` "<course id>:<teacher id>" per
+    listed instructor, and `was_all` per course that was on All. Those, not
+    today's data, decide "every listed instructor still ticked", so an
+    instructor certified (or a course configured) between render and save
+    cannot flip a course CE left alone. `listed` -- {course id: {teacher id}}
+    recomputed now -- covers a form that predates those inputs.
 
     Courses the faculty member does not actively oversee, and teachers not
     certified for the course, are dropped rather than trusted: this POST is
@@ -209,6 +215,15 @@ def _save_assignments(request, faculty_user, academic_year, courses, certified,
         course_id, _, teacher_id = raw.partition(':')
         pairs[course_id].add(teacher_id)
     reset_all = set(request.POST.getlist('reset_all'))
+    if 'shown' in request.POST or 'was_all' in request.POST:
+        listed = defaultdict(set)
+        for raw in request.POST.getlist('shown'):
+            course_id, _, teacher_id = raw.partition(':')
+            listed[course_id].add(teacher_id)
+        was_all = set(request.POST.getlist('was_all'))
+    else:
+        listed = {str(k): v for k, v in listed.items()}
+        was_all = None
 
     # Read the year's rows once, not per course (package-cis#109).
     configured_ids = _configured(faculty_user, academic_year, courses)
@@ -221,7 +236,9 @@ def _save_assignments(request, faculty_user, academic_year, courses, certified,
         existing_rows[row.course_id][str(row.teacher_id)] = row
 
     by_id = {str(c.id): c for c in courses}
-    for raw_course_id in request.POST.getlist('course'):
+    # dict.fromkeys: a course posted twice is handled once, since the rows
+    # above were read once.
+    for raw_course_id in dict.fromkeys(request.POST.getlist('course')):
         course = by_id.get(raw_course_id)
         if course is None:
             continue
@@ -233,7 +250,8 @@ def _save_assignments(request, faculty_user, academic_year, courses, certified,
             wanted = pairs.get(raw_course_id, set()) & allowed
             if raw_course_id in reset_all:
                 mode = 'all'
-            elif not configured and wanted >= listed.get(course.id, set()):
+            elif ((raw_course_id in was_all) if was_all is not None
+                  else not configured) and wanted >= listed.get(raw_course_id, set()):
                 mode = 'all'
             else:
                 mode = 'selected' if wanted else 'none'
