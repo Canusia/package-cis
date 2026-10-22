@@ -1,0 +1,36 @@
+{% comment %}
+Missing supporting documents for the student's current courses. Rendered by
+_files.html only when the support_docs setting turns it on and the courses
+require something; context comes from cis.services.document_requirements.
+{% endcomment %}
+<div class="card mb-3" id="missing_documents">
+    <div class="card-body bg-gray-200">
+        {% if missing_documents %}
+        <h5 class="card-title text-danger">Missing documents ({{ missing_documents|length }})</h5>
+        <p class="small text-muted mb-2">Required by this student's current courses and not yet received. Informational only &mdash; nothing is blocked.</p>
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered bg-white mb-0">
+                <thead>
+                    <tr><th>Term</th><th>Document</th><th>Needed for</th><th>How often</th></tr>
+                </thead>
+                <tbody>
+                    {% for doc in missing_documents %}
+                    <tr>
+                        <td>{{ doc.term }}</td>
+                        <td>
+                            {{ doc.label }}
+                            {% if not doc.linked %}<div class="small text-warning">Not linked to a document type, so no upload can satisfy it. Link it on the course's Document Requirement(s) tab.</div>{% endif %}
+                            {% for d in doc.descriptions %}<div class="small text-muted">{{ d }}</div>{% endfor %}
+                        </td>
+                        <td>{{ doc.courses|join:", " }}</td>
+                        <td>{{ doc.recurrence }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-success mb-0"><i class="fas fa-check-circle"></i> All documents required by this student's current courses have been received.</p>
+        {% endif %}
+    </div>
+</div>

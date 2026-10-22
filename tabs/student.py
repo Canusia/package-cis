@@ -139,6 +139,7 @@ def files_tab(request, record):
     from cis.forms.student import StudentSupportingDocumentForm
     from cis.services.table_configs import get_table_config
     from myce.component_registry.support_docs import support_docs_actions
+    from cis.services import document_requirements
     from django.urls import reverse
     build = get_table_config('support_docs_table').build_config
     if request.method == 'POST' and request.POST.get('action') == 'upload_support_doc':
@@ -154,6 +155,7 @@ def files_tab(request, record):
             bulk_actions_url=reverse('cis:support_docs_bulk_actions'),
         ),
         'support_doc_form': form,
+        **document_requirements.tab_context(record),
     }
 
 

@@ -12,6 +12,8 @@ Stored in the Setting model under key ``cis.settings.support_docs`` as::
                                     # statuses whose courses still need docs
       'satisfying_statuses': [...], # document statuses that satisfy a course
                                     # requirement; [] = any status (#44)
+      'show_missing_documents': 'Yes'|'No',  # missing-documents panel on the
+                                    # CE student Supporting Documents tab
     }
 
 Replaces the earlier split support_doc_types / support_doc_statuses settings;
@@ -92,6 +94,18 @@ class SettingForm(forms.Form):
                    'blank to count uploads in any status.'),
     )
 
+    show_missing_documents = forms.ChoiceField(
+        choices=YES_NO,
+        initial='No',
+        required=False,
+        label='Show Missing Documents on Student Detail',
+        help_text=('List the documents a student\'s current courses require but '
+                   'that have not been received, above the uploads on the '
+                   'student\'s Supporting Documents tab. Uses the courses\' '
+                   'Document Requirement(s), the statuses above, and the '
+                   'registration statuses below. Informational only.'),
+    )
+
     # Named to avoid confusion with `statuses`, which are *document* statuses.
     document_check_registration_statuses = forms.MultipleChoiceField(
         required=False,
@@ -137,6 +151,7 @@ class SettingForm(forms.Form):
             'satisfying_statuses': _lines_to_list(
                 self.cleaned_data.get('satisfying_statuses')),
             'email_enabled': self.cleaned_data.get('email_enabled', 'No'),
+            'show_missing_documents': self.cleaned_data.get('show_missing_documents') or 'No',
             'status_change_email_subject': self.cleaned_data.get('status_change_email_subject', ''),
             'status_change_email': self.cleaned_data.get('status_change_email', ''),
             'document_check_registration_statuses': list(
@@ -172,6 +187,7 @@ class support_docs(SettingForm):
             'statuses': '\n'.join(v.get('statuses', [])),
             'satisfying_statuses': '\n'.join(v.get('satisfying_statuses', [])),
             'email_enabled': v.get('email_enabled', 'No'),
+            'show_missing_documents': v.get('show_missing_documents', 'No'),
             'status_change_email_subject': v.get('status_change_email_subject', ''),
             'status_change_email': v.get('status_change_email', ''),
             'document_check_registration_statuses': v.get(
@@ -229,6 +245,7 @@ class support_docs(SettingForm):
             'types': _old('cis.settings.support_doc_types'),
             'statuses': _old('cis.settings.support_doc_statuses'),
             'email_enabled': 'No',
+            'show_missing_documents': 'No',
             'status_change_email_subject': 'Your document status has been updated',
             'status_change_email': (
                 'Hi {{student_first_name}},\n\n'
