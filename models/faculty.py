@@ -299,3 +299,48 @@ class FacultyCourseAssignment(models.Model):
 
     def __str__(self):
         return f'{self.user} / {self.course} ({self.academic_year}) configured'
+
+
+class FacultyYearSetup(models.Model):
+    """CE has set up this faculty member's instructors for an academic year.
+
+    "All certified instructors" is stored as the absence of course rows, so
+    without this marker a year where every course was left on All would look
+    exactly like a year nobody has touched. The difference matters at
+    rollover (package-faculty#3): once a mentor has been set up for any year,
+    a year that is not set up shows them nothing -- no instructors, no
+    sections -- until CE saves or copies it. A mentor never set up keeps the
+    fallback to every certified instructor.
+
+    Written by every save and copy on the Assigned Instructor(s) tab. A year
+    with FacultyCourseAssignment or FacultyTeacherAssignment rows counts as
+    set up without it, so data saved before this model keeps its meaning.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    user = models.ForeignKey(
+        'cis.CustomUser',
+        on_delete=models.CASCADE,
+        related_name='faculty_year_setups',
+    )
+    academic_year = models.ForeignKey(
+        'cis.AcademicYear',
+        on_delete=models.CASCADE,
+        related_name='faculty_year_setups',
+    )
+
+    created_on = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        'cis.CustomUser',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='faculty_year_setups_created',
+    )
+
+    class Meta:
+        unique_together = (('user', 'academic_year'),)
+
+    def __str__(self):
+        return f'{self.user} ({self.academic_year}) set up'

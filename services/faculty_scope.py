@@ -20,7 +20,9 @@ one.
 from django.db.models import Exists, OuterRef, Q
 
 from cis.models.course import CourseAdministrator
-from cis.models.faculty import FacultyCourseAssignment, FacultyTeacherAssignment
+from cis.models.faculty import (
+    FacultyCourseAssignment, FacultyTeacherAssignment, FacultyYearSetup,
+)
 from cis.models.teacher import Teacher, TeacherCourseCertificate
 from cis.utils import active_academic_year
 
@@ -111,6 +113,29 @@ def configured_course_ids(user, academic_year):
     ).values('id')
 
 
+_ANY_YEAR = object()
+
+
+def _set_up_q(user, academic_year=_ANY_YEAR):
+    """Exists() for "CE has set `user` up" -- for `academic_year` (a value or
+    an OuterRef; None matches nothing), or for any year when omitted.
+
+    A FacultyYearSetup marker, or any course/assignment row (data saved before
+    the marker existed).
+    """
+    year = {} if academic_year is _ANY_YEAR else {'academic_year': academic_year}
+    return (Exists(FacultyYearSetup.objects.filter(user=user, **year))
+            | Exists(FacultyCourseAssignment.objects.filter(user=user, **year))
+            | Exists(FacultyTeacherAssignment.objects.filter(user=user, **year)))
+
+
+def is_set_up(user, academic_year=_ANY_YEAR):
+    """True when `user` is set up for `academic_year` (any year when omitted)."""
+    from cis.models.customuser import CustomUser
+    return CustomUser.objects.filter(pk=user.pk).filter(
+        _set_up_q(user, academic_year)).exists()
+
+
 def visible_pairs_q(user, *, course_field, teacher_field, year_field=None,
                     academic_year=None, require_certificate=True):
     """A Q that keeps rows whose (course, teacher) pair `user` may see.
@@ -145,6 +170,11 @@ def default_visible_pairs_q(user, *, course_field, teacher_field, year_field=Non
     - the course is configured for the year and the teacher is assigned to it, or
     - the course is not configured for the year (the fallback),
 
+    provided the year is set up for the user -- or the user has never been
+    set up for any year, which keeps tenants that do not use assignments on
+    the fallback. A mentor set up before but not for this year sees nothing
+    until CE saves or copies it (package-faculty#3, FacultyYearSetup);
+
     and -- when `require_certificate` -- the teacher holds a certificate for
     the course in an active status (TeacherCourseCertificate.ACTIVE_STATUSES,
     compared case-insensitively). Non-active instructors are hidden from the
@@ -173,7 +203,7 @@ def default_visible_pairs_q(user, *, course_field, teacher_field, year_field=Non
             user=user, course_id=course, academic_year=year))
         | Exists(FacultyTeacherAssignment.objects.filter(
             user=user, course_id=course, academic_year=year)))
-    visible = assigned | ~configured
+    visible = (assigned | ~configured) & (_set_up_q(user, year) | ~_set_up_q(user))
     if require_certificate:
         visible &= Exists(TeacherCourseCertificate.objects.filter(
             active_certificate_q(),

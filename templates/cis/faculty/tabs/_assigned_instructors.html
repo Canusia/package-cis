@@ -76,6 +76,14 @@ Two things this fragment must keep saying out loud:
         </p>
         {% endif %}
 
+        {% if year_not_set_up %}
+        <p class="alert alert-danger js-ai-not-set-up">
+            {{ faculty_user.get_full_name|default:faculty_user }} is not set up for
+            <strong>{{ academic_year }}</strong>, so they see no instructors and no
+            sections for it. Save this page or copy another year to set it up.
+        </p>
+        {% endif %}
+
         {% if not academic_year %}
         <p class="alert alert-warning">
             No academic year is selected, so assignments cannot be shown or saved.

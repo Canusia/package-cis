@@ -22,7 +22,7 @@ from django.db.models import ProtectedError
 from django.test import TestCase, override_settings
 
 from cis.models.course import Cohort, Course, CourseAdministrator
-from cis.models.faculty import FacultyTeacherAssignment
+from cis.models.faculty import FacultyTeacherAssignment, FacultyYearSetup
 from cis.models.highschool import HighSchool
 from cis.models.teacher import Teacher, TeacherCourseCertificate, TeacherHighSchool
 from cis.models.term import AcademicYear
@@ -160,7 +160,9 @@ class VisibleTeachersTests(FacultyScopeFixtureMixin, TestCase):
 
         self.assertEqual(set(result), {picked, open_a, open_b})
 
-    def test_assignments_in_another_year_do_not_narrow_this_year(self):
+    def test_another_years_setup_does_not_carry_into_this_year(self):
+        """Set up for another year but not this one shows nothing, not that
+        year's picks and not the fallback (package-faculty#3)."""
         course = self._course()
         self._oversees(course)
         a, b = self._teacher(), self._teacher()
@@ -169,7 +171,10 @@ class VisibleTeachersTests(FacultyScopeFixtureMixin, TestCase):
         self._assign(a, course, year=self.other_year)
 
         result = faculty_scope.visible_teachers(self.faculty, academic_year=self.year)
+        self.assertEqual(set(result), set())
 
+        FacultyYearSetup.objects.create(user=self.faculty, academic_year=self.year)
+        result = faculty_scope.visible_teachers(self.faculty, academic_year=self.year)
         self.assertEqual(set(result), {a, b})
 
     def test_another_facultys_assignments_do_not_narrow_this_faculty(self):

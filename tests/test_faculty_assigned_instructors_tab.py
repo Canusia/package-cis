@@ -683,6 +683,44 @@ class AssignedInstructorsModesTests(AssignedInstructorsTabMixin, TestCase):
             self._certifies(self.a, course)
         self.assertEqual(count(), one)
 
+    # -- year setup (package-faculty#3) -----------------------------------
+
+    def _set_up(self, year):
+        from cis.models.faculty import FacultyYearSetup
+        return FacultyYearSetup.objects.filter(
+            user=self.faculty, academic_year=year).exists()
+
+    def test_any_save_sets_the_year_up(self):
+        self._save(**{f'mode_{self.course.id}': 'all'})
+        self.assertTrue(self._set_up(self.year))
+        self.assertFalse(self._configured())
+
+    def test_a_year_not_set_up_warns_once_another_year_is(self):
+        self.assertNotIn('js-ai-not-set-up', self._get())
+        FacultyCourseAssignment.objects.create(
+            user=self.faculty, course=self.course, academic_year=self.other_year)
+        html = self._get()
+        self.assertIn('js-ai-not-set-up', html)
+        self.assertIn('<strong>0</strong> instructors', html)
+        self._save(**{f'mode_{self.course.id}': 'all'})
+        self.assertNotIn('js-ai-not-set-up', self._get())
+
+    def test_copying_an_all_only_year_sets_the_target_up(self):
+        from cis.models.faculty import FacultyYearSetup
+        FacultyYearSetup.objects.create(user=self.faculty, academic_year=self.other_year)
+        html = self._post({'action': 'copy_assigned_instructors',
+                           'academic_year': str(self.year.id),
+                           'source_academic_year': str(self.other_year.id)})
+        self.assertTrue(self._set_up(self.year))
+        self.assertIn('every course on All certified instructors', html)
+
+    def test_copying_a_year_never_set_up_copies_nothing(self):
+        html = self._post({'action': 'copy_assigned_instructors',
+                           'academic_year': str(self.year.id),
+                           'source_academic_year': str(self.other_year.id)})
+        self.assertFalse(self._set_up(self.year))
+        self.assertIn('Nothing to copy', html)
+
     def test_summary_counts_what_the_mentor_sees(self):
         self.assertIn('<strong>2</strong> instructors across <strong>1</strong> course in', self._get())
         self._assign(self.a, self.course)

@@ -207,7 +207,13 @@ def _save_assignments(request, faculty_user, academic_year, courses, certified,
     certified for the course, are dropped rather than trusted: this POST is
     user input, and the form's own limits are not a security boundary.
     """
-    from cis.models.faculty import FacultyCourseAssignment, FacultyTeacherAssignment
+    from cis.models.faculty import (
+        FacultyCourseAssignment, FacultyTeacherAssignment, FacultyYearSetup,
+    )
+
+    # Any save sets the year up, even one leaving every course on All -- that
+    # is how CE turns a not-yet-set-up year back on (package-faculty#3).
+    _mark_set_up(FacultyYearSetup, request, faculty_user, academic_year)
 
     by_instructor = request.POST.get('view') == 'instructor'
     pairs = defaultdict(set)
@@ -298,12 +304,26 @@ def _save_assignments(request, faculty_user, academic_year, courses, certified,
                 pass
 
 
+def _mark_set_up(model, request, faculty_user, academic_year):
+    """Write the FacultyYearSetup marker; True when it was created."""
+    try:
+        with transaction.atomic():
+            _, created = model.objects.get_or_create(
+                user=faculty_user, academic_year=academic_year,
+                defaults={'created_by': request.user})
+    except IntegrityError:
+        return False
+    return created
+
+
 def _copy_assignments(request, faculty_user, source_year, target_year):
     """Clone one year's rows onto another, for this faculty member only.
 
-    Returns (course settings created, assignments created): a "No
-    instructors" course copies as a setting with no assignments, and CE must
-    hear about it (package-cis#105). Rows that already exist are skipped
+    Returns (year set up, course settings created, assignments created): a
+    "No instructors" course copies as a setting with no assignments, and a
+    year with every course on All copies as the set-up marker alone -- CE
+    must hear about both (package-cis#105, package-faculty#3). A source year
+    that was never set up copies nothing. Rows that already exist are skipped
     rather than allowed to raise: unique_together is
     (user, course, teacher, academic_year), so a second copy of the same year
     would otherwise be an IntegrityError instead of a no-op. `created_by` is
@@ -313,9 +333,15 @@ def _copy_assignments(request, faculty_user, source_year, target_year):
     from cis.models.faculty import FacultyTeacherAssignment
 
     if source_year is None or target_year is None or source_year == target_year:
-        return 0, 0
+        return False, 0, 0
 
-    from cis.models.faculty import FacultyCourseAssignment
+    from cis.models.faculty import FacultyCourseAssignment, FacultyYearSetup
+    from cis.services.faculty_scope import is_set_up
+
+    if not is_set_up(faculty_user, source_year):
+        return False, 0, 0
+    year_created = _mark_set_up(
+        FacultyYearSetup, request, faculty_user, target_year)
 
     # Configuration rows first, so a "no instructors" course carries over too.
     settings_created = 0
@@ -344,7 +370,7 @@ def _copy_assignments(request, faculty_user, source_year, target_year):
         except IntegrityError:
             continue
         created += int(was_created)
-    return settings_created, created
+    return year_created, settings_created, created
 
 
 @faculty_coordinator_tabs.tab(slug=ASSIGNED_INSTRUCTORS_SLUG,
@@ -394,15 +420,18 @@ def assigned_instructors_tab(request, record):
             message = 'Assignments saved.'
         elif action == 'copy_assigned_instructors':
             source = _academic_year(request, 'source_academic_year')
-            settings_created, created = _copy_assignments(
+            year_created, settings_created, created = _copy_assignments(
                 request, faculty_user, source, academic_year)
-            message = (
-                f'Copied {settings_created} course setting(s) and '
-                f'{created} assignment(s) from {source}.'
-                if settings_created or created else
-                f'Nothing to copy from {source}.')
+            if settings_created or created:
+                message = (f'Copied {settings_created} course setting(s) and '
+                           f'{created} assignment(s) from {source}.')
+            elif year_created:
+                message = (f'Copied {source}: every course on All certified '
+                           'instructors.')
+            else:
+                message = f'Nothing to copy from {source}.'
 
-    from cis.services.faculty_scope import visible_course_teachers
+    from cis.services.faculty_scope import is_set_up, visible_course_teachers
 
     assigned = load_assigned()
     configured = (
@@ -469,6 +498,12 @@ def assigned_instructors_tab(request, record):
         'tab_url': reverse('cis:faculty_coordinator_tab',
                            args=[record.id, ASSIGNED_INSTRUCTORS_SLUG]),
         'message': message,
+        # Set up for another year but not this one: the mentor sees nothing in
+        # this year until CE saves or copies it (package-faculty#3).
+        'year_not_set_up': (
+            academic_year is not None
+            and not is_set_up(faculty_user, academic_year)
+            and is_set_up(faculty_user)),
         'cert_filter': cert_filter,
         'cert_filters': CERT_FILTERS,
         'by_instructor': by_instructor,

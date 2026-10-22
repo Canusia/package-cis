@@ -50,7 +50,7 @@ from .event import (
 
 from .faculty import (
     FacultyCoordinator, FacultyCourseAssignment, FacultyCourseCoordinator,
-    FacultyTeacherAssignment
+    FacultyTeacherAssignment, FacultyYearSetup
 )
 
 from .crontab import CronTab

@@ -11,7 +11,7 @@ from django.db import IntegrityError, transaction
 from django.test import TestCase
 
 from cis.models.course import CourseAdministrator
-from cis.models.faculty import FacultyCourseAssignment
+from cis.models.faculty import FacultyCourseAssignment, FacultyYearSetup
 from cis.models.section import ClassSection
 from cis.models.teacher import TeacherCourseCertificate
 from cis.models.term import Term
@@ -132,11 +132,43 @@ class PairScopeTests(FacultyScopeFixtureMixin, TestCase):
         self.assertEqual(self._visible_sections(section), {section.id})
 
     def test_a_section_uses_its_own_terms_year(self):
-        # Configured (nobody) for this year only: last year's sections fall back.
+        # Configured (nobody) for this year only; last year is not set up, so
+        # with year_field its sections show nothing either (FacultyYearSetup).
         self._configure(self.c2020)
         this_year = self._section(self.c2020, self.an)
         other_year = self._section(self.c2020, self.an, term=self.other_term)
+        self.assertEqual(self._visible_sections(this_year, other_year), set())
+        FacultyYearSetup.objects.create(user=self.faculty, academic_year=self.other_year)
         self.assertEqual(self._visible_sections(this_year, other_year), {other_year.id})
+
+    # -- year setup (package-faculty#3) -------------------------------------
+
+    def test_set_up_for_another_year_only_shows_nothing(self):
+        FacultyYearSetup.objects.create(user=self.faculty, academic_year=self.other_year)
+        section = self._section(self.c1020, self.an)
+        self.assertEqual(self.pairs(), set())
+        self.assertFalse(faculty_scope.visible_teachers(self.faculty).exists())
+        self.assertEqual(self._visible_sections(section), set())
+
+    def test_legacy_rows_in_another_year_count_as_set_up(self):
+        self._assign(self.an, self.c1020, year=self.other_year)
+        self.assertEqual(self.pairs(), set())
+
+    def test_a_year_set_up_with_every_course_on_all_shows_everyone(self):
+        FacultyYearSetup.objects.create(user=self.faculty, academic_year=self.other_year)
+        FacultyYearSetup.objects.create(user=self.faculty, academic_year=self.year)
+        self.assertEqual(len(self.pairs()), 3)
+
+    def test_another_mentors_setup_does_not_affect_this_one(self):
+        from .test_faculty_scope import _user
+        FacultyYearSetup.objects.create(user=_user(), academic_year=self.other_year)
+        self.assertEqual(len(self.pairs()), 3)
+
+    def test_no_active_year_with_a_setup_shows_nothing(self):
+        FacultyYearSetup.objects.create(user=self.faculty, academic_year=self.year)
+        with mock.patch('cis.services.faculty_scope.active_academic_year',
+                        return_value=None):
+            self.assertEqual(self.pairs(), set())
 
     def test_unoverseen_course_sections_are_never_visible(self):
         theirs = self._course('THEIRS')
