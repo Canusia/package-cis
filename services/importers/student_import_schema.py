@@ -73,7 +73,11 @@ class StudentImportColumns:
 
     @classmethod
     def field_definitions(cls):
+        # Lazy: the row form module imports cis.highschool_scope / models.
+        from cis.forms.student_import import StudentImportRowForm
+
         required = set(cls.required())
+        notes = StudentImportRowForm.column_notes()
         defs = []
         fields = cls._form_fields()
         for name in cls.headers():
@@ -82,6 +86,7 @@ class StudentImportColumns:
                     'name': name,
                     'required': True,
                     'label': 'High School CEEB code',
+                    'note': 'CEEB code of a high school you can assign.',
                 })
                 continue
             field = fields[name]
@@ -89,5 +94,6 @@ class StudentImportColumns:
                 'name': name,
                 'required': name in required,
                 'label': str(field.label or name),
+                'note': notes.get(name, ''),
             })
         return defs
