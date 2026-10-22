@@ -51,11 +51,11 @@ def default_visible_teachers(user, academic_year=None):
     Derived from the pair rule (``visible_pairs_q``, which a tenant may
     override) rather than restating it, so My Instructors, sections, rosters
     and the course columns cannot disagree (package-cis#108). A teacher is
-    visible when any of their certificates, or any of their assignment rows,
-    is a visible pair -- the second half keeps an assigned teacher whose
-    certificate has since gone. Two subqueries and a union, never a loop over
-    courses, so the cost is one round trip whether the faculty member
-    oversees one course or fifty.
+    visible when any of their certificates is a visible pair; the pair rule
+    requires an active-status one, so an instructor whose certificates are
+    all Inactive, Applicant or Do Not Contact -- or gone -- is hidden even if
+    CE assigned them (package-cis#107). One query with subqueries, never a
+    loop over courses.
     """
     if academic_year is None:
         academic_year = active_academic_year()
@@ -74,15 +74,8 @@ def default_visible_teachers(user, academic_year=None):
         teacher_field='teacher_highschool__teacher_id',
         academic_year=academic_year,
     )).values('teacher_highschool__teacher_id')
-    by_assignment = FacultyTeacherAssignment.objects.filter(
-        user=user, academic_year=academic_year, course_id__in=overseen,
-    ).filter(visible_pairs_q(
-        user, course_field='course_id', teacher_field='teacher_id',
-        academic_year=academic_year,
-    )).values('teacher_id')
 
-    return Teacher.objects.filter(
-        Q(id__in=by_certificate) | Q(id__in=by_assignment))
+    return Teacher.objects.filter(id__in=by_certificate)
 
 
 def visible_teachers(user, academic_year=None):
@@ -150,8 +143,14 @@ def default_visible_pairs_q(user, *, course_field, teacher_field, year_field=Non
     the course and either:
 
     - the course is configured for the year and the teacher is assigned to it, or
-    - the course is not configured for the year (the fallback), and -- when
-      `require_certificate` -- the teacher is certified for the course.
+    - the course is not configured for the year (the fallback),
+
+    and -- when `require_certificate` -- the teacher holds a certificate for
+    the course in an active status (TeacherCourseCertificate.ACTIVE_STATUSES,
+    compared case-insensitively). Non-active instructors are hidden from the
+    mentor whether assigned or not (package-cis#107). Sections pass
+    `require_certificate=False`: they keep showing assigned and fallback
+    sections whatever the instructor's certificate.
 
     The year is `academic_year`, else the active year. `year_field` (e.g.
     'term__academic_year') judges each row against its own year instead; the
@@ -174,12 +173,25 @@ def default_visible_pairs_q(user, *, course_field, teacher_field, year_field=Non
             user=user, course_id=course, academic_year=year))
         | Exists(FacultyTeacherAssignment.objects.filter(
             user=user, course_id=course, academic_year=year)))
-    fallback = ~configured
+    visible = assigned | ~configured
     if require_certificate:
-        fallback &= Exists(TeacherCourseCertificate.objects.filter(
+        visible &= Exists(TeacherCourseCertificate.objects.filter(
+            active_certificate_q(),
             course_id=course, teacher_highschool__teacher_id=teacher))
 
-    return overseen & (assigned | fallback)
+    return overseen & visible
+
+
+def active_certificate_q(prefix=''):
+    """Q for a TeacherCourseCertificate in an active status (case-insensitive).
+
+    `prefix` reaches the certificate through a relation, e.g.
+    'teachercoursecertificate__'.
+    """
+    q = Q()
+    for status in TeacherCourseCertificate.ACTIVE_STATUSES:
+        q |= Q(**{f'{prefix}status__iexact': status})
+    return q
 
 
 def visible_course_teachers(user, academic_year=None):

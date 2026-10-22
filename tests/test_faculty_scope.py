@@ -350,8 +350,7 @@ class VisibleTeachersTenantSeamTests(FacultyScopeFixtureMixin, TestCase):
 
         self.assertEqual(set(result), {teacher})
 
-    def test_an_assigned_teacher_whose_certificate_went_stays_visible(self):
-        """Deriving teachers from the pair rule must keep this case."""
+    def test_an_assigned_teacher_whose_certificate_went_is_hidden(self):
         course = self._course()
         self._oversees(course)
         teacher = self._teacher()
@@ -361,7 +360,32 @@ class VisibleTeachersTenantSeamTests(FacultyScopeFixtureMixin, TestCase):
 
         result = faculty_scope.visible_teachers(self.faculty, academic_year=self.year)
 
-        self.assertEqual(set(result), {teacher})
+        self.assertEqual(set(result), set())
+
+    def test_non_active_certificates_hide_the_instructor(self):
+        """package-cis#107: Inactive, Applicant and Do Not Contact are hidden
+        from the mentor, assigned or not; any active status shows."""
+        course = self._course()
+        self._oversees(course)
+        fallback, assigned = self._teacher(), self._teacher()
+        other = self._course()
+        self._oversees(other)
+        self._assign(assigned, other)
+        for status in ('Inactive', 'Applicant', 'Do Not Contact', 'inactive'):
+            with self.subTest(status=status):
+                TeacherCourseCertificate.objects.all().delete()
+                self._certifies(fallback, course)
+                self._certifies(assigned, other)
+                TeacherCourseCertificate.objects.update(status=status)
+                self.assertEqual(set(faculty_scope.visible_teachers(
+                    self.faculty, academic_year=self.year)), set())
+                self.assertEqual(faculty_scope.visible_course_teachers(
+                    self.faculty, academic_year=self.year), set())
+        for status in TeacherCourseCertificate.ACTIVE_STATUSES + ('teaching',):
+            with self.subTest(status=status):
+                TeacherCourseCertificate.objects.update(status=status)
+                self.assertEqual(set(faculty_scope.visible_teachers(
+                    self.faculty, academic_year=self.year)), {fallback, assigned})
 
     def test_default_is_reachable_under_its_own_name(self):
         """Tenant modules re-export `default_visible_teachers`; it must exist
