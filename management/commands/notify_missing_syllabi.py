@@ -105,8 +105,9 @@ class Command(CampusCommand):
         emails_sent = 0
         for user_id, recipient in email_summary.items():
         
-            subject = email_settings.get('missing_syllabus_email_subject', 'change me')
-            message = Template(email_settings.get('missing_syllabus_email_message', 'change'))
+            subject, source = syllabi_review.email_template(
+                'missing_syllabus', email_settings)
+            message = Template(source)
 
             context = Context({
                 'instructor_first_name': recipient.get('first_name'),
@@ -176,20 +177,21 @@ class Command(CampusCommand):
                 section
             )
 
-        print(email_summary)
         emails_sent = 0
         for user_id, recipient in email_summary.items():
         
-            subject = email_settings.get('needs_update_email_subject', 'change me')
-            
-            message = Template(email_settings.get('needs_update_email_message', 'change'))
+            subject, source = syllabi_review.email_template(
+                'needs_update', email_settings)
+            message = Template(source)
 
+            section = recipient['sections'][0]
             context = Context({
                 'instructor_first_name': recipient.get('first_name'),
                 'instructor_last_name': recipient.get('last_name'),
-                'term': str(recipient.get('last_name')),
-                'course': str(recipient['sections'][0].course),
-                'note': 'Note added by faculty - change me'
+                'term': str(recipient.get('term')),
+                'course': str(section.course),
+                'course_name': str(section.course),
+                'note': (section.syllabi_status_changed_on or {}).get('note') or '',
             })
             text_body = message.render(context)
 

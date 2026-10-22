@@ -93,25 +93,26 @@ class syllabi_review(forms.Form):
     #     help_text='Email template sent to Faculty and Visitor when there are class syllabi pending review. Short codes supported {{faculty_first_name}}, {{faculty_last_name}}'
     # )
     
-    # portal_headers = FFields.ReadOnlyField(
-    #     required=False,
-    #     label=mark_safe(
-    #         '<h2>Message displayed in instructor and faculty portal page(s)</h2>'
-    #     ),
-    #     initial='',
-    #     widget=FFields.LongLabelWidget(
-    #         attrs={
-    #             'class':'border-0 bg-light h-100'
-    #         }
-    #     )
-    # )
+    portal_headers = FFields.ReadOnlyField(
+        required=False,
+        label=mark_safe(
+            '<h2>Message displayed in instructor and faculty portal page(s)</h2>'
+        ),
+        initial='',
+        widget=FFields.LongLabelWidget(
+            attrs={
+                'class':'border-0 bg-light h-100'
+            }
+        )
+    )
 
-    # faculty_message = forms.CharField(
-    #     max_length=None,
-    #     widget=forms.Textarea,
-    #     label="Needs Update Note Message",
-    #     help_text='This is displayed in the page when faculty marks syllabi as needs update. <a href="#" class="float-right" onClick="do_bulk_action(\'syllabi_review\', \'faculty_message\')" >See Preview</a>'
-    # )
+    faculty_message = forms.CharField(
+        max_length=None,
+        required=False,
+        widget=forms.Textarea,
+        label="Needs Update Note Message",
+        help_text='This is displayed in the page when faculty marks syllabi as needs update. <a href="#" class="float-right" onClick="do_bulk_action(\'syllabi_review\', \'faculty_message\')" >See Preview</a>'
+    )
 
     instructor_message = forms.CharField(
         max_length=None,
@@ -120,35 +121,107 @@ class syllabi_review(forms.Form):
         help_text='This is displayed to the instructors in their section details page under "Syllabi Tab". Customize with {{note}}. <a href="#" class="float-right" onClick="do_bulk_action(\'syllabi_review\', \'instructor_message\')" >See Preview</a>'
     )
 
-    # teacher_email_header = FFields.ReadOnlyField(
-    #     required=False,
-    #     label=mark_safe('<h2>Instructor Email Configuration - Sent to instructor after syllabus has been reviewed</h2>'
-    #     ),
-    #     initial='',
-    #     widget=FFields.LongLabelWidget(
-    #         attrs={
-    #             'class':'border-0 bg-light h-100'
-    #         }
-    #     )
-    # )
+    teacher_email_header = FFields.ReadOnlyField(
+        required=False,
+        label=mark_safe('<h2>Instructor Email Configuration - Sent to instructor after syllabus has been reviewed</h2>'
+        ),
+        initial='',
+        widget=FFields.LongLabelWidget(
+            attrs={
+                'class':'border-0 bg-light h-100'
+            }
+        )
+    )
 
-    # needs_update_email_subject = forms.CharField(max_length=500)
-    # needs_update_email_message = forms.CharField(
-    #     max_length=None,
-    #     widget=forms.Textarea,
-    #     label='Needs Review/Update - Message',
-    #     validators=[validate_html_short_code],
-    #     help_text='Email template sent to instructor after syllabi is marked as needs update. Short codes supported {{instructor_first_name}}, {{instructor_last_name}}, {{term}}, {{course}}, {{note}}. <a href="#" class="float-right" onClick="do_bulk_action(\'syllabi_review\', \'email_message\')" >See Preview</a>'
-    # )
+    needs_update_email_subject = forms.CharField(
+        max_length=500, label='Needs Review/Update - Subject')
+    needs_update_email_message = forms.CharField(
+        max_length=None,
+        widget=forms.Textarea,
+        label='Needs Review/Update - Message',
+        validators=[validate_html_short_code],
+        help_text='Email template sent to instructor when syllabi is marked as needs update, and as the needs update reminder. Short codes supported {{instructor_first_name}}, {{instructor_last_name}}, {{term}}, {{course}}, {{course_name}}, {{note}}. <a href="#" class="float-right" onClick="do_bulk_action(\'syllabi_review\', \'email_message\')" >See Preview</a>'
+    )
 
-    # reviewed_email_subject = forms.CharField(max_length=500)    
-    # email_message_reviewed = forms.CharField(
-    #     max_length=None,
-    #     widget=forms.Textarea,
-    #     label='Approved/Reviewed - Message',
-    #     validators=[validate_html_short_code],
-    #     help_text='Email template sent to instructor after syllabi is marked as reviewed. Short codes supported {{instructor_first_name}}, {{instructor_last_name}}, {{course_name}}, {{term}}. <a href="#" class="float-right" onClick="do_bulk_action(\'syllabi_review\', \'reviewed_message\')" >See Preview</a>'
-    # )
+    reviewed_email_subject = forms.CharField(
+        max_length=500, label='Approved/Reviewed - Subject')
+    email_message_reviewed = forms.CharField(
+        max_length=None,
+        widget=forms.Textarea,
+        label='Approved/Reviewed - Message',
+        validators=[validate_html_short_code],
+        help_text='Email template sent to instructor after syllabi is marked as reviewed. Short codes supported {{instructor_first_name}}, {{instructor_last_name}}, {{course}}, {{course_name}}, {{term}}. <a href="#" class="float-right" onClick="do_bulk_action(\'syllabi_review\', \'reviewed_message\')" >See Preview</a>'
+    )
+
+    # Shipped copy. A reader falls back to it whenever the saved setting has
+    # no usable value, so an email never goes out as "None" (#110).
+    DEFAULTS = {
+        'missing_syllabus_email_subject': 'Class syllabus needed',
+        'missing_syllabus_email_message': (
+            'Hello {{instructor_first_name}},<br><br>'
+            'Please upload the syllabus for the following class(es) in '
+            '{{term}}:<br>{{section_list}}'),
+        'needs_update_email_subject': 'Class syllabus needs update',
+        'needs_update_email_message': (
+            'Hello {{instructor_first_name}},<br><br>'
+            'Your syllabus for {{course}} ({{term}}) has been marked as '
+            'needs update.<br><br>{{note}}'),
+        'reviewed_email_subject': 'Class syllabus reviewed',
+        'email_message_reviewed': (
+            'Hello {{instructor_first_name}},<br><br>'
+            'Your syllabus for {{course_name}} ({{term}}) has been reviewed.'),
+        'faculty_message': '',
+        'instructor_message': '{{note}}',
+    }
+
+    # Email kind -> (subject key, body key) the form saves.
+    EMAILS = {
+        'missing_syllabus': (
+            'missing_syllabus_email_subject', 'missing_syllabus_email_message'),
+        'needs_update': (
+            'needs_update_email_subject', 'needs_update_email_message'),
+        'reviewed': ('reviewed_email_subject', 'email_message_reviewed'),
+    }
+
+    # Form key -> keys earlier versions read/stored the same copy under.
+    # email_subject / email_message were the needs-update (and reviewed)
+    # subject and body on the old pending_class_syllabi form.
+    LEGACY_KEYS = {
+        'needs_update_email_subject': ('email_subject',),
+        'needs_update_email_message': ('email_message',),
+        'reviewed_email_subject': ('email_subject',),
+    }
+
+    # What install() used to seed under the legacy keys: missing-syllabus
+    # text, so it is not needs-update copy and must not be picked up.
+    OLD_INSTALL_DEFAULTS = {
+        'email_subject': 'Missing Syllabi',
+        'email_message': '{{instructor_first_name}}, {{instructor_last_name}}, {{section_list}}, {{term}}',
+    }
+
+    @classmethod
+    def resolve(cls, key, stored=None):
+        """The value for a form key: the saved value, else a legacy key's,
+        else the shipped default. Never None."""
+        if stored is None:
+            stored = cls.from_db()
+        stored = stored if isinstance(stored, dict) else {}
+        value = stored.get(key)
+        if value:
+            return value
+        for legacy in cls.LEGACY_KEYS.get(key, ()):
+            value = stored.get(legacy)
+            if value and value != cls.OLD_INSTALL_DEFAULTS.get(legacy):
+                return value
+        return cls.DEFAULTS.get(key, '')
+
+    @classmethod
+    def email_template(cls, kind, stored=None):
+        """(subject, body template source) for an email kind."""
+        if stored is None:
+            stored = cls.from_db()
+        subject_key, body_key = cls.EMAILS[kind]
+        return cls.resolve(subject_key, stored), cls.resolve(body_key, stored)
 
     def clean_term(self):
         data = self.cleaned_data.get('term')
@@ -177,51 +250,50 @@ class syllabi_review(forms.Form):
         data = self.cleaned_data['ending_date']
         return data.strftime('%m/%d/%Y')
 
+    # See Preview link field -> (email kind, or None, body key for a page message)
+    PREVIEWS = {
+        'email': ('missing_syllabus', None),
+        'email_message': ('needs_update', None),
+        'reviewed_message': ('reviewed', None),
+        'faculty_message': (None, 'faculty_message'),
+        'instructor_message': (None, 'instructor_message'),
+    }
+
     def preview(self, request, field_name):
-        from django.shortcuts import (
-            render
-        )
-
-        from django.template.loader import get_template, render_to_string
+        from django.http import HttpResponse
+        from django.shortcuts import render
         from django.template import Context, Template
-        from django.shortcuts import render, get_object_or_404
+        from django.utils.html import format_html
 
-        from cis.models.student import Student
-        from cis.forms.student import StudentForm
-        from cis.settings.registration_email import registration_email
+        if field_name not in self.PREVIEWS:
+            return JsonResponse({'message': 'Unknown preview'}, status=400)
 
-        email_settings = self.from_db()
-        if field_name in ['email' ]:
-            subject = email_settings.get('email_subject')
-            email = email_settings.get('email_message')
-        elif field_name == 'needs_update_email':
-            subject = email_settings.get('needs_update_email_subject')
-            email = email_settings.get('needs_update_email_message')
-        
-        message = Template(email)
+        kind, body_key = self.PREVIEWS[field_name]
+        stored = self.from_db()
+        if kind:
+            subject, source = self.email_template(kind, stored)
+        else:
+            subject, source = None, self.resolve(body_key, stored)
+
+        # sample values for every short code documented on this page
         context = Context({
-            'visit_date': "11/18/2018",
-            'visitors': "John and Jane",
-            'class_sections': "ACC 101",
-            'instructor_last_name': "Smith",
-            'instructor_first_name': "Dale",
-            'section_list': mark_safe("<br>".join(['ACC 101', 'ACC 102'])),
-            'term': "Fall 2020",
-            'pre_visit_note': 'Private Note',
-            'highschool': 'High School',
-            'report_added_by': 'John Smith',
-            'visit_report_url': 'https://custom-url-for-report'
+            'instructor_first_name': 'Dale',
+            'instructor_last_name': 'Smith',
+            'section_list': mark_safe('<br>'.join(
+                ['ACC 101/12345/001', 'ACC 102/12346/001'])),
+            'term': 'Fall 2026',
+            'course': 'ACC 101',
+            'course_name': 'ACC 101',
+            'note': 'Add a grading scale.',
         })
-        
-        text_body = message.render(context)
-        
-        return render(
-            request,
-            'cis/email.html',
-            {
-                'message': text_body
-            }
-        )
+        body = Template(source).render(context)
+
+        if not kind:
+            return HttpResponse(format_html('<div class="p-3">{}</div>', mark_safe(body)))
+
+        message = format_html(
+            '<p><strong>Subject:</strong> {}</p><hr>{}', subject, mark_safe(body))
+        return render(request, 'cis/email.html', {'message': message})
 
     def __init__(self, request, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -236,8 +308,15 @@ class syllabi_review(forms.Form):
 
         apply_term_tree(self.fields['term'], Term.objects.all().order_by('-code'))
 
+        # A field the saved setting has no value for shows the copy readers
+        # would actually send (legacy key, else default), so saving the form
+        # keeps it rather than dropping it (#110).
+        for key in self.DEFAULTS:
+            if key in self.fields and not self.initial.get(key):
+                self.initial[key] = self.resolve(key, self.initial)
+
     def install(self):
-        defaults = {"mode": "test", "testers": "kadaji@gmail.com", "email_message": "{{instructor_first_name}}, {{instructor_last_name}}, {{section_list}}, {{term}}", "email_subject": "Missing Syllabi", "faculty_message": "note to faculty", "instructor_message": "note to teacher"}
+        defaults = {"mode": "test", "testers": "kadaji@gmail.com", **self.DEFAULTS}
 
         Setting.install_defaults(self.key, defaults)
 

@@ -475,7 +475,7 @@ class ClassSection(MyCEBaseModel):
     def syllabi_note(self):
         from cis.settings.syllabi_review import syllabi_review as syl_review
 
-        template = Template(syl_review.from_db().get('instructor_message', ''))
+        template = Template(syl_review.resolve('instructor_message'))
         context = Context({
             'note': self.syllabi_status_changed_on.get('note', '')
         })
@@ -500,13 +500,14 @@ class ClassSection(MyCEBaseModel):
         from cis.settings.syllabi_review import syllabi_review as syl_settings
         notif_settings = syl_settings.from_db()
 
-        email_subject = notif_settings.get('email_subject')
-        email_text = notif_settings.get('email_message_reviewed')
+        email_subject, email_text = syl_settings.email_template(
+            'reviewed', notif_settings)
 
         message = Template(email_text)
         context = Context({
             'instructor_first_name': self.teacher.user.first_name,
             'instructor_last_name': self.teacher.user.last_name,
+            'course': self.course,
             'course_name': self.course,
             'term': self.term
         })
@@ -613,13 +614,14 @@ class ClassSection(MyCEBaseModel):
         from cis.settings.syllabi_review import syllabi_review as syl_settings
         notif_settings = syl_settings.from_db()
 
-        email_subject = notif_settings.get('email_subject')
-        email_text = notif_settings.get('email_message')
+        email_subject, email_text = syl_settings.email_template(
+            'needs_update', notif_settings)
 
         message = Template(email_text)
         context = Context({
             'instructor_first_name': self.teacher.user.first_name,
             'instructor_last_name': self.teacher.user.last_name,
+            'course': self.course,
             'course_name': self.course,
             'term': self.term,
             'note': note
