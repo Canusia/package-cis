@@ -12,6 +12,7 @@ EWU has no test factories, so fixtures are built with direct
 Model.objects.create(), following cis/tests/test_class_section_course_administrator_filter.py.
 """
 import uuid
+from types import SimpleNamespace
 from unittest import mock
 
 from django.contrib.auth import get_user_model
@@ -296,13 +297,69 @@ class VisibleTeachersTenantSeamTests(FacultyScopeFixtureMixin, TestCase):
         self._oversees(course)
         teacher = self._teacher()
         self._certifies(teacher, course)
-        module = mock.Mock(visible_teachers=faculty_scope.visible_teachers)
+        module = SimpleNamespace(visible_teachers=faculty_scope.visible_teachers)
 
         with mock.patch(
                 'cis.services.tenant_services.importlib.import_module',
                 return_value=module):
             result = faculty_scope.visible_teachers(
                 self.faculty, academic_year=self.year)
+
+        self.assertEqual(set(result), {teacher})
+
+    @override_settings(TENANT_SERVICES_APP=FAKE_TENANT)
+    def test_a_pair_rule_override_reaches_visible_teachers_and_pairs(self):
+        """package-cis#108: the pair rule is the overridable part, and every
+        scope derives from it -- not only My Instructors."""
+        from django.db.models import Q
+        course = self._course()
+        self._oversees(course)
+        kept, dropped = self._teacher(), self._teacher()
+        self._certifies(kept, course)
+        self._certifies(dropped, course)
+
+        def narrowed(user, **kwargs):
+            q = faculty_scope.default_visible_pairs_q(user, **kwargs)
+            return q & ~Q(**{kwargs['teacher_field']: dropped.id})
+
+        module = SimpleNamespace(visible_pairs_q=narrowed)
+        with mock.patch(
+                'cis.services.tenant_services.importlib.import_module',
+                return_value=module):
+            teachers = set(faculty_scope.visible_teachers(
+                self.faculty, academic_year=self.year))
+            pairs = faculty_scope.visible_course_teachers(
+                self.faculty, academic_year=self.year)
+
+        self.assertEqual(teachers, {kept})
+        self.assertEqual(pairs, {(course.id, kept.id)})
+
+    @override_settings(TENANT_SERVICES_APP=FAKE_TENANT)
+    def test_a_tenant_that_re_exports_the_pair_wrapper_does_not_recurse(self):
+        course = self._course()
+        self._oversees(course)
+        teacher = self._teacher()
+        self._certifies(teacher, course)
+        module = SimpleNamespace(visible_pairs_q=faculty_scope.visible_pairs_q)
+
+        with mock.patch(
+                'cis.services.tenant_services.importlib.import_module',
+                return_value=module):
+            result = faculty_scope.visible_teachers(
+                self.faculty, academic_year=self.year)
+
+        self.assertEqual(set(result), {teacher})
+
+    def test_an_assigned_teacher_whose_certificate_went_stays_visible(self):
+        """Deriving teachers from the pair rule must keep this case."""
+        course = self._course()
+        self._oversees(course)
+        teacher = self._teacher()
+        cert = self._certifies(teacher, course)
+        self._assign(teacher, course)
+        cert.delete()
+
+        result = faculty_scope.visible_teachers(self.faculty, academic_year=self.year)
 
         self.assertEqual(set(result), {teacher})
 

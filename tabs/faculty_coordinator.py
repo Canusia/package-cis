@@ -96,18 +96,25 @@ def _overseen_courses(user):
 def _certified_teachers(courses):
     """{course_id: [Teacher, ...]} for the courses given, in one round trip.
 
-    Each Teacher carries `cert_inactive`: True when every certificate the
-    teacher holds for that course is Inactive (the badge and the certificate
-    filter, package-faculty#2 D2). One Teacher object per (course, teacher), so
-    the flag is per course.
+    Each Teacher carries, per course (one Teacher object per (course,
+    teacher)):
+
+    - `cert_inactive`: True unless at least one of the teacher's certificates
+      for the course is in an active status
+      (TeacherCourseCertificate.ACTIVE_STATUSES). An allow-list, so Applicant
+      and Do Not Contact count as not active alongside Inactive
+      (package-cis#107); the badge and the certificate filter read it
+      (package-faculty#2 D2).
+    - `cert_status`: the statuses to put on that badge, e.g. "Do Not Contact".
     """
     from cis.models.teacher import Teacher, TeacherCourseCertificate
 
+    active = {s.lower() for s in TeacherCourseCertificate.ACTIVE_STATUSES}
     statuses = defaultdict(set)
     for course_id, teacher_id, status in TeacherCourseCertificate.objects.filter(
         course__in=courses
     ).values_list('course_id', 'teacher_highschool__teacher_id', 'status'):
-        statuses[(course_id, teacher_id)].add((status or '').strip().lower())
+        statuses[(course_id, teacher_id)].add((status or '').strip())
 
     teachers = {
         t.id: t for t in Teacher.objects.filter(
@@ -119,7 +126,11 @@ def _certified_teachers(courses):
         if base is None:
             continue
         teacher = copy.copy(base)
-        teacher.cert_inactive = course_statuses == {'inactive'}
+        teacher.cert_inactive = not any(
+            status.lower() in active for status in course_statuses)
+        teacher.cert_status = (
+            ', '.join(sorted(status or 'No status' for status in course_statuses))
+            if teacher.cert_inactive else '')
         by_course[course_id].append(teacher)
     for course_id in by_course:
         by_course[course_id].sort(key=str)
@@ -146,7 +157,19 @@ def _academic_year(request, param='academic_year'):
     return active_academic_year()
 
 
-def _save_assignments(request, faculty_user, academic_year, courses, certified):
+def _configured(faculty_user, academic_year, courses):
+    """Ids of `courses` configured for `academic_year`, in one query.
+
+    The same test as faculty_scope.configured_course_ids (which it calls), so
+    the screen, the save and the enforcement rule agree (package-cis#109).
+    """
+    from cis.services.faculty_scope import configured_course_ids
+    return set(configured_course_ids(faculty_user, academic_year).filter(
+        id__in=[c.id for c in courses]).values_list('id', flat=True))
+
+
+def _save_assignments(request, faculty_user, academic_year, courses, certified,
+                      listed):
     """Make the rows match the submission, for the submitted courses only.
 
     Only courses listed in the hidden `course` inputs are touched. That is what
@@ -160,10 +183,19 @@ def _save_assignments(request, faculty_user, academic_year, courses, certified):
     - `none`: configured with no instructors.
 
     Without a mode (an older form), ticked teachers mean `selected` and none
-    means `all`, as before. The By instructor view posts `pair` values
-    ("<course id>:<teacher id>") instead: a course with a tick becomes
-    `selected`; a configured course left with no ticks becomes `none`; an
-    unconfigured one with no ticks stays `all`.
+    means `all`, as before.
+
+    The By instructor view posts `pair` values ("<course id>:<teacher id>")
+    instead, and renders an unconfigured course with every listed instructor
+    ticked -- the mentor sees them all (package-cis#106). So, per course:
+
+    - `reset_all` lists it: `all`, whatever is ticked.
+    - unconfigured, and every listed instructor still ticked: stays `all`.
+    - otherwise the ticks are the selection: some ticked = `selected`, none =
+      `none`.
+
+    `listed` is {course id: {teacher id}} of the instructors the form showed,
+    under the same certificate filter.
 
     Courses the faculty member does not actively oversee, and teachers not
     certified for the course, are dropped rather than trusted: this POST is
@@ -176,6 +208,17 @@ def _save_assignments(request, faculty_user, academic_year, courses, certified):
     for raw in request.POST.getlist('pair'):
         course_id, _, teacher_id = raw.partition(':')
         pairs[course_id].add(teacher_id)
+    reset_all = set(request.POST.getlist('reset_all'))
+
+    # Read the year's rows once, not per course (package-cis#109).
+    configured_ids = _configured(faculty_user, academic_year, courses)
+    setting_ids = set(FacultyCourseAssignment.objects.filter(
+        user=faculty_user, academic_year=academic_year, course__in=courses,
+    ).values_list('course_id', flat=True))
+    existing_rows = defaultdict(dict)
+    for row in FacultyTeacherAssignment.objects.filter(
+            user=faculty_user, academic_year=academic_year, course__in=courses):
+        existing_rows[row.course_id][str(row.teacher_id)] = row
 
     by_id = {str(c.id): c for c in courses}
     for raw_course_id in request.POST.getlist('course'):
@@ -184,15 +227,16 @@ def _save_assignments(request, faculty_user, academic_year, courses, certified):
             continue
 
         allowed = {str(t.id) for t in certified.get(course.id, [])}
-        configured = (
-            FacultyCourseAssignment.objects.filter(
-                user=faculty_user, course=course, academic_year=academic_year).exists()
-            or FacultyTeacherAssignment.objects.filter(
-                user=faculty_user, course=course, academic_year=academic_year).exists())
+        configured = course.id in configured_ids
 
         if by_instructor:
             wanted = pairs.get(raw_course_id, set()) & allowed
-            mode = 'selected' if wanted else ('none' if configured else 'all')
+            if raw_course_id in reset_all:
+                mode = 'all'
+            elif not configured and wanted >= listed.get(course.id, set()):
+                mode = 'all'
+            else:
+                mode = 'selected' if wanted else 'none'
         else:
             wanted = {
                 t for t in request.POST.getlist(f'teachers_{course.id}')
@@ -205,9 +249,11 @@ def _save_assignments(request, faculty_user, academic_year, courses, certified):
             wanted = set()
 
         if mode == 'all':
-            FacultyCourseAssignment.objects.filter(
-                user=faculty_user, course=course, academic_year=academic_year).delete()
-        else:
+            if course.id in setting_ids:
+                FacultyCourseAssignment.objects.filter(
+                    user=faculty_user, course=course,
+                    academic_year=academic_year).delete()
+        elif course.id not in setting_ids:
             try:
                 with transaction.atomic():
                     FacultyCourseAssignment.objects.get_or_create(
@@ -216,11 +262,7 @@ def _save_assignments(request, faculty_user, academic_year, courses, certified):
             except IntegrityError:
                 pass
 
-        existing = {
-            str(row.teacher_id): row
-            for row in FacultyTeacherAssignment.objects.filter(
-                user=faculty_user, course=course, academic_year=academic_year)
-        }
+        existing = existing_rows[course.id]
 
         for teacher_id in existing.keys() - wanted:
             existing[teacher_id].delete()
@@ -241,7 +283,9 @@ def _save_assignments(request, faculty_user, academic_year, courses, certified):
 def _copy_assignments(request, faculty_user, source_year, target_year):
     """Clone one year's rows onto another, for this faculty member only.
 
-    Returns the number of rows created. Rows that already exist are skipped
+    Returns (course settings created, assignments created): a "No
+    instructors" course copies as a setting with no assignments, and CE must
+    hear about it (package-cis#105). Rows that already exist are skipped
     rather than allowed to raise: unique_together is
     (user, course, teacher, academic_year), so a second copy of the same year
     would otherwise be an IntegrityError instead of a no-op. `created_by` is
@@ -251,21 +295,23 @@ def _copy_assignments(request, faculty_user, source_year, target_year):
     from cis.models.faculty import FacultyTeacherAssignment
 
     if source_year is None or target_year is None or source_year == target_year:
-        return 0
+        return 0, 0
 
     from cis.models.faculty import FacultyCourseAssignment
 
     # Configuration rows first, so a "no instructors" course carries over too.
+    settings_created = 0
     for course_id in FacultyCourseAssignment.objects.filter(
         user=faculty_user, academic_year=source_year
     ).values_list('course_id', flat=True):
         try:
             with transaction.atomic():
-                FacultyCourseAssignment.objects.get_or_create(
+                _, was_created = FacultyCourseAssignment.objects.get_or_create(
                     user=faculty_user, course_id=course_id, academic_year=target_year,
                     defaults={'created_by': request.user})
         except IntegrityError:
             continue
+        settings_created += int(was_created)
 
     created = 0
     rows = FacultyTeacherAssignment.objects.filter(
@@ -280,7 +326,7 @@ def _copy_assignments(request, faculty_user, source_year, target_year):
         except IntegrityError:
             continue
         created += int(was_created)
-    return created
+    return settings_created, created
 
 
 @faculty_coordinator_tabs.tab(slug=ASSIGNED_INSTRUCTORS_SLUG,
@@ -295,49 +341,55 @@ def assigned_instructors_tab(request, record):
     courses = list(_overseen_courses(faculty_user))
     certified = _certified_teachers(courses)
 
-    message = None
-    if request.method == 'POST' and academic_year is not None:
-        action = request.POST.get('action')
-        if action == 'save_assigned_instructors':
-            _save_assignments(
-                request, faculty_user, academic_year, courses, certified)
-            message = 'Assignments saved.'
-        elif action == 'copy_assigned_instructors':
-            source = _academic_year(request, 'source_academic_year')
-            created = _copy_assignments(
-                request, faculty_user, source, academic_year)
-            message = (
-                f'Copied {created} assignment(s) from {source}.'
-                if created else
-                f'Nothing to copy from {source}.')
-
-    from cis.models.faculty import FacultyCourseAssignment
-    from cis.services.faculty_scope import visible_course_teachers
-
-    assigned = defaultdict(set)
-    configured = set()
-    if academic_year is not None:
-        for course_id, teacher_id in FacultyTeacherAssignment.objects.filter(
-            user=faculty_user, academic_year=academic_year, course__in=courses
-        ).values_list('course_id', 'teacher_id'):
-            assigned[course_id].add(str(teacher_id))
-            configured.add(course_id)
-        configured.update(FacultyCourseAssignment.objects.filter(
-            user=faculty_user, academic_year=academic_year, course__in=courses
-        ).values_list('course_id', flat=True))
-
     # Certificate filter (D2). An instructor already assigned is always listed,
     # badged, so a save under "Active only" never drops them unseen.
     cert_filter = request.POST.get('cert_status') or request.GET.get('cert_status')
     if cert_filter not in dict(CERT_FILTERS):
         cert_filter = 'active'
 
-    def listed(course):
+    def load_assigned():
+        assigned = defaultdict(set)
+        if academic_year is not None:
+            for course_id, teacher_id in FacultyTeacherAssignment.objects.filter(
+                user=faculty_user, academic_year=academic_year, course__in=courses
+            ).values_list('course_id', 'teacher_id'):
+                assigned[course_id].add(str(teacher_id))
+        return assigned
+
+    def listed(course, assigned):
         return [
             t for t in certified.get(course.id, [])
             if cert_filter == 'all' or not t.cert_inactive
             or str(t.id) in assigned.get(course.id, set())
         ]
+
+    message = None
+    if request.method == 'POST' and academic_year is not None:
+        action = request.POST.get('action')
+        if action == 'save_assigned_instructors':
+            # What the submitted form listed, so the save can tell "left every
+            # instructor ticked" from "narrowed the list" (package-cis#106).
+            before = load_assigned()
+            shown = {c.id: {str(t.id) for t in listed(c, before)} for c in courses}
+            _save_assignments(
+                request, faculty_user, academic_year, courses, certified, shown)
+            message = 'Assignments saved.'
+        elif action == 'copy_assigned_instructors':
+            source = _academic_year(request, 'source_academic_year')
+            settings_created, created = _copy_assignments(
+                request, faculty_user, source, academic_year)
+            message = (
+                f'Copied {settings_created} course setting(s) and '
+                f'{created} assignment(s) from {source}.'
+                if settings_created or created else
+                f'Nothing to copy from {source}.')
+
+    from cis.services.faculty_scope import visible_course_teachers
+
+    assigned = load_assigned()
+    configured = (
+        _configured(faculty_user, academic_year, courses)
+        if academic_year is not None else set())
 
     rows = []
     for course in courses:
@@ -349,7 +401,7 @@ def assigned_instructors_tab(request, record):
             mode = 'none'
         rows.append({
             'course': course,
-            'teachers': listed(course),
+            'teachers': listed(course, assigned),
             'selected': assigned.get(course.id, set()),
             'mode': mode,
             # The fallback is a state the page states in words: "nobody" and
@@ -364,8 +416,11 @@ def assigned_instructors_tab(request, record):
             entry = instructors.setdefault(teacher.id, {'teacher': teacher, 'courses': []})
             entry['courses'].append({
                 'course': row['course'],
-                'checked': str(teacher.id) in row['selected'],
+                # An unconfigured course shows the mentor everyone, so it
+                # renders ticked (package-cis#106).
+                'checked': row['mode'] == 'all' or str(teacher.id) in row['selected'],
                 'cert_inactive': teacher.cert_inactive,
+                'cert_status': teacher.cert_status,
             })
     by_instructor = sorted(instructors.values(), key=lambda e: str(e['teacher']))
 

@@ -148,7 +148,7 @@ Two things this fragment must keep saying out loud:
                         {% for teacher in row.teachers %}
                         <div class="custom-control custom-checkbox">
                             <input type="checkbox" class="custom-control-input" id="t_{{ row.course.id }}_{{ teacher.id }}" name="teachers_{{ row.course.id }}" value="{{ teacher.id }}"{% if teacher.id|stringformat:"s" in row.selected %} checked{% endif %}>
-                            <label class="custom-control-label" for="t_{{ row.course.id }}_{{ teacher.id }}">{{ teacher }}{% if teacher.cert_inactive %} <span class="badge badge-light">certificate inactive</span>{% endif %}</label>
+                            <label class="custom-control-label" for="t_{{ row.course.id }}_{{ teacher.id }}">{{ teacher }}{% if teacher.cert_inactive %} <span class="badge badge-light">certificate {{ teacher.cert_status|lower }}</span>{% endif %}</label>
                         </div>
                         {% endfor %}
                     </div>
@@ -169,10 +169,39 @@ Two things this fragment must keep saying out loud:
             <input type="hidden" name="view" value="instructor">
             {% for row in rows %}<input type="hidden" name="course" value="{{ row.course.id }}">{% endfor %}
             <p class="text-muted small">
-                Tick each instructor's courses. A ticked course switches to
-                "Only these instructors"; a configured course with nothing ticked
-                switches to "No instructors".
+                Tick each instructor's courses. A course set to "All certified
+                instructors" shows everyone ticked; untick someone and it switches
+                to "Only these instructors" with the rest. A configured course with
+                nothing ticked switches to "No instructors".
             </p>
+            {% comment %}
+            The way back to "All" from this view (package-cis#106): ticking every
+            instructor on a configured course still means "Only these", which
+            stops covering instructors certified later.
+            {% endcomment %}
+            <table class="table table-sm mb-3">
+                <thead><tr><th scope="col">Course</th><th scope="col">Setting</th><th scope="col">Reset</th></tr></thead>
+                <tbody>
+                    {% for row in rows %}
+                    <tr>
+                        <td>{{ row.course.catalog_number }} &mdash; {{ row.course.title }}</td>
+                        <td>
+                            {% if row.mode == 'all' %}<span class="badge badge-warning">All instructors (unassigned)</span>
+                            {% elif row.mode == 'none' %}<span class="badge badge-secondary">No instructors</span>
+                            {% else %}<span class="badge badge-info">Only these instructors</span>{% endif %}
+                        </td>
+                        <td>
+                            {% if row.mode != 'all' %}
+                            <div class="custom-control custom-checkbox">
+                                <input type="checkbox" class="custom-control-input" id="r_{{ row.course.id }}" name="reset_all" value="{{ row.course.id }}">
+                                <label class="custom-control-label" for="r_{{ row.course.id }}">Reset to all certified instructors</label>
+                            </div>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
             <table class="table table-striped table-sm">
                 <thead><tr><th scope="col">Instructor</th><th scope="col">Courses</th></tr></thead>
                 <tbody>
@@ -183,7 +212,7 @@ Two things this fragment must keep saying out loud:
                             {% for item in entry.courses %}
                             <div class="custom-control custom-checkbox custom-control-inline">
                                 <input type="checkbox" class="custom-control-input" id="p_{{ item.course.id }}_{{ entry.teacher.id }}" name="pair" value="{{ item.course.id }}:{{ entry.teacher.id }}"{% if item.checked %} checked{% endif %}>
-                                <label class="custom-control-label" for="p_{{ item.course.id }}_{{ entry.teacher.id }}">{{ item.course.catalog_number }}{% if item.cert_inactive %} <span class="badge badge-light">certificate inactive</span>{% endif %}</label>
+                                <label class="custom-control-label" for="p_{{ item.course.id }}_{{ entry.teacher.id }}">{{ item.course.catalog_number }}{% if item.cert_inactive %} <span class="badge badge-light">certificate {{ item.cert_status|lower }}</span>{% endif %}</label>
                             </div>
                             {% endfor %}
                         </td>

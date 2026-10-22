@@ -45,43 +45,35 @@ def default_visible_teachers(user, academic_year=None):
     """The cis default rule. Tenant modules re-export *this* name.
 
     For every course the user actively oversees: the assigned teachers if
-    (user, course, year) has assignment rows, otherwise every teacher certified
-    for that course.
+    (user, course, year) is configured, otherwise every teacher certified for
+    that course.
 
-    Two subqueries and a union, never a loop over courses, so the cost is one
-    round trip whether the faculty member oversees one course or fifty.
+    Derived from the pair rule (``visible_pairs_q``, which a tenant may
+    override) rather than restating it, so My Instructors, sections, rosters
+    and the course columns cannot disagree (package-cis#108). A teacher is
+    visible when any of their certificates, or any of their assignment rows,
+    is a visible pair -- the second half keeps an assigned teacher whose
+    certificate has since gone. Two subqueries and a union, never a loop over
+    courses, so the cost is one round trip whether the faculty member
+    oversees one course or fifty.
     """
     if academic_year is None:
         academic_year = active_academic_year()
 
-    overseen_courses = CourseAdministrator.objects.filter(
-        user=user, status__iexact='active'
-    ).values('course_id')
-
-    assignments = FacultyTeacherAssignment.objects.filter(
-        user=user,
+    by_certificate = TeacherCourseCertificate.objects.filter(visible_pairs_q(
+        user, course_field='course_id',
+        teacher_field='teacher_highschool__teacher_id',
         academic_year=academic_year,
-        course_id__in=overseen_courses,
-    )
-
-    # Courses this faculty member has configured for this year: assignment rows,
-    # or a FacultyCourseAssignment row (which may have no assignments -- "no
-    # instructors"). Their teacher list is exactly what was picked; every other
-    # overseen course falls back.
-    configured_courses = configured_course_ids(user, academic_year)
-
-    assigned_teachers = assignments.values('teacher_id')
-
-    # The pre-existing derivation, unchanged, minus the configured courses.
-    fallback_teachers = TeacherCourseCertificate.objects.filter(
-        course_id__in=overseen_courses,
-    ).exclude(
-        course_id__in=configured_courses,
-    ).values('teacher_highschool__teacher_id')
+    )).values('teacher_highschool__teacher_id')
+    by_assignment = FacultyTeacherAssignment.objects.filter(
+        user=user, academic_year=academic_year,
+    ).filter(visible_pairs_q(
+        user, course_field='course_id', teacher_field='teacher_id',
+        academic_year=academic_year,
+    )).values('teacher_id')
 
     return Teacher.objects.filter(
-        Q(id__in=assigned_teachers) | Q(id__in=fallback_teachers)
-    )
+        Q(id__in=by_certificate) | Q(id__in=by_assignment))
 
 
 def visible_teachers(user, academic_year=None):
@@ -120,6 +112,29 @@ def configured_course_ids(user, academic_year):
 def visible_pairs_q(user, *, course_field, teacher_field, year_field=None,
                     academic_year=None, require_certificate=True):
     """A Q that keeps rows whose (course, teacher) pair `user` may see.
+
+    The public entrypoint, and the tenant seam every faculty scope goes
+    through: ``visible_teachers`` and ``visible_course_teachers`` are both
+    derived from it. A tenant overrides ``visible_pairs_q`` (re-exporting
+    ``default_visible_pairs_q`` for the cases it keeps) with the same
+    signature; see ``default_visible_pairs_q`` for the rule.
+    """
+    override = _tenant_faculty_scope_override('visible_pairs_q')
+    # Same re-export guard as visible_teachers.
+    if override is not None and override is not visible_pairs_q:
+        return override(
+            user, course_field=course_field, teacher_field=teacher_field,
+            year_field=year_field, academic_year=academic_year,
+            require_certificate=require_certificate)
+    return default_visible_pairs_q(
+        user, course_field=course_field, teacher_field=teacher_field,
+        year_field=year_field, academic_year=academic_year,
+        require_certificate=require_certificate)
+
+
+def default_visible_pairs_q(user, *, course_field, teacher_field, year_field=None,
+                            academic_year=None, require_certificate=True):
+    """The cis default pair rule. Tenant modules re-export *this* name.
 
     For any queryset whose rows carry a course and a teacher -- class sections,
     course certificates. The pair is visible when the user actively oversees

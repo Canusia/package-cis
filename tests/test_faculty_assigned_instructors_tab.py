@@ -517,9 +517,53 @@ class AssignedInstructorsModesTests(AssignedInstructorsTabMixin, TestCase):
         self.assertEqual(self._rows(), set())
         self.assertTrue(self._configured())
 
-    def test_by_instructor_leaves_an_unconfigured_course_alone(self):
+    def test_by_instructor_unticking_everyone_on_an_unconfigured_course_means_none(self):
+        # The view renders an unconfigured course with everyone ticked, so a
+        # post with no ticks is CE unticking them all (package-cis#106).
         self._save(view='instructor')
+        self.assertTrue(self._configured())
+        self.assertEqual(self._rows(), set())
+
+    def test_by_instructor_leaves_an_unconfigured_course_alone_when_all_stay_ticked(self):
+        self._save(view='instructor', pair=[f'{self.course.id}:{self.a.id}',
+                                            f'{self.course.id}:{self.b.id}'])
         self.assertFalse(self._configured())
+        self.assertEqual(self._rows(), set())
+
+    def test_by_instructor_renders_an_unconfigured_course_ticked(self):
+        html = self._get(view='instructor')
+        self.assertIn(f'value="{self.course.id}:{self.a.id}" checked', html)
+        self.assertIn(f'value="{self.course.id}:{self.b.id}" checked', html)
+
+    def test_by_instructor_unticking_one_on_an_unconfigured_course_keeps_the_rest(self):
+        """package-cis#106: ticking used to *narrow* to the ticked one."""
+        self._save(view='instructor', pair=[f'{self.course.id}:{self.a.id}'])
+        self.assertEqual(self._rows(), {(self.course.id, self.a.id)})
+
+    def test_by_instructor_unconfigured_ignores_hidden_inactive_certificates(self):
+        # Under "Active only" b is not listed, so ticking every listed
+        # instructor (just a) leaves the course on All.
+        TeacherCourseCertificate.objects.filter(
+            teacher_highschool__teacher=self.b).update(status='Inactive')
+        self._save(view='instructor', cert_status='active',
+                   pair=[f'{self.course.id}:{self.a.id}'])
+        self.assertFalse(self._configured())
+
+    def test_by_instructor_reset_returns_a_configured_course_to_all(self):
+        self._assign(self.a, self.course)
+        self._save(view='instructor', pair=[f'{self.course.id}:{self.a.id}'])
+        self.assertTrue(self._configured())
+        html = self._save(view='instructor', reset_all=[str(self.course.id)],
+                          pair=[f'{self.course.id}:{self.a.id}'])
+        self.assertFalse(self._configured())
+        self.assertEqual(self._rows(), set())
+        self.assertIn(UNASSIGNED_TEXT, html)
+
+    def test_by_instructor_offers_reset_only_for_configured_courses(self):
+        self.assertNotIn('name="reset_all"', self._get(view='instructor'))
+        self._assign(self.a, self.course)
+        self.assertIn(f'name="reset_all" value="{self.course.id}"',
+                      self._get(view='instructor'))
 
     def test_by_instructor_drops_uncertified_pairs(self):
         stranger = self._teacher()
@@ -538,6 +582,28 @@ class AssignedInstructorsModesTests(AssignedInstructorsTabMixin, TestCase):
         self.assertIn(str(self.b.id), html)
         self.assertIn('certificate inactive', html)
 
+    def test_applicant_and_do_not_contact_are_not_active(self):
+        """package-cis#107: only an allow-list of statuses counts as active."""
+        for status in ('Applicant', 'Do Not Contact'):
+            with self.subTest(status=status):
+                TeacherCourseCertificate.objects.filter(
+                    teacher_highschool__teacher=self.b).update(status=status)
+                self.assertNotIn(str(self.b.id), self._get())
+                html = self._get(cert_status='all')
+                self.assertIn(str(self.b.id), html)
+                self.assertIn(f'certificate {status.lower()}', html)
+
+    def test_one_active_certificate_makes_the_pair_active(self):
+        TeacherCourseCertificate.objects.filter(
+            teacher_highschool__teacher=self.b).update(status='Do Not Contact')
+        other_hs = HighSchool.objects.create(name=f'HS-{_suffix()}')
+        ths = TeacherHighSchool.objects.create(teacher=self.b, highschool=other_hs)
+        TeacherCourseCertificate.objects.create(
+            teacher_highschool=ths, course=self.course, status='Teaching Provisional')
+        html = self._get()
+        self.assertIn(str(self.b.id), html)
+        self.assertNotIn('certificate do not contact', html)
+
     def test_an_assigned_inactive_certificate_is_shown_and_kept(self):
         TeacherCourseCertificate.objects.filter(
             teacher_highschool__teacher=self.b).update(status='Inactive')
@@ -554,6 +620,39 @@ class AssignedInstructorsModesTests(AssignedInstructorsTabMixin, TestCase):
                     'academic_year': str(self.year.id),
                     'source_academic_year': str(self.other_year.id)})
         self.assertTrue(self._configured())
+
+    def test_copying_only_no_instructors_courses_says_what_was_copied(self):
+        """package-cis#105: used to say "Nothing to copy"."""
+        FacultyCourseAssignment.objects.create(
+            user=self.faculty, course=self.course, academic_year=self.other_year)
+        html = self._post({'action': 'copy_assigned_instructors',
+                           'academic_year': str(self.year.id),
+                           'source_academic_year': str(self.other_year.id)})
+        self.assertIn('Copied 1 course setting(s) and 0 assignment(s)', html)
+        self.assertNotIn('Nothing to copy', html)
+
+    def test_save_query_count_does_not_grow_with_courses(self):
+        """package-cis#109: no per-course exists()/select on an unchanged save."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        def count():
+            courses = [str(c.id) for c in fc_tabs._overseen_courses(self.faculty)]
+            data = {'action': 'save_assigned_instructors',
+                    'academic_year': str(self.year.id), 'course': courses}
+            for c in courses:
+                data[f'mode_{c}'] = 'all'
+            with CaptureQueriesContext(connection) as ctx:
+                self._post(data)
+            return len(ctx)
+
+        count()  # the first request also saves the session
+        one = count()
+        for _ in range(3):
+            course = self._course('More')
+            self._oversees(course)
+            self._certifies(self.a, course)
+        self.assertEqual(count(), one)
 
     def test_summary_counts_what_the_mentor_sees(self):
         self.assertIn('<strong>2</strong> instructors across <strong>1</strong> course in', self._get())

@@ -83,6 +83,25 @@ class Teacher(models.Model):
             teacher_highschool__teacher=self
         ).order_by('course__name')
 
+    IN_PROGRAM_STATUS = 'in the program'
+
+    def in_program_teacher_highschools(self):
+        """This teacher's TeacherHighSchool rows that are in the program.
+
+        The one definition of "in the program" (compared case-insensitively),
+        for callers that need the rows rather than the names -- e.g. to narrow
+        them further, as package-faculty's High School column does
+        (package-faculty#4). Reads the teacherhighschool_set prefetch when
+        there is one.
+        """
+        cache = getattr(self, '_prefetched_objects_cache', {})
+        if 'teacherhighschool_set' in cache:
+            return [ths for ths in cache['teacherhighschool_set']
+                    if (ths.status or '').lower() == self.IN_PROGRAM_STATUS]
+        return list(TeacherHighSchool.objects.filter(
+            teacher=self, status__iexact=self.IN_PROGRAM_STATUS,
+        ).select_related('highschool'))
+
     @property
     def active_highschools(self):
         # TeacherSerializer serializes this as a ListField, so it cost a query
@@ -96,18 +115,17 @@ class Teacher(models.Model):
         cache = getattr(self, '_prefetched_objects_cache', {})
         if 'teacherhighschool_set' in cache:
             return [ths.highschool.name
-                    for ths in cache['teacherhighschool_set']
-                    if (ths.status or '').lower() == 'in the program']
+                    for ths in self.in_program_teacher_highschools()]
         return TeacherHighSchool.objects.filter(
             teacher=self,
-            status__iexact='in the program'
+            status__iexact=self.IN_PROGRAM_STATUS
         ).values_list('highschool__name', flat=True)
     
     @property
     def active_highschool_codes(self):
         return TeacherHighSchool.objects.filter(
             teacher=self,
-            status__iexact='in the program'
+            status__iexact=self.IN_PROGRAM_STATUS
         ).values_list('highschool__sau', flat=True)
 
     @staticmethod
@@ -462,6 +480,10 @@ class TeacherCourseCertificate(models.Model):
         ('Do Not Contact', 'Do Not Contact'),
     ]
     status = models.CharField(max_length=300, choices=STATUS_OPTIONS, default='Teaching')
+    # The statuses in which the instructor is actually teaching the course.
+    # An allow-list: anything else (Inactive, Applicant, Do Not Contact, or a
+    # status added later) is not active (package-cis#107).
+    ACTIVE_STATUSES = ('Teaching', 'Teaching Substitute', 'Teaching Provisional')
     highschool_course_name = models.CharField(
         max_length=300, blank=True, null=True
     )
