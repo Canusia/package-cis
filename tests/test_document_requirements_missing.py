@@ -128,6 +128,34 @@ class MissingDocumentsTests(TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(len(rows[0].courses), 2)
 
+    def test_a_merged_row_is_met_only_when_every_course_is(self):
+        """One course's 'once' must not hide another's unmet 'per_term',
+        whichever registration is read first."""
+        self._upload(term=self.old)   # covers 'once', not this term
+        for once, per_term in ((self.course_a, self.course_b),
+                               (self.course_b, self.course_a)):
+            with self.subTest(once=once.title):
+                StudentRegistration.objects.all().delete()
+                CourseDocumentRequirement.objects.all().delete()
+                self._register(once)
+                self._register(per_term)
+                self._require(once, recurrence='once')
+                self._require(per_term, recurrence='per_term')
+                rows = self._rows()
+                self.assertEqual(len(rows), 1)
+                self.assertFalse(rows[0].satisfied)
+                self.assertEqual(rows[0].recurrence, 'Once per term')
+
+    def test_a_merged_met_row_names_the_narrowest_window(self):
+        self._upload()
+        self._register(self.course_a)
+        self._register(self.course_b)
+        self._require(self.course_a, recurrence='once')
+        self._require(self.course_b, recurrence='per_term')
+        rows = self._rows()
+        self.assertTrue(rows[0].satisfied)
+        self.assertEqual(rows[0].recurrence, 'Once per term')
+
     def test_not_required_inactive_and_other_grade_rows_are_ignored(self):
         self._register(self.course_a)
         self._require(self.course_a, required='2')
