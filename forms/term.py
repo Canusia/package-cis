@@ -35,6 +35,9 @@ def _campus_choices(field, queryset, user, campus_path, campus_of):
         return queryset
     if user is not None:
         queryset = scope_queryset_by_campus(queryset, user, campus_path=campus_path)
+    # Group by campus first, keeping the existing order within each campus.
+    order = queryset.query.order_by or queryset.model._meta.ordering
+    queryset = queryset.order_by(f'{campus_path}__name', *order)
     base = field.label_from_instance
 
     def label(obj):
@@ -290,7 +293,7 @@ class TermForm(forms.ModelForm):
         year_field = self.fields['academic_year']
         years = AcademicYear.objects.select_related('campus')
         if is_multi_campus():
-            years = years.order_by('campus__name', '-name')
+            years = years.order_by('-name')  # grouped by campus below
         year_field.queryset = _campus_choices(
             year_field, years, user, 'campus', _year_campus)
 
@@ -332,6 +335,15 @@ class TermForm(forms.ModelForm):
             self.add_error(
                 'parent', 'The parent term must be on the same campus as this '
                           "term's academic year.")
+        # Moving a parent term to another campus would strand its sub-terms.
+        if (is_multi_campus() and year and year.campus_id
+                and not self.instance._state.adding
+                and self.instance.sub_terms.filter(
+                    academic_year__campus__isnull=False).exclude(
+                    academic_year__campus=year.campus_id).exists()):
+            self.add_error(
+                'academic_year', 'This term has sub-terms on another campus; '
+                                 'move or detach them first.')
         return cleaned
 
     def save(self, commit=False):

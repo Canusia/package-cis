@@ -137,6 +137,45 @@ class TermFormCampusTests(TestCase):
                          'label': 'New', 'parent': str(self.term_b.id)})
         self.assertTrue(form.is_valid(), form.errors.as_json())
 
+    @multi
+    def test_edit_checks_parent_against_newly_chosen_year(self):
+        # Superuser-style (no user) form: the year changes to campus B while
+        # the parent stays on A -- clean() compares with the posted year.
+        self.term_a2.parent = self.term_a
+        self.term_a2.save()
+        form = TermForm(self._data(self.term_a2, academic_year=str(self.ay_b.id),
+                                   parent=str(self.term_a.id)),
+                        instance=self.term_a2)
+        self.assertFalse(form.is_valid())
+        self.assertIn('parent', form.errors)
+
+    @multi
+    def test_moving_parent_term_to_other_campus_keeps_sub_terms_together(self):
+        self.term_a2.parent = self.term_a
+        self.term_a2.save()
+        form = TermForm(self._data(self.term_a, academic_year=str(self.ay_b.id)),
+                        instance=self.term_a)
+        self.assertFalse(form.is_valid())
+        self.assertIn('academic_year', form.errors)
+
+    @multi
+    def test_options_grouped_by_campus(self):
+        labels = _labels(TermForm().fields['academic_year'])
+        a = [i for i, l in enumerate(labels) if l.endswith(f'({self.campus_a.name})')]
+        b = [i for i, l in enumerate(labels) if l.endswith(f'({self.campus_b.name})')]
+        self.assertLess(max(a), min(b))
+
+    @multi
+    def test_labels_render_without_per_option_queries(self):
+        for i in range(5):
+            Term.objects.create(academic_year=self.ay_a, code=f'X{i}{_sfx()}', label=f'X{i}')
+        form = TermForm(user=self.ce)
+        with self.assertNumQueries(1):
+            _labels(form.fields['academic_year'])
+        # Parent choices are built eagerly by apply_term_tree, in __init__.
+        with self.assertNumQueries(0):
+            _labels(form.fields['parent'])
+
     # --- migrate + bulk forms ---------------------------------------------
 
     @multi
@@ -205,6 +244,8 @@ class TermFormCampusTests(TestCase):
         self.assertEqual(term_detail(self._request(), record_id=self.term_b.id).status_code, 403)
         self.assertEqual(term_tab(self._request(), self.term_b.id, 'details').status_code, 403)
         self.assertEqual(ay_detail(self._request(), record_id=self.ay_b.id).status_code, 403)
+        from cis.views.academic_year import tab as ay_tab
+        self.assertEqual(ay_tab(self._request(), self.ay_b.id, 'details').status_code, 403)
 
     @single
     def test_single_campus_detail_not_gated(self):

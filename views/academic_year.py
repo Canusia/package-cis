@@ -68,7 +68,7 @@ def delete_record(request, record_id):
 
 def tab(request, record_id, tab_slug):
     """Render a single Academic Year detail-page tab fragment (lazy AJAX)."""
-    record = get_object_or_404(AcademicYear, pk=record_id)
+    record = get_object_or_404(AcademicYear.objects.select_related('campus'), pk=record_id)
     denied = deny_other_campus(request, record.campus)
     if denied:
         return denied
@@ -81,7 +81,7 @@ def detail(request, record_id):
     Record details page
     '''
     template = 'cis/term/academic_year.html'    
-    record = get_object_or_404(AcademicYear, pk=record_id)
+    record = get_object_or_404(AcademicYear.objects.select_related('campus'), pk=record_id)
     denied = deny_other_campus(request, record.campus)
     if denied:
         return denied

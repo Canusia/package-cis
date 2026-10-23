@@ -92,7 +92,7 @@ class TermViewSet(viewsets.ReadOnlyModelViewSet):
 
 def tab(request, record_id, tab_slug):
     """Render a single Term detail-page tab fragment (lazy AJAX)."""
-    record = get_object_or_404(Term.objects.select_related('academic_year'), pk=record_id)
+    record = get_object_or_404(Term.objects.select_related('academic_year__campus'), pk=record_id)
     denied = deny_other_campus(request, record.academic_year.campus)
     if denied:
         return denied
@@ -105,7 +105,7 @@ def detail(request, record_id):
     Record details page
     '''
     template = 'cis/term/term.html'    
-    record = get_object_or_404(Term.objects.select_related('academic_year'), pk=record_id)
+    record = get_object_or_404(Term.objects.select_related('academic_year__campus'), pk=record_id)
     denied = deny_other_campus(request, record.academic_year.campus)
     if denied:
         return denied
