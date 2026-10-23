@@ -1,12 +1,47 @@
 from django import forms
+from django.db.models import Q
 from django.utils.translation import gettext_lazy as _
 from django.forms import ValidationError
 
 from cis.utils import get_movable_reference_choices, move_references
+from cis.campus_context import is_multi_campus
+from cis.campus_gate import scope_queryset_by_campus
 from cis.services.term_hierarchy import apply_term_tree, term_with_descendant_ids
 from cis.models.term import (
     Term, AcademicYear
 )
+
+
+def _year_campus(year):
+    return year.campus if year else None
+
+
+def _term_campus(term):
+    return term.academic_year.campus
+
+
+def _same_campus(a, b):
+    """Unassigned (null) campus matches any campus, as in the campus scoping."""
+    return a is None or b is None or a.pk == b.pk
+
+
+def _campus_choices(field, queryset, user, campus_path, campus_of):
+    """Multi-campus only (#113): limit to the user's campuses (null campus stays)
+    and add the campus to each label, since two campuses' years share names.
+
+    Returns the queryset to use; single-campus deployments get it unchanged.
+    """
+    if not is_multi_campus():
+        return queryset
+    if user is not None:
+        queryset = scope_queryset_by_campus(queryset, user, campus_path=campus_path)
+    base = field.label_from_instance
+
+    def label(obj):
+        campus = campus_of(obj)
+        return f'{base(obj)} ({campus.name if campus else "unassigned"})'
+    field.label_from_instance = label
+    return queryset
 
 class AcademicYearUploadForm(forms.Form):
     file = forms.FileField(
@@ -57,12 +92,15 @@ class MigrateAcademicYearForm(forms.Form):
     #         'js/student_migration.js'
     #     ]
 
-    def __init__(self, record, *args, **kwargs):
+    def __init__(self, record, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.fields['destination_record'].queryset = AcademicYear.objects.all().exclude(
-            id=record.id
-        )
+        qs = AcademicYear.objects.select_related('campus').exclude(id=record.id)
+        if is_multi_campus() and record.campus_id:
+            # Moving references to another campus's year is never wanted.
+            qs = qs.filter(Q(campus=record.campus_id) | Q(campus__isnull=True))
+        self.fields['destination_record'].queryset = _campus_choices(
+            self.fields['destination_record'], qs, user, 'campus', _year_campus)
 
         # EXISTS only -- loading every referencing row timed out large records.
         self.fields['move_items'].choices = get_movable_reference_choices(record)
@@ -113,12 +151,18 @@ class MigrateTermForm(forms.Form):
     #         'js/student_migration.js'
     #     ]
 
-    def __init__(self, record, *args, **kwargs):
+    def __init__(self, record, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
 
-        apply_term_tree(
-            self.fields['destination_record'],
-            Term.objects.select_related('academic_year').exclude(id=record.id))
+        field = self.fields['destination_record']
+        qs = Term.objects.select_related(
+            'academic_year__campus').exclude(id=record.id)
+        campus_id = record.academic_year.campus_id
+        if is_multi_campus() and campus_id:
+            qs = qs.filter(Q(academic_year__campus=campus_id)
+                           | Q(academic_year__campus__isnull=True))
+        apply_term_tree(field, _campus_choices(
+            field, qs, user, 'academic_year__campus', _term_campus))
 
         # EXISTS only -- loading every referencing row timed out large records.
         self.fields['move_items'].choices = get_movable_reference_choices(record)
@@ -184,23 +228,37 @@ class AcademicYearForm(forms.ModelForm):
 class BulkAssignParentForm(forms.Form):
     parent = forms.ModelChoiceField(
         required=True, label='Parent Term',
-        queryset=Term.objects.select_related('academic_year').order_by(
+        queryset=Term.objects.select_related('academic_year__campus').order_by(
             '-academic_year__name', '-code'),
     )
 
-    def __init__(self, ids=None, *args, **kwargs):
+    def __init__(self, ids=None, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.ids = [str(i) for i in (ids or [])]
-        qs = self.fields['parent'].queryset
+        self.user = user
+        field = self.fields['parent']
+        qs = field.queryset
         if self.ids:
             qs = qs.exclude(pk__in=self.ids)
-        apply_term_tree(self.fields['parent'], qs)
+        apply_term_tree(field, _campus_choices(
+            field, qs, user, 'academic_year__campus', _term_campus))
 
     def save(self):
+        """Returns (assigned, skipped); skips self, cycles and, in multi-campus
+        mode, terms on another campus or outside the user's campuses."""
         parent = self.cleaned_data['parent']
-        assigned, skipped = 0, 0
-        for term in Term.objects.filter(pk__in=self.ids):
-            if term.pk == parent.pk or term.would_create_cycle(parent):
+        terms = Term.objects.select_related('academic_year__campus').filter(
+            pk__in=self.ids)
+        multi = is_multi_campus()
+        if multi and self.user is not None:
+            terms = scope_queryset_by_campus(
+                terms, self.user, campus_path='academic_year__campus')
+        assigned = 0
+        skipped = len(self.ids) - len(terms)
+        for term in terms:
+            if (term.pk == parent.pk or term.would_create_cycle(parent)
+                    or (multi and not _same_campus(
+                        _term_campus(term), _term_campus(parent)))):
                 skipped += 1
                 continue
             term.parent = parent
@@ -226,16 +284,31 @@ class TermForm(forms.ModelForm):
             'dates',
             'meta'
         ]
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
 
-        qs = Term.objects.select_related('academic_year').order_by(
+        year_field = self.fields['academic_year']
+        years = AcademicYear.objects.select_related('campus')
+        if is_multi_campus():
+            years = years.order_by('campus__name', '-name')
+        year_field.queryset = _campus_choices(
+            year_field, years, user, 'campus', _year_campus)
+
+        parent_field = self.fields['parent']
+        qs = Term.objects.select_related('academic_year__campus').order_by(
             '-academic_year__name', '-code')
         if self.instance and self.instance.pk:
             # Itself and its own sub-terms can never be its parent.
             qs = qs.exclude(pk__in=term_with_descendant_ids(self.instance.pk))
-        apply_term_tree(self.fields['parent'], qs)
-        self.fields['parent'].required = False
+        # The pk is a uuid default, so a new term has one too: check its year.
+        if self.instance.academic_year_id:
+            campus_id = self.instance.academic_year.campus_id
+            if is_multi_campus() and campus_id:
+                qs = qs.filter(Q(academic_year__campus=campus_id)
+                               | Q(academic_year__campus__isnull=True))
+        apply_term_tree(parent_field, _campus_choices(
+            parent_field, qs, user, 'academic_year__campus', _term_campus))
+        parent_field.required = False
 
     def clean_parent(self):
         parent = self.cleaned_data.get('parent')
@@ -248,6 +321,18 @@ class TermForm(forms.ModelForm):
                 raise ValidationError(
                     'That parent would create a circular term hierarchy.')
         return parent
+
+    def clean(self):
+        cleaned = super().clean()
+        parent = cleaned.get('parent')
+        year = cleaned.get('academic_year')
+        # Compared with the year chosen on this submission, not the saved one.
+        if (is_multi_campus() and parent and year
+                and not _same_campus(_year_campus(year), _term_campus(parent))):
+            self.add_error(
+                'parent', 'The parent term must be on the same campus as this '
+                          "term's academic year.")
+        return cleaned
 
     def save(self, commit=False):
         record = super().save(commit=False)

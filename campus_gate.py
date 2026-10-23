@@ -350,6 +350,20 @@ def scope_by_course_cert_campus(records, user, cert_path, selected_campus=None):
     ).distinct()
 
 
+def deny_other_campus(request, campus):
+    """Multi-campus only: a 403 page when the user can't process ``campus``.
+
+    Returns None when access is fine (always, on single-campus deployments),
+    so a detail view can ``if denied: return denied``.
+    """
+    from cis.campus_context import is_multi_campus
+    if not is_multi_campus() or can_process_campus(request.user, campus):
+        return None
+    return render(
+        request, 'cis/not_authorized.html',
+        {'message': 'You are not authorized to access this campus.'}, status=403)
+
+
 def campus_gate(model, campus_of=None, mode='page', pk_kwarg='record_id'):
     """Block object-level access when the user can't process the record's campus.
 

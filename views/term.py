@@ -13,7 +13,7 @@ from django.urls import reverse
 from django.views.decorators.clickjacking import xframe_options_exempt
 
 from cis.models.term import Term
-from cis.campus_gate import scope_queryset_by_campus
+from cis.campus_gate import scope_queryset_by_campus, deny_other_campus
 from cis.forms.term import AcademicYearForm, TermForm, MigrateTermForm, TermUploadForm
 from cis.menu import cis_menu, draw_menu
 from cis.services.table_configs import get_table_config
@@ -92,7 +92,10 @@ class TermViewSet(viewsets.ReadOnlyModelViewSet):
 
 def tab(request, record_id, tab_slug):
     """Render a single Term detail-page tab fragment (lazy AJAX)."""
-    record = get_object_or_404(Term, pk=record_id)
+    record = get_object_or_404(Term.objects.select_related('academic_year'), pk=record_id)
+    denied = deny_other_campus(request, record.academic_year.campus)
+    if denied:
+        return denied
     return term_tabs.render_tab(request, record, tab_slug)
 
 
@@ -102,14 +105,17 @@ def detail(request, record_id):
     Record details page
     '''
     template = 'cis/term/term.html'    
-    record = get_object_or_404(Term, pk=record_id)
-    form = TermForm(instance=record)
+    record = get_object_or_404(Term.objects.select_related('academic_year'), pk=record_id)
+    denied = deny_other_campus(request, record.academic_year.campus)
+    if denied:
+        return denied
+    form = TermForm(instance=record, user=request.user)
 
     if request.method == 'POST':
 
         if request.POST.get('action') == 'migrate_term':
             migration_form = MigrateTermForm(
-                record=record, data=request.POST
+                record=record, data=request.POST, user=request.user
             )
 
             if migration_form.is_valid():
@@ -134,7 +140,7 @@ def detail(request, record_id):
                     'Please correct the errors and try again',
                     'list-group-item-danger')
         else:
-            form = TermForm(request.POST, instance=record)
+            form = TermForm(request.POST, instance=record, user=request.user)
 
             if form.is_valid():
                 record = form.save(commit=False)
@@ -266,7 +272,7 @@ def add_new(request):
         if request.POST.get('upload_file') == "Import Terms":
             return import_terms_from_file(request)
 
-        form = TermForm(request.POST)
+        form = TermForm(request.POST, user=request.user)
         ajax = request.POST.get('ajax', None)
 
         if form.is_valid():
@@ -296,7 +302,7 @@ def add_new(request):
                 }
                 return JsonResponse(data)
     else:
-        form = TermForm()
+        form = TermForm(user=request.user)
 
     if ajax == '1':
         base_template = 'cis/ajax-base.html'

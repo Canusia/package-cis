@@ -179,18 +179,18 @@ def assign_parent(request):
     ids = request.POST.getlist('ids[]')
 
     if request.POST.get('action_confirmed'):
-        form = BulkAssignParentForm(ids, data=request.POST)
+        form = BulkAssignParentForm(ids, data=request.POST, user=request.user)
         if form.is_valid():
             assigned, skipped = form.save()
             msg = f'{assigned} assigned'
             if skipped:
-                msg += f', {skipped} skipped (self/cycle)'
+                msg += f', {skipped} skipped (self/cycle/other campus)'
             return JsonResponse({'outcome': 'call', 'fn': 'onBulkActionComplete',
                                  'args': {'message': msg + '.', 'status': 'success'}})
         return JsonResponse({'message': 'Please correct the errors and try again.',
                              'errors': form.errors.as_json()}, status=400)
 
-    form = BulkAssignParentForm(ids)
+    form = BulkAssignParentForm(ids, user=request.user)
     html = render_to_string('cis/term/assign_parent_modal.html', {
         'title': 'Assign Parent Term',
         'form': form,

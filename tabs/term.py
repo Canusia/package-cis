@@ -70,10 +70,10 @@ def details_tab(request, record):
     from cis.forms.term import TermForm
     # detail() saves the main form in its non-migrate POST branch; rebind to show errors.
     if request.method == 'POST' and request.POST.get('action') != 'migrate_term':
-        form = TermForm(request.POST, instance=record)
+        form = TermForm(request.POST, instance=record, user=request.user)
         form.is_valid()
     else:
-        form = TermForm(instance=record)
+        form = TermForm(instance=record, user=request.user)
     return {'form': form, 'record': record}
 
 
@@ -82,8 +82,8 @@ def details_tab(request, record):
 def migrate_tab(request, record):
     from cis.forms.term import MigrateTermForm
     if request.method == 'POST' and request.POST.get('action') == 'migrate_term':
-        form = MigrateTermForm(record=record, data=request.POST)
+        form = MigrateTermForm(record=record, data=request.POST, user=request.user)
         form.is_valid()
     else:
-        form = MigrateTermForm(record=record)
+        form = MigrateTermForm(record=record, user=request.user)
     return {'migration_form': form}

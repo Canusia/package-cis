@@ -80,8 +80,8 @@ def details_tab(request, record):
 def migrate_tab(request, record):
     from cis.forms.term import MigrateAcademicYearForm
     if request.method == 'POST' and request.POST.get('action') == 'migrate_academic_year':
-        form = MigrateAcademicYearForm(record=record, data=request.POST)
+        form = MigrateAcademicYearForm(record=record, data=request.POST, user=request.user)
         form.is_valid()
     else:
-        form = MigrateAcademicYearForm(record=record)
+        form = MigrateAcademicYearForm(record=record, user=request.user)
     return {'migration_form': form}

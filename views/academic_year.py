@@ -14,7 +14,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from cis.models.term import AcademicYear
-from cis.campus_gate import scope_queryset_by_campus
+from cis.campus_gate import scope_queryset_by_campus, deny_other_campus
 from cis.forms.term import AcademicYearForm, MigrateAcademicYearForm, AcademicYearUploadForm
 from cis.menu import cis_menu, draw_menu
 from cis.services.table_configs import get_table_config
@@ -69,6 +69,9 @@ def delete_record(request, record_id):
 def tab(request, record_id, tab_slug):
     """Render a single Academic Year detail-page tab fragment (lazy AJAX)."""
     record = get_object_or_404(AcademicYear, pk=record_id)
+    denied = deny_other_campus(request, record.campus)
+    if denied:
+        return denied
     return academic_year_tabs.render_tab(request, record, tab_slug)
 
 
@@ -79,15 +82,18 @@ def detail(request, record_id):
     '''
     template = 'cis/term/academic_year.html'    
     record = get_object_or_404(AcademicYear, pk=record_id)
-    
-    migration_form = MigrateAcademicYearForm(record=record)
+    denied = deny_other_campus(request, record.campus)
+    if denied:
+        return denied
+
+    migration_form = MigrateAcademicYearForm(record=record, user=request.user)
     form = AcademicYearForm(instance=record)
 
     if request.method == 'POST':
 
         if request.POST.get('action') == 'migrate_academic_year':
             migration_form = MigrateAcademicYearForm(
-                record=record, data=request.POST
+                record=record, data=request.POST, user=request.user
             )
 
             if migration_form.is_valid():
