@@ -180,3 +180,18 @@ def filter_by_term(queryset, term_id, field='term'):
     registrations). An id that is not a UUID matches nothing.
     """
     return queryset.filter(**{f'{field}__in': term_with_descendant_ids(term_id)})
+
+
+# Tree order for Term DataTables (#112). A tenant's terms-table config puts
+# TREE_COLUMN_KEY in a profile's columns, renders TREE_COLUMN_HEADER for it and
+# merges tree_table_opts(columns) into the JS opts; staticfiles/cis/js/
+# term_tree.js does the rest. `tree_position` is annotated by the terms feed.
+TREE_COLUMN_KEY = 'term.tree'
+TREE_COLUMN_HEADER = '<th data-data="tree_position" data-name="tree_position">Order</th>'
+
+
+def tree_table_opts(columns):
+    """{'treeColumn': index of TREE_COLUMN_KEY in `columns`, or None}."""
+    columns = list(columns)
+    return {'treeColumn': columns.index(TREE_COLUMN_KEY)
+            if TREE_COLUMN_KEY in columns else None}

@@ -1,7 +1,7 @@
 {% extends "cis/logged-base.html" %}
 {%block title %}{{page_title}}{% endblock %}
 
-{% load templatehelpers %}
+{% load templatehelpers static %}
 
 {% block body %}
 
@@ -41,6 +41,7 @@
                         {% csrf_token %}
                         <div class="bg-white border border-top-0">
                             <div class="col-12 pt-3 mb-3">
+                                <script src="{% static 'cis/js/term_tree.js' %}"></script>
                                 {% include index_table.partial_template with config=index_table %}
                             </div>
                         </div>

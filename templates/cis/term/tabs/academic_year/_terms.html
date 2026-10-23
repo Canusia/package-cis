@@ -1,5 +1,7 @@
+{% load static %}
 <div class="card border-top-0">
     <div class="card-body">
+        <script src="{% static 'cis/js/term_tree.js' %}"></script>
         {% include terms_table.partial_template with config=terms_table %}
     </div>
 </div>
