@@ -85,3 +85,31 @@ class SectionDueDateFilterTests(ClassSectionFeedFixture):
         self.assertEqual(self._ids(grade_due_within='1w'), {self.section_a.id})
         self.assertEqual(self._ids(grade_due_within='1m'),
                          {self.section_a.id, self.section_b.id})
+
+
+class EnrolledStudentsCountTests(ClassSectionFeedFixture):
+    def test_feed_counts_enrolled_registrations(self):
+        from django.contrib.auth.models import Group
+        from cis.models.section import StudentRegistration
+        from cis.models.student import Student
+        from cis.serializers.class_section import ClassSectionSerializer
+        from cis.views.section import ClassSectionViewSet
+
+        Group.objects.get_or_create(name='student')
+        from cis.models.customuser import CustomUser
+        CustomUser.objects.get_or_create(
+            username='cron', defaults={'email': 'cron@example.com'})
+        for status in ('enrolled', 'enrolled', 'registered'):
+            user = _user_in_group('student')
+            student = Student.objects.create(user=user)
+            StudentRegistration.objects.create(
+                student=student, class_section=self.section_a, status=status,
+                status_changed_on={})
+        vs = ClassSectionViewSet()
+        request = RequestFactory().get('/', {'term': str(self.term.id)})
+        request.user = self.ce_user
+        vs.request = request
+        row = vs.get_queryset().get(pk=self.section_a.pk)
+        self.assertEqual(row.enrolled_students, 2)
+        self.assertEqual(row.registered_students, 1)
+        self.assertEqual(ClassSectionSerializer(row).data['enrolled_students'], 2)

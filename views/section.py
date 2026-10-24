@@ -604,6 +604,7 @@ class ClassSectionViewSet(viewsets.ReadOnlyModelViewSet):
                 num_students=Count('studentregistration'),
                 applied_students=Count('studentregistration', filter=Q(studentregistration__status__in=['applied', 'approved'])),
                 registered_students=Count('studentregistration', filter=Q(studentregistration__status='registered')),
+                enrolled_students=Count('studentregistration', filter=Q(studentregistration__status='enrolled')),
             )
 
             # PT-25: role-based ownership checks. The endpoint stays reachable by

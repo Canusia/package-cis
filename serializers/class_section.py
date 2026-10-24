@@ -145,6 +145,10 @@ class ClassSectionSerializer(serializers.ModelSerializer):
     registered_students = serializers.IntegerField(
         read_only=True
     )
+    # Registrations with status 'enrolled' (#95), for a tenant table column.
+    enrolled_students = serializers.IntegerField(
+        read_only=True
+    )
     start_time = serializers.SerializerMethodField()
     def get_start_time(self, obj):
         if obj.start_time == 0:
