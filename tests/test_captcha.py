@@ -63,8 +63,11 @@ class ProviderTests(SimpleTestCase):
 
 
 @unittest.skipUnless(HAS_ALTCHA, 'django-altcha not installed')
-@override_settings(ALTCHA_HMAC_KEY='cis-captcha-test-key', CACHES={
-    'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}})
+# ALTCHA_VERIFICATION_ENABLED is pinned on: a dev/e2e container that sets
+# CAPTCHA_TESTING turns verification off, and every rejection below would pass.
+@override_settings(ALTCHA_HMAC_KEY='cis-captcha-test-key', ALTCHA_VERIFICATION_ENABLED=True,
+                   CACHES={'default': {
+                       'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}})
 @modify_settings(INSTALLED_APPS={'append': 'django_altcha'})
 class AltchaFieldTests(SimpleTestCase):
 
