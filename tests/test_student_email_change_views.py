@@ -24,7 +24,7 @@ def _session_login(client, user):
     engine = import_module(settings.SESSION_ENGINE)
     session = engine.SessionStore()
     session['_auth_user_id'] = str(user.pk)
-    session['_auth_user_backend'] = 'django.contrib.auth.backends.ModelBackend'
+    session['_auth_user_backend'] = 'cis.email_backend.EmailAuthBackend'
     session['_auth_user_hash'] = user.get_session_auth_hash()
     session.save()
     client.cookies[settings.SESSION_COOKIE_NAME] = session.session_key
