@@ -3,6 +3,12 @@ Look up SIS identity (sis_id / psid / username) from Ethos for students
 currently awaiting an ID (application_status='in_review').
 
 Wired to the `student_id_importer` setting + CronTab (see cis/settings/).
+
+A tenant that gets student IDs another way (nnu: a pipe file in S3) defines
+``import_student_ids(configs) -> (summary_lines, rows)`` in its
+``services/student_id_import.py`` (#93). It then runs instead of the Ethos
+lookup, under the same setting and cron job; ``rows`` are
+``{'id': ..., 'RESULT': ...}`` dicts for the results file.
 """
 import csv
 import datetime
@@ -21,7 +27,7 @@ from mailer import send_mail
 
 from cis.integrations.ethos import ETHOS_MISSING_MESSAGE, ethos_enabled
 from cis.models.student import Student
-from cis.services.tenant_services import get_tenant_service
+from cis.services.tenant_services import get_tenant_override, get_tenant_service
 from cis.settings.student_id_importer import student_id_importer
 from cis.signals.crontab import cron_task_done, cron_task_started
 from cis.storage_backend import PrivateMediaStorage
@@ -62,6 +68,68 @@ class Command(BaseCommand):
         if configs.get('is_active') != 'Yes':
             return
 
+        # A tenant can replace the Ethos lookup with its own import (#93),
+        # e.g. nnu's S3 pipe file; it shares this setting and cron job.
+        tenant_import = get_tenant_override('student_id_import', 'import_student_ids')
+        if tenant_import is not None:
+            summary_lines, rows = tenant_import(configs)
+            subject = 'Student ID Import'
+        else:
+            result = self._lookup_from_ethos(time)
+            if result is None:
+                return
+            summary_lines, rows = result
+            subject = 'Student ID Lookup from Ethos'
+
+        # Write results CSV if we have rows.
+        results_url = None
+        if rows:
+            now = datetime.datetime.now()
+            name_tmpl = Template(configs.get('path_to_results_file') or 'student_id_from_ethos_{{yyyy}}{{mm}}{{dd}}_{{hh}}.csv')
+            results_file_name = name_tmpl.render(Context({
+                'hh': now.strftime('%H'),
+                'mm': now.strftime('%m'),
+                'dd': now.strftime('%d'),
+                'yyyy': now.strftime('%Y'),
+            }))
+
+            response = HttpResponse(content_type='text/csv')
+            response['Content-Disposition'] = content_disposition_header(
+                True, results_file_name)
+            writer = csv.writer(response)
+            writer.writerow(['id', 'RESULT'])
+            for row in rows:
+                writer.writerow([row['id'], row['RESULT']])
+
+            try:
+                path = PrivateMediaStorage().save(results_file_name, ContentFile(response.getvalue()))
+                results_url = get_s3_url(path)
+                summary_lines.append(f'Results file: {results_url}')
+            except Exception as e:
+                logger.error('import_student_id_from_ethos: failed to save results file: %s', e)
+
+        summary = '\r\n'.join(summary_lines)
+
+        notification_list = (configs.get('notification_list') or '').split(',')
+        notification_list = [addr.strip() for addr in notification_list if addr.strip()]
+        if notification_list:
+            try:
+                send_mail(
+                    subject,
+                    summary,
+                    settings.DEFAULT_FROM_EMAIL,
+                    notification_list,
+                )
+            except Exception as e:
+                logger.error('import_student_id_from_ethos: notify failed: %s', e)
+
+        if time:
+            _send_done(self.__class__, time, summary, rows)
+
+    def _lookup_from_ethos(self, time):
+        """The package's import: look each in_review student up in Ethos.
+        Returns (summary_lines, rows), or None when it could not run (the
+        cron run is already closed with the reason)."""
         rows = []
 
         # The lookup goes through the tenant's ethos_identity service, which
@@ -71,7 +139,7 @@ class Command(BaseCommand):
             logger.warning('import_student_id_from_ethos: %s', summary)
             if time:
                 _send_done(self.__class__, time, summary, rows)
-            return
+            return None
         ethos_identity = get_tenant_service('ethos_identity')
 
         type_id = ethos_identity.get_alt_credential_type_id()
@@ -80,7 +148,7 @@ class Command(BaseCommand):
             logger.error(summary)
             if time:
                 _send_done(self.__class__, time, summary, rows)
-            return
+            return None
 
         candidates = Student.objects.filter(
             application_status='in_review'
@@ -118,47 +186,4 @@ class Command(BaseCommand):
             f'Errors: {errors}',
         ]
 
-        # Write results CSV if we have rows.
-        results_url = None
-        if rows:
-            now = datetime.datetime.now()
-            name_tmpl = Template(configs.get('path_to_results_file') or 'student_id_from_ethos_{{yyyy}}{{mm}}{{dd}}_{{hh}}.csv')
-            results_file_name = name_tmpl.render(Context({
-                'hh': now.strftime('%H'),
-                'mm': now.strftime('%m'),
-                'dd': now.strftime('%d'),
-                'yyyy': now.strftime('%Y'),
-            }))
-
-            response = HttpResponse(content_type='text/csv')
-            response['Content-Disposition'] = content_disposition_header(
-                True, results_file_name)
-            writer = csv.writer(response)
-            writer.writerow(['id', 'RESULT'])
-            for row in rows:
-                writer.writerow([row['id'], row['RESULT']])
-
-            try:
-                path = PrivateMediaStorage().save(results_file_name, ContentFile(response.getvalue()))
-                results_url = get_s3_url(path)
-                summary_lines.append(f'Results file: {results_url}')
-            except Exception as e:
-                logger.error('import_student_id_from_ethos: failed to save results file: %s', e)
-
-        summary = '\r\n'.join(summary_lines)
-
-        notification_list = (configs.get('notification_list') or '').split(',')
-        notification_list = [addr.strip() for addr in notification_list if addr.strip()]
-        if notification_list:
-            try:
-                send_mail(
-                    'Student ID Lookup from Ethos',
-                    summary,
-                    settings.DEFAULT_FROM_EMAIL,
-                    notification_list,
-                )
-            except Exception as e:
-                logger.error('import_student_id_from_ethos: notify failed: %s', e)
-
-        if time:
-            _send_done(self.__class__, time, summary, rows)
+        return summary_lines, rows

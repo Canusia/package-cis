@@ -93,4 +93,9 @@ flowchart TD
 - Rows the package's data migrations would have written (`RunPython`, shown as `review`)
   may already exist in a different form. Read each one: some are safe to run twice, some
   aren't.
-- `0056` depends on the `ethos` app. See the README for tenants without ethos.
+- `0056` depends on the `ethos` app only when it is installed; see the README for
+  tenants without ethos.
+- Data a tenant-only migration changed may need changing back. nnu's `0066` renamed the
+  `import_student_id_from_ethos` CronTab row to `import_student_id`; the package's command
+  and setting use the `import_student_id_from_ethos` name, so rename the row back. nnu's
+  own S3 import then plugs in as `services/student_id_import.py` (#93).
