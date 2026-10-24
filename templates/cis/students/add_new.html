@@ -137,7 +137,27 @@
                 </div>
             </div>
             <div class="clearfix">&nbsp;</div>
-            
+
+            {% for upload in tenant_uploads %}
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">{{ upload.title }}</h5>
+                    <div class="card-text">
+                        {% if upload.help %}
+                        <p class="alert alert-info">{{ upload.help|linebreaksbr }}</p>
+                        {% endif %}
+                        <form action="" method="post" enctype="multipart/form-data">
+                            {% csrf_token %}
+                            {{ upload.form | crispy }}
+                            <input type="hidden" name="action" value="{{ upload.action }}">
+                            <input type="submit" class="btn btn-primary btn-sm" name="upload_file"
+                                value="{{ upload.submit_label|default:'Upload' }}">
+                        </form>
+                    </div>
+                </div>
+            </div>
+            <div class="clearfix">&nbsp;</div>
+            {% endfor %}
         </div>
     </div> <!-- end row -->
 </main>

@@ -631,11 +631,17 @@ def add_new(request):
 
     upload_form = ClassSectionUploadForm()
 
+    from cis.services.student_uploads import find_upload, tenant_student_uploads
+
     if request.method == 'POST':
         if request.POST.get('action') == "import_emplid":
             return import_emplid_from_file(request)
         elif request.POST.get('action') == "import_registrations":
             return import_registrations_from_file(request)
+        # A tenant's own upload (#96).
+        tenant_upload = find_upload(request.POST.get('action'))
+        if tenant_upload is not None:
+            return tenant_upload['handler'](request)
     else:
         upload_form = ClassSectionUploadForm()
 
@@ -644,6 +650,10 @@ def add_new(request):
         template, {
             'upload_form': upload_form,
             'student_upload_form': StudentImportUploadForm(),
+            'tenant_uploads': [
+                {**upload, 'form': upload['form']()}
+                for upload in tenant_student_uploads()
+            ],
             'page_title': "Manage Students",
             'labels': {
                 'all_items': 'All Students'
