@@ -311,10 +311,19 @@ class undup_students(forms.Form):
             ).values_list('student_id', 'count')
         )
 
+        # The tenant may replace the columns and CSV dialect (#114 item 5).
+        from cis.services.student_export import export_format
+
+        def default_row(record, imported_at):
+            return [self._value_for_field(record, key, imported_at) for key in fields]
+
+        headers, build_row, csv_options = export_format(
+            list(fields.values()), default_row)
+
+        destination = None
         if data.get('send_to_slate')[0] == '1':
             from django.template import Context, Template
             from cis.settings.student_exporter import student_exporter
-            from cis.utils import sftp_connect
 
             conf = student_exporter.from_db()
 
@@ -327,27 +336,28 @@ class undup_students(forms.Form):
                 'yyyy': now.strftime("%Y"),
             }))
             path = file_name
+            destination = conf.get('destination') or 'sftp'
 
-            client, sftp = sftp_connect(
-                host=conf.get('host_name'),
-                port=conf.get('port') or 22,
-                username=conf.get('username'),
-                password=conf.get('password') or None,
-                private_key=conf.get('private_key') or None,
-            )
-
-            stream = sftp.open(file_name, 'w')
-            writer = csv.writer(stream, delimiter=',')
+            if destination == 'sftp':
+                from cis.utils import sftp_connect
+                client, sftp = sftp_connect(
+                    host=conf.get('host_name'),
+                    port=conf.get('port') or 22,
+                    username=conf.get('username'),
+                    password=conf.get('password') or None,
+                    private_key=conf.get('private_key') or None,
+                )
+                stream = sftp.open(file_name, 'w')
+            else:
+                stream = io.StringIO()
         else:
             stream = io.StringIO()
-            writer = csv.writer(stream, delimiter=',')
+        writer = csv.writer(stream, **csv_options)
 
         imported_at = timezone.now()
-        writer.writerow(list(fields.values()))
+        writer.writerow(headers)
         for record in records.iterator():
-            row = []
-            for key in fields.keys():
-                row.append(force_str(self._value_for_field(record, key, imported_at)))
+            row = [force_str(value) for value in build_row(record, imported_at)]
 
             if data.get('mark_as_sent')[0] == '1':
                 record.sis_sent_on = timezone.now()
@@ -366,6 +376,11 @@ class undup_students(forms.Form):
 
             return path
         else:
+            if destination == 's3':
+                # The tenant's own bucket, at the exact configured key.
+                from cis.backends.storage_backend import StudentExportStorage
+                StudentExportStorage().save(
+                    path, ContentFile(stream.getvalue().encode('utf-8')))
             # `records` filters on application_status='pending', but the loop
             # above flips every exported record to 'in_review' when
             # mark_as_sent=1, so records.count() re-queries and returns 0.

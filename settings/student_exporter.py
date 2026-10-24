@@ -45,9 +45,25 @@ class SettingForm(forms.Form):
         validators=[validate_cron]
     )
 
+    DESTINATION_OPTIONS = [
+        ('sftp', 'SFTP server'),
+        ('s3', "This site's S3 bucket"),
+    ]
+
+    # Where the file goes (#114 item 5). Saved settings without it are SFTP.
+    destination = forms.ChoiceField(
+        choices=DESTINATION_OPTIONS,
+        initial='sftp',
+        required=False,
+        label='Destination',
+        help_text="S3: written to this site's bucket at the export file path; "
+                  'the SFTP fields are not used.',
+        widget=forms.Select(attrs={'class': 'col-md-4 col-sm-12'}))
+
     host_name = forms.CharField(
         max_length=200,
-        help_text='',
+        required=False,
+        help_text='SFTP only.',
         label="Host Name"
     )
 
@@ -55,13 +71,15 @@ class SettingForm(forms.Form):
         min_value=1,
         max_value=65535,
         initial=22,
-        help_text='',
+        required=False,
+        help_text='SFTP only.',
         label="Port"
     )
 
     username = forms.CharField(
         max_length=100,
-        help_text='',
+        required=False,
+        help_text='SFTP only.',
         label="Username"
     )
 
@@ -106,6 +124,7 @@ class SettingForm(forms.Form):
 
         return {
             'is_active': self.cleaned_data['is_active'],
+            'destination': self.cleaned_data.get('destination') or 'sftp',
             'cron': self.cleaned_data['cron'],
             'path_to_file': self.cleaned_data['path_to_file'],
             'host_name': self.cleaned_data['host_name'],
@@ -154,6 +173,16 @@ class student_exporter(SettingForm):
 
     def clean(self):
         cleaned = super().clean()
+        if self.errors:
+            return cleaned
+
+        if (cleaned.get('destination') or 'sftp') != 'sftp':
+            return cleaned
+
+        # SFTP: the connection fields are required.
+        for name in ('host_name', 'port', 'username'):
+            if not cleaned.get(name):
+                self.add_error(name, 'Required for an SFTP destination.')
         if self.errors:
             return cleaned
 
