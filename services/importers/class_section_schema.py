@@ -135,10 +135,17 @@ class ClassSectionRow(BaseModel):
     @field_validator('reference_number', mode='before')
     @classmethod
     def reference_number_as_text(cls, v):
-        """Keep the CRN as typed (an API payload may send a number)."""
+        """The CRN as text, so CRNs like '1030-01' import. An all-digit CRN
+        loses its leading zeros, as it did when this field was an int: the
+        sections already stored were saved that way, and a zero-padded file
+        must still match them rather than create duplicates."""
         if isinstance(v, int) and not isinstance(v, bool):
             return str(v)
-        return v.strip() if isinstance(v, str) else v
+        if isinstance(v, str):
+            v = v.strip()
+            if v.isdigit():
+                return str(int(v))
+        return v
 
     @field_validator('course_name')
     @classmethod

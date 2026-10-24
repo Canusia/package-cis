@@ -129,7 +129,9 @@ class ClassSectionPlainFixTests(SimpleTestCase):
             ClassSectionRow.model_validate(_row(tuition='free'))
 
     def test_reference_number_is_text(self):
-        self.assertEqual(ClassSectionRow.model_validate(_row(reference_number='01234')).reference_number, '01234')
+        # All digits: leading zeros go, as when this was an int, so stored
+        # sections still match a zero-padded file.
+        self.assertEqual(ClassSectionRow.model_validate(_row(reference_number='01234')).reference_number, '1234')
         self.assertEqual(ClassSectionRow.model_validate(_row(reference_number='1030-01')).reference_number, '1030-01')
         # An API payload may send a number.
         self.assertEqual(ClassSectionRow.model_validate(_row(reference_number=12345)).reference_number, '12345')

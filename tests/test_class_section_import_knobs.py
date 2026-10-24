@@ -86,17 +86,25 @@ class ClassSectionKnobTestBase(TestCase):
 
 
 class PlainFixImportTests(ClassSectionKnobTestBase):
-    def test_leading_zero_crn_kept_and_reimport_updates(self):
+    def test_zero_padded_crn_matches_the_stored_section(self):
+        # Sections were stored with the zeros stripped (the CRN used to be
+        # an int); a zero-padded file must update them, not duplicate them.
         row = self.row(reference_number='01234', tuition='$1,200')
         self.assertEqual(self.run_import(dict(row))['summary']['successful'], 1)
-        section = self.section(row)
-        self.assertEqual(section.class_number, '01234')
-        self.assertEqual(float(section.tuition), 1200.0)
+        self.assertEqual(ClassSection.objects.filter(class_number='1234').count(), 1)
+        self.assertEqual(
+            float(ClassSection.objects.get(class_number='1234').tuition), 1200.0)
 
         # Bulk re-import finds the existing section by its text CRN.
         self.run_import(dict(row, tuition='99'))
-        self.assertEqual(ClassSection.objects.filter(class_number='01234').count(), 1)
-        self.assertEqual(float(self.section(row).tuition), 99.0)
+        self.assertEqual(ClassSection.objects.filter(class_number='1234').count(), 1)
+        self.assertEqual(
+            float(ClassSection.objects.get(class_number='1234').tuition), 99.0)
+
+    def test_non_numeric_crn_is_kept(self):
+        row = self.row(reference_number='1030-01')
+        self.assertEqual(self.run_import(dict(row))['summary']['successful'], 1)
+        self.assertTrue(ClassSection.objects.filter(class_number='1030-01').exists())
 
 
 class TeacherMatchTests(ClassSectionKnobTestBase):
