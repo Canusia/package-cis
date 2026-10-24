@@ -17,6 +17,7 @@ from cis.services.term_hierarchy import apply_term_tree, expand_term_ids
 from cis.models.course import Campus
 from cis.models.section import StudentRegistration
 from cis.campus_gate import get_accessible_campuses, scope_report_by_campus
+from cis.services.registration_statuses import registration_status_choices
 
 class detailed_students_with_class(forms.Form):
     campus = forms.ModelMultipleChoiceField(
@@ -28,7 +29,7 @@ class detailed_students_with_class(forms.Form):
     )
 
     status = forms.MultipleChoiceField(
-        choices=StudentRegistration.STATUS_OPTIONS,
+        choices=registration_status_choices,
         label='Registration Status'
     )
 

@@ -20,6 +20,7 @@ from cis.services.term_hierarchy import apply_term_tree, expand_term_ids
 from cis.models.highschool import HighSchool
 from cis.highschool_scope import picker_queryset
 from cis.models.section import ClassSection, Campus, StudentRegistration
+from cis.services.registration_statuses import registration_status_choices
 
 class missing_parent_consent(forms.Form):
     term = forms.ModelChoiceField(
@@ -37,7 +38,7 @@ class missing_parent_consent(forms.Form):
     # )
 
     status = forms.MultipleChoiceField(
-        choices=StudentRegistration.STATUS_OPTIONS,
+        choices=registration_status_choices,
         label='Registration Status'
     )
 

@@ -13,6 +13,7 @@ from ..models.crontab import CronTab
 from ..models.term import Term, AcademicYear
 from ..models.section import StudentRegistration
 from ..models.settings import Setting
+from cis.services.registration_statuses import registration_status_choices
 
 class SettingForm(forms.Form):
 
@@ -38,13 +39,13 @@ class SettingForm(forms.Form):
     )
     
     charge_trigger = forms.MultipleChoiceField(
-        choices=StudentRegistration.STATUS_OPTIONS,
+        choices=registration_status_choices,
         label='Registration Charge Addition Trigger(s)',
         help_text='Status when charge is added'
     )
 
     charge_remove_trigger = forms.MultipleChoiceField(
-        choices=StudentRegistration.STATUS_OPTIONS,
+        choices=registration_status_choices,
         label='Registration Charge Removal Trigger(s)',
         help_text='Status when charge is removed'
     )

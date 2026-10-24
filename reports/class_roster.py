@@ -20,6 +20,7 @@ from cis.highschool_scope import scope_highschools
 from cis.utils import get_field
 from cis.campus_gate import get_accessible_campuses, scope_report_by_campus
 from cis.reports.datasource_mixin import ReportDataSourceMixin
+from cis.services.registration_statuses import registration_status_choices
 
 class class_roster(ReportDataSourceMixin, forms.Form):
 
@@ -60,7 +61,7 @@ class class_roster(ReportDataSourceMixin, forms.Form):
     )
 
     registration_status = forms.MultipleChoiceField(
-        choices=StudentRegistration.STATUS_OPTIONS,
+        choices=registration_status_choices,
         required=False,
         label='Registration Status'
     )

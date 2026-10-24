@@ -24,6 +24,7 @@ from cis.highschool_scope import picker_queryset
 from cis.models.term import Term
 from cis.services.term_hierarchy import apply_term_tree
 from cis.models.student import Student
+from cis.services.registration_statuses import registration_status_choices
 
 
 SYLLABUS_REVIEW_METRICS = [
@@ -433,7 +434,7 @@ class StudentRegistrationChangeStatusForm(forms.Form):
     new_status = forms.ChoiceField(
         required=True,
         label='Change Registration Status To',
-        choices=StudentRegistration.STATUS_OPTIONS
+        choices=registration_status_choices
     )
 
     needs_mirroring = forms.BooleanField(
@@ -816,7 +817,7 @@ class ProcessStudentDropRequest(forms.Form):
         label='Request Status'
     )
     registration_status = forms.ChoiceField(
-        choices=StudentRegistration.STATUS_OPTIONS,
+        choices=registration_status_choices,
         label='Class Registration Status'
     )
     
@@ -851,7 +852,7 @@ class AddNewStudentRegistrationForm(forms.Form):
     highschool = forms.ModelChoiceField(queryset=HighSchool.objects.none())
 
     class_section = forms.ModelChoiceField(queryset=None)
-    status = forms.ChoiceField(choices=StudentRegistration.STATUS_OPTIONS)
+    status = forms.ChoiceField(choices=registration_status_choices)
 
     def __init__(self, *args, **kwargs):
 

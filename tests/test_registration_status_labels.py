@@ -41,3 +41,17 @@ class RegistrationStatusLabelTests(SimpleTestCase):
             options = dict(StudentRegistration.STATUS_OPTIONS)
             self.assertEqual(options['dropped'], 'Dropped (HS)')
             self.assertEqual(options['withdrawn'], 'Withdrew')
+
+
+class StatusChoicesResolvedPerRenderTests(SimpleTestCase):
+    """Form fields take the callable, so the tenant module isn't imported
+    while a form module is still importing and relabels apply without a
+    restart (#90 review)."""
+
+    def test_form_choices_follow_the_tenant_labels(self):
+        from cis.forms.section import AddNewStudentRegistrationForm
+        with mock.patch.object(
+                registration_statuses, 'get_tenant_override',
+                lambda m, a: {'approved': 'Relabelled'} if a == 'LABELS' else None):
+            choices = dict(AddNewStudentRegistrationForm.base_fields['status'].choices)
+        self.assertEqual(choices['approved'], 'Relabelled')

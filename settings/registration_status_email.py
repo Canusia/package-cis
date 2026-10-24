@@ -20,6 +20,7 @@ from ..models.settings import Setting
 
 from django.utils.safestring import mark_safe
 from form_fields import fields as FFields
+from cis.services.registration_statuses import registration_status_choices
 
 SIS_ERROR_KINDS = [
     ('registration', 'Registration failure'),
@@ -80,7 +81,7 @@ class SettingForm(forms.Form):
     ]
 
     sis_mirror_trigger = forms.MultipleChoiceField(
-        choices=StudentRegistration.STATUS_OPTIONS,
+        choices=registration_status_choices,
         label='SIS Mirror Trigger(s)',
         help_text='Status when \'needs mirror\' to SIS should be turned on',
         widget=forms.CheckboxSelectMultiple
@@ -138,7 +139,7 @@ class SettingForm(forms.Form):
     )
 
     parent_trigger = forms.MultipleChoiceField(
-        choices=StudentRegistration.STATUS_OPTIONS,
+        choices=registration_status_choices,
         required=False,
         label='Parent/Counselor Status Trigger(s)',
         help_text='Status when notification is sent to parent and counselor',
@@ -169,7 +170,7 @@ class SettingForm(forms.Form):
         )
     )
     student_trigger = forms.MultipleChoiceField(
-        choices=StudentRegistration.STATUS_OPTIONS,
+        choices=registration_status_choices,
         required=False,
         label='Student Email - Status Trigger(s)',
         help_text='Status when notification is sent to student',
