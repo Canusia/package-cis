@@ -311,11 +311,16 @@ class ParentConsentViewSet(viewsets.ReadOnlyModelViewSet):
         user = self.request.user
         if user_has_cis_role(user):
             return records
+        taught = StudentRegistration.objects.filter(
+            class_section__teacher__user=user).values('student_id')
         if user_has_faculty_role(user):
-            return records.filter(student__id__in=_faculty_student_ids(user))
+            scope = Q(student__id__in=_faculty_student_ids(user))
+            if user_has_instructor_role(user):
+                # A mentor who also teaches keeps their own students.
+                scope |= Q(student__id__in=taught)
+            return records.filter(scope)
         if user_has_instructor_role(user):
-            return records.filter(student__id__in=StudentRegistration.objects.filter(
-                class_section__teacher__user=user).values('student_id'))
+            return records.filter(student__id__in=taught)
         return records.none()
 
 @eager_queryset(with_student_term_related)
@@ -588,7 +593,14 @@ class StudentViewSet(viewsets.ReadOnlyModelViewSet):
         if user_has_faculty_role(user):
             # Faculty: students registered in a section they oversee
             # (package-cis#114 item 8). Before that faculty got every student.
-            return records.filter(id__in=_faculty_student_ids(user))
+            # A second role keeps its own students too.
+            scope = Q(id__in=_faculty_student_ids(user))
+            if user_has_highschool_admin_role(user):
+                scope |= Q(highschool__in=get_user_highschools(self.request))
+            if user_has_instructor_role(user):
+                scope |= Q(id__in=StudentRegistration.objects.filter(
+                    class_section__teacher__user=user).values('student_id'))
+            return records.filter(scope)
         if user_has_highschool_admin_role(user):
             return records.filter(
                 highschool__in=get_user_highschools(self.request)

@@ -42,6 +42,7 @@ from cis.utils import (
     HSADMIN_user_only,
     user_has_cis_role,
     user_has_faculty_role,
+    user_has_highschool_admin_role,
 )
 
 from rest_framework import viewsets
@@ -105,12 +106,23 @@ class TeacherApplicationReviewerViewSet(viewsets.ReadOnlyModelViewSet):
         # assigned to them; `course=` can only narrow that. HS admins are
         # unchanged here.
         user = self.request.user
-        if not user_has_cis_role(user) and user_has_faculty_role(user):
+        if _faculty_only(user):
             from cis.services.faculty_scope import visible_course_ids
             records = records.filter(
                 Q(application_course__course_id__in=visible_course_ids(user))
                 | Q(reviewer=user))
         return records
+
+def _faculty_only(user):
+    """Faculty whose view of applications is narrowed to their courses.
+
+    Not CE (user_has_faculty_role() is also True for CE users), and not an
+    HS admin: HS admins are not scoped on these endpoints yet, so a user with
+    both roles keeps what the HS-admin role gave them.
+    """
+    return (not user_has_cis_role(user) and user_has_faculty_role(user)
+            and not user_has_highschool_admin_role(user))
+
 
 class TeacherApplicationViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = TeacherApplicationSerializer
@@ -144,8 +156,7 @@ class TeacherApplicationViewSet(viewsets.ReadOnlyModelViewSet):
             )
 
         user = self.request.user
-        faculty_only = (not user_has_cis_role(user)
-                        and user_has_faculty_role(user))
+        faculty_only = _faculty_only(user)
         if reviewer and faculty_only:
             # A faculty member may only filter by their own assignments.
             reviewer = user.id

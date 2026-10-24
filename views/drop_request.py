@@ -98,18 +98,23 @@ class StudentDropViewSet(viewsets.ReadOnlyModelViewSet):
         user = self.request.user
         if user_has_cis_role(user):
             return records
-        if user_has_faculty_role(user):
-            from cis.services.faculty_scope import visible_class_sections
-            return records.filter(
-                registration__class_section__in=visible_class_sections(user))
-        if user_has_highschool_admin_role(user):
+        def hs_admin_scope():
             import importlib.util
             if importlib.util.find_spec('highschool_admin.highschool_admin'):
                 from highschool_admin.highschool_admin.views.utils import get_user_highschools
             else:
                 from highschool_admin.views.utils import get_user_highschools
-            return records.filter(
-                student__highschool__in=get_user_highschools(self.request))
+            return Q(student__highschool__in=get_user_highschools(self.request))
+
+        if user_has_faculty_role(user):
+            from cis.services.faculty_scope import visible_class_sections
+            scope = Q(registration__class_section__in=visible_class_sections(user))
+            if user_has_highschool_admin_role(user):
+                # A faculty member who is also an HS admin keeps their schools.
+                scope |= hs_admin_scope()
+            return records.filter(scope)
+        if user_has_highschool_admin_role(user):
+            return records.filter(hs_admin_scope())
         return records.none()
 
 def delete(request, record_id):

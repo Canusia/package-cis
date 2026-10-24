@@ -353,3 +353,21 @@ class FacultyApiScopeTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         courses = {c['course']['id'] for c in resp.json()['active_courses']}
         self.assertEqual(courses, {str(self.mine.id), str(self.other.id)})
+
+    # -- a second role keeps its own rows (#114 item 8 review) ----------------
+
+    def test_mentor_who_teaches_keeps_their_own_students(self):
+        teacher_user = self.other_teacher.user
+        teacher_user.groups.add(Group.objects.get(name='instructor'),
+                                Group.objects.get(name='faculty'))
+        self.assertIn(str(self.stu_other.id),
+                      self._ids(teacher_user, '/ce/api/student/'))
+        self.assertIn(str(self.pc_other.id),
+                      self._ids(teacher_user, '/ce/api/parent_consent/'))
+
+    def test_faculty_hs_admin_keeps_their_schools(self):
+        self.hsadmin_user.groups.add(Group.objects.get(name='faculty'))
+        self.assertIn(str(self.stu_mine.id),
+                      self._ids(self.hsadmin_user, '/ce/api/student/'))
+        self.assertIn(str(self.drop_mine.id),
+                      self._ids(self.hsadmin_user, '/ce/api/drop_wd_req/'))
