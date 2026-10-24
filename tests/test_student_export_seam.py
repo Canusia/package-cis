@@ -108,3 +108,34 @@ class StudentExporterSettingTests(TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn('host_name', form.errors)
         self.assertIn('username', form.errors)
+
+
+class StudentExportFailureTests(StudentExportFormatTests):
+    def test_failed_s3_write_leaves_students_unsent(self):
+        from cis.settings.student_exporter import student_exporter
+
+        def boom(storage, path, content):
+            raise OSError('bucket unavailable')
+
+        with _tenant(), \
+                mock.patch.object(student_exporter, 'from_db', return_value={
+                    'destination': 's3', 'path_to_file': 'out.csv'}), \
+                mock.patch('cis.backends.storage_backend.StudentExportStorage.save', boom), \
+                self.assertRaises(OSError):
+            undup_students().run(None, {'mark_as_sent': ['1'], 'send_to_slate': ['1']})
+        self.student.refresh_from_db()
+        self.assertEqual(self.student.application_status, 'pending')
+
+    def test_sftp_stream_and_client_are_closed(self):
+        from cis.settings.student_exporter import student_exporter
+        client, sftp = mock.MagicMock(), mock.MagicMock()
+        remote = io.StringIO()
+        remote.close = mock.MagicMock()
+        sftp.open.return_value = remote
+        with _tenant(), \
+                mock.patch.object(student_exporter, 'from_db', return_value={
+                    'destination': 'sftp', 'path_to_file': 'out.csv'}), \
+                mock.patch('cis.utils.sftp_connect', return_value=(client, sftp)):
+            undup_students().run(None, {'mark_as_sent': ['0'], 'send_to_slate': ['1']})
+        remote.close.assert_called_once()
+        client.close.assert_called_once()

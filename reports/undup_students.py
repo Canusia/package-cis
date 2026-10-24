@@ -321,6 +321,7 @@ class undup_students(forms.Form):
             list(fields.values()), default_row)
 
         destination = None
+        client = None
         if data.get('send_to_slate')[0] == '1':
             from django.template import Context, Template
             from cis.settings.student_exporter import student_exporter
@@ -352,40 +353,50 @@ class undup_students(forms.Form):
                 stream = io.StringIO()
         else:
             stream = io.StringIO()
-        writer = csv.writer(stream, **csv_options)
 
-        imported_at = timezone.now()
-        writer.writerow(headers)
-        for record in records.iterator():
-            row = [force_str(value) for value in build_row(record, imported_at)]
+        # Records are marked as sent only once the file is written, so a
+        # failed upload doesn't leave them 'in_review' with no file.
+        exported = []
+        try:
+            writer = csv.writer(stream, **csv_options)
+            imported_at = timezone.now()
+            writer.writerow(headers)
+            for record in records.iterator():
+                writer.writerow(
+                    [force_str(value) for value in build_row(record, imported_at)])
+                exported.append(record)
 
-            if data.get('mark_as_sent')[0] == '1':
+            if data.get('send_to_slate')[0] != '1':
+                path = "reports/" + str(task.id) + "/" + file_name
+                media_storage = PrivateMediaStorage()
+                path = media_storage.save(path, ContentFile(stream.getvalue().encode('utf-8')))
+                path = media_storage.url(path)
+            elif destination == 's3':
+                # The tenant's own bucket, at the exact configured key.
+                from cis.backends.storage_backend import StudentExportStorage
+                StudentExportStorage().save(
+                    path, ContentFile(stream.getvalue().encode('utf-8')))
+        finally:
+            if client is not None:
+                # Close the remote file (which flushes it) and the connection.
+                try:
+                    stream.close()
+                finally:
+                    client.close()
+
+        if data.get('mark_as_sent')[0] == '1':
+            for record in exported:
                 record.sis_sent_on = timezone.now()
                 record.application_status = 'in_review'
                 record.save(update_fields=['sis_sent_on', 'application_status'])
                 record.add_note(None, 'Application sent to SIS')
 
-            writer.writerow(row)
-        
         if data.get('send_to_slate')[0] != '1':
-            path = "reports/" + str(task.id) + "/" + file_name
-            media_storage = PrivateMediaStorage()
-
-            path = media_storage.save(path, ContentFile(stream.getvalue().encode('utf-8')))
-            path = media_storage.url(path)
-
             return path
-        else:
-            if destination == 's3':
-                # The tenant's own bucket, at the exact configured key.
-                from cis.backends.storage_backend import StudentExportStorage
-                StudentExportStorage().save(
-                    path, ContentFile(stream.getvalue().encode('utf-8')))
-            # `records` filters on application_status='pending', but the loop
-            # above flips every exported record to 'in_review' when
-            # mark_as_sent=1, so records.count() re-queries and returns 0.
-            # student_ids was materialized before the loop — use its length.
-            return (len(student_ids), path)
+        # `records` filters on application_status='pending', and marking flips
+        # every exported record to 'in_review', so records.count() would
+        # re-query and return 0. student_ids was materialized first.
+        return (len(student_ids), path)
 
     def run_report(self):
         ...
