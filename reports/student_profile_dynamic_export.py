@@ -13,7 +13,7 @@ from django.utils.translation import gettext as _
 
 from cis.backends.storage_backend import PrivateMediaStorage
 from cis.campus_gate import get_accessible_campuses, scope_report_by_campus
-from cis.forms.student_profile import StudentProfileForm
+from cis.forms import student_profile as _profile
 from cis.models.course import Campus
 from cis.models.student import Student
 from crispy_forms.helper import FormHelper
@@ -126,7 +126,8 @@ class student_profile_dynamic_export(forms.Form):
         return None
 
     def _form_fields_for_export(self):
-        form = StudentProfileForm(student=None, request=self.request)
+        # Resolved per call so the columns follow TENANT_SERVICES_APP (#57).
+        form = _profile.StudentProfileForm(student=None, request=self.request)
         export_fields = []
         valid_targets = {"user", "student", "meta"}
 

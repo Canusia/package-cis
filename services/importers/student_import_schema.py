@@ -11,7 +11,6 @@ fields a student fills in manually. Rules:
 from django import forms
 
 from cis.forms import student_profile as _profile
-from cis.forms.student_profile import StudentProfileForm
 
 
 class StudentImportColumns:
@@ -37,9 +36,16 @@ class StudentImportColumns:
     CEEB_COLUMN = 'highschool_ceeb'
 
     @classmethod
+    def _form_class(cls):
+        """The tenant's StudentProfileForm, resolved per call (#57). A
+        module-level import bound it once per process, so the columns ignored
+        a changed TENANT_SERVICES_APP."""
+        return _profile.StudentProfileForm
+
+    @classmethod
     def _form_fields(cls):
         # Unbound instance is enough to read field declarations + widgets.
-        return StudentProfileForm().fields
+        return cls._form_class()().fields
 
     @classmethod
     def _is_hidden(cls, field):
@@ -74,10 +80,10 @@ class StudentImportColumns:
     @classmethod
     def field_definitions(cls):
         # Lazy: the row form module imports cis.highschool_scope / models.
-        from cis.forms.student_import import StudentImportRowForm
+        from cis.forms.student_import import student_import_row_form
 
         required = set(cls.required())
-        notes = StudentImportRowForm.column_notes()
+        notes = student_import_row_form().column_notes()
         defs = []
         fields = cls._form_fields()
         for name in cls.headers():

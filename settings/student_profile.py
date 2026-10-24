@@ -19,7 +19,8 @@ from ..models.settings import Setting
 # tenants, so unlike the field list this stays in cis.
 SIGNUP_MECHANIC_FIELDS = ('password', 'confirm_password', 'signature')
 
-_profile_fields_cache = None
+# Per TENANT_SERVICES_APP, so a changed setting derives that tenant's set (#57).
+_profile_fields_cache = {}
 
 
 def profile_fields():
@@ -32,24 +33,23 @@ def profile_fields():
     seeds weights straight from base_fields. Deriving removes the drift and the
     last tenant field names from cis.
 
-    Cached per process: base_fields is fixed at class creation, so re-deriving
-    on every call would buy nothing. Tests that swap the tenant form must call
-    reset_profile_fields_cache().
+    Cached per process and tenant app: base_fields is fixed at class creation,
+    so re-deriving on every call would buy nothing. Tests that patch the tenant
+    form in place must call reset_profile_fields_cache().
     """
-    global _profile_fields_cache
-    if _profile_fields_cache is None:
+    key = settings.TENANT_SERVICES_APP
+    if key not in _profile_fields_cache:
         from cis.forms.student_profile import StudentProfileForm
-        _profile_fields_cache = [
+        _profile_fields_cache[key] = [
             name for name in StudentProfileForm.base_fields
             if name not in SIGNUP_MECHANIC_FIELDS
         ]
-    return list(_profile_fields_cache)
+    return list(_profile_fields_cache[key])
 
 
 def reset_profile_fields_cache():
     """Drop the cached vocabulary. For tests that patch the tenant form."""
-    global _profile_fields_cache
-    _profile_fields_cache = None
+    _profile_fields_cache.clear()
 
 
 def message_fields():

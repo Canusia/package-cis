@@ -1,7 +1,7 @@
 """Headless per-row validation for the student CSV importer.
 
-Subclasses StudentProfileForm to inherit its field validators (email format,
-DOB range, graduation-date future, phone formatting, SSN), while:
+Built on the tenant's StudentProfileForm to inherit its field validators
+(email format, DOB range, graduation-date future, phone formatting, SSN), while:
   * taking no request (so address-API validation is skipped),
   * resolving the high school from a CEEB code, scoped to an allowed queryset,
   * dropping the password/confirm/ssn-verify mechanic fields (system password),
@@ -11,6 +11,11 @@ DOB range, graduation-date future, phone formatting, SSN), while:
   * accepting the values counselors' own SIS exports produce
     (package-highschool_admin#20): common date layouts, yes/no cells in any
     case or as y/n, true/false, 1/0, and a blank optional yes/no cell as "No".
+
+The class is assembled per tenant by student_import_row_form() rather than
+subclassed at import time (#57), so a changed TENANT_SERVICES_APP reaches it.
+`from cis.forms.student_import import StudentImportRowForm` keeps working
+through the module __getattr__ at the bottom, resolved when the import runs.
 """
 import re
 
@@ -19,7 +24,6 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 
 from cis.forms import student_profile as _profile
-from cis.forms.student_profile import StudentProfileForm
 from cis.models.highschool import HighSchool
 from cis.highschool_scope import picker_queryset
 from cis.models.student import Student
@@ -78,7 +82,9 @@ def _yes_no_values(field):
     return yes, no, binary
 
 
-class StudentImportRowForm(StudentProfileForm):
+class StudentImportRowMixin:
+    """The importer's behaviour on top of a tenant StudentProfileForm. Must
+    precede the tenant form in the MRO; see student_import_row_form()."""
 
     # Accepted date layouts (strptime). %m/%d also accept unpadded digits, so
     # '%m/%d/%Y' covers both MM/DD/YYYY and M/D/YYYY. A deployment may replace
@@ -296,3 +302,29 @@ class StudentImportRowForm(StudentProfileForm):
 
 class StudentImportUploadForm(forms.Form):
     file = forms.FileField(widget=forms.FileInput(attrs={'accept': 'text/csv'}))
+
+
+# --------------------------------------------------------------------------
+# Lazy resolution
+# --------------------------------------------------------------------------
+
+# Keyed by the tenant base class, so one class object per tenant form: callers
+# subclass it and isinstance-check it, and Django caches form media per class.
+_row_form_cache = {}
+
+
+def student_import_row_form():
+    """StudentImportRowForm for the current tenant's StudentProfileForm."""
+    base = _profile.StudentProfileForm
+    cls = _row_form_cache.get(base)
+    if cls is None:
+        cls = type('StudentImportRowForm', (StudentImportRowMixin, base),
+                   {'__module__': __name__})
+        _row_form_cache[base] = cls
+    return cls
+
+
+def __getattr__(name):
+    if name == 'StudentImportRowForm':
+        return student_import_row_form()
+    raise AttributeError(f'module {__name__!r} has no attribute {name!r}')

@@ -16,7 +16,7 @@ from cis.models.customuser import CustomUser
 from cis.models.student import Student
 from cis.models.highschool import HighSchool
 from cis.models.student_import import StudentImportBatch, StudentImportRow
-from cis.forms.student_import import StudentImportRowForm
+from cis.forms.student_import import student_import_row_form
 from cis.services.importers.student_import_schema import StudentImportColumns
 from cis.utils import active_term
 
@@ -57,7 +57,7 @@ class StudentImporter:
         return batch
 
     def _classify(self, row, seen_emails):
-        form = StudentImportRowForm(data=row, highschools=self.allowed_highschools)
+        form = student_import_row_form()(data=row, highschools=self.allowed_highschools)
         if not form.is_valid():
             return 'error', {k: [str(e) for e in v] for k, v in form.errors.items()}
 
@@ -101,7 +101,7 @@ class StudentImporter:
 
     @transaction.atomic
     def _create_student(self, raw_data):
-        form = StudentImportRowForm(data=raw_data, highschools=self.allowed_highschools)
+        form = student_import_row_form()(data=raw_data, highschools=self.allowed_highschools)
         if not form.is_valid():
             raise ValueError('Row no longer valid: %s' % form.errors.as_json())
 

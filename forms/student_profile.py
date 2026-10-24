@@ -15,10 +15,10 @@ IS already resolved at process boot: cis.apps.CisConfig.ready() calls
 autodiscover_modules('page_messages'), and student/page_messages.py and
 highschool_admin/.../page_messages.py both transitively import views that
 import StudentProfileForm / StudentEditableForm at module level (see
-student/views/dashboard.py and cis/views/faculty.py's chain through
-student_import_schema.py). So by the time django.setup() returns, both derived
-classes are already built and cached — verified directly against sys.modules
-and _class_cache.
+student/views/dashboard.py). So by the time django.setup() returns, the derived
+classes for the configured tenant are already built and cached in _class_cache.
+The importer schema and StudentImportRowForm no longer bind the form at import
+(#57); they resolve it per call, like the derived classes do per tenant app.
 
 This is safe because ready() runs after BOTH apps_ready and models_ready are
 True — Django's Apps.populate sets apps_ready at the end of Phase 1 and
@@ -38,6 +38,7 @@ Settings-driven field ordering and relabelling are on MetaFormMixin
 (cis/forms/utils.py), shared with the spec-driven application form.
 """
 from django import forms
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db.models import Q
 from django.utils.translation import gettext_lazy as _
@@ -348,6 +349,8 @@ _DERIVED_EXTRA_BASES = {
     'StudentCISForm': ('StudentCISExtraFields',),
 }
 
+# Keyed by (TENANT_SERVICES_APP, name), so a changed setting builds the derived
+# class from that tenant's form instead of reusing another tenant's (#57).
 _class_cache = {}
 
 
@@ -371,7 +374,8 @@ def __getattr__(name):
     if name == 'StudentProfileForm':
         return _tenant_module().StudentProfileForm
     if name in _DERIVED_MIXINS:
-        if name not in _class_cache:
-            _class_cache[name] = _build(name)
-        return _class_cache[name]
+        key = (settings.TENANT_SERVICES_APP, name)
+        if key not in _class_cache:
+            _class_cache[key] = _build(name)
+        return _class_cache[key]
     raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
