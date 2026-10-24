@@ -16,13 +16,15 @@ logger = logging.getLogger(__name__)
 def due_runs(now, interval):
     """{command: scheduled time} for jobs due in the tick at `now`.
 
-    A tick covers the `interval` minutes up to and including `now`
-    ([now - (interval - 1), now], to the minute), so a job runs at the first
-    tick at or after its scheduled time -- never early -- and back-to-back
-    ticks don't overlap. Runs whose CronLog is already marked as started are
-    skipped, so a run is never repeated (#117)."""
+    A tick looks back over [now - interval, now], to the minute, so a job runs
+    at the first tick at or after its scheduled time -- never early (#117).
+    The window has one minute more than `interval`, so tenants on
+    MYCE_CRON_INTERVAL=9 with ten-minute ticks leave no gap; a run that falls
+    in two ticks (interval 10, a job on the boundary) is claimed on its
+    CronLog by the first tick and skipped by the second. Runs already marked
+    as started are skipped too."""
     end = now.replace(microsecond=0, second=0)
-    start = end - datetime.timedelta(minutes=int(interval) - 1)
+    start = end - datetime.timedelta(minutes=int(interval))
 
     job_queue = {}
     for job in CronTab.objects.all():
@@ -34,12 +36,15 @@ def due_runs(now, interval):
             scheduled_for = executor
             if timezone.is_naive(scheduled_for):
                 scheduled_for = timezone.make_aware(scheduled_for)
-            if CronLog.objects.filter(
-                cron=job,
-                run_scheduled_for=scheduled_for,
-                run_started_on__isnull=False,
-            ).exists():
+            log = CronLog.objects.filter(
+                cron=job, run_scheduled_for=scheduled_for).first()
+            if log is None:
+                log = CronLog(cron=job, run_scheduled_for=scheduled_for)
+            elif log.run_started_on or (log.meta or {}).get('dispatched_on'):
                 continue
+            log.meta = {**(log.meta or {}),
+                        'dispatched_on': timezone.now().isoformat()}
+            log.save()
             job_queue[job.command] = str(executor)
 
     return job_queue

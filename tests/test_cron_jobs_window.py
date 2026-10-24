@@ -37,9 +37,26 @@ class DueRunsTests(TestCase):
             due_runs(datetime(2026, 10, 23, 13, 50), 10),
             {'notify_missing_syllabi': '2026-10-23 13:50:00'})
 
-    def test_ticks_do_not_overlap(self):
+    def test_run_on_a_tick_boundary_is_not_repeated(self):
+        # 13:50 is in both the 13:50 and 14:00 windows when the interval is 10
         self.set_cron('50 13 * * *')
+        self.assertEqual(
+            due_runs(datetime(2026, 10, 23, 13, 50), 10),
+            {'notify_missing_syllabi': '2026-10-23 13:50:00'})
         self.assertEqual(due_runs(datetime(2026, 10, 23, 14, 0), 10), {})
+
+    def test_interval_nine_with_ten_minute_ticks_leaves_no_gap(self):
+        # ewu and others set MYCE_CRON_INTERVAL=9 while ticks are */10
+        self.set_cron('51 13 * * *')
+        self.assertEqual(due_runs(datetime(2026, 10, 23, 13, 50), 9), {})
+        self.assertEqual(
+            due_runs(datetime(2026, 10, 23, 14, 0), 9),
+            {'notify_missing_syllabi': '2026-10-23 13:51:00'})
+
+    def test_interval_nine_does_not_run_twice(self):
+        self.set_cron('50 13 * * *')
+        due_runs(datetime(2026, 10, 23, 13, 50), 9)
+        self.assertEqual(due_runs(datetime(2026, 10, 23, 14, 0), 9), {})
 
     def test_job_saved_between_ticks_runs_at_next_tick(self):
         # saved at 11:33 for 11:35; ticks at 11:30 and 11:40

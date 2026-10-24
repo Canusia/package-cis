@@ -54,9 +54,9 @@ class syllabi_review(forms.Form):
         # the site's own zone and check interval, not a fixed one (#117)
         help_text=(
             f'Min Hr Day Month WeekDay, in the site\'s time zone '
-            f'({settings.TIME_ZONE}). Scheduled jobs are checked every '
-            f'{getattr(settings, "MYCE_CRON_INTERVAL", 10)} minutes, so a run '
-            'goes out at the first check at or after the scheduled time.'
+            f'({settings.TIME_ZONE}). Scheduled jobs are checked every few '
+            'minutes, so a run goes out at the first check at or after the '
+            'scheduled time.'
         ),
         label="Cron Expression for emails to instructors pending syllabus, marked as needs update and faculty reminders",
         validators=[validate_cron]
