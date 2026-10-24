@@ -11,6 +11,7 @@ from simple_history.models import HistoricalRecords
 
 from multiselectfield import MultiSelectField
 
+from cis.services.pay_types import LazyChoices, highschool_pay_type_choices
 from cis.storage_backend import PrivateMediaStorage
 from cis.models.teacher import (
     TeacherHighSchool, Teacher
@@ -208,15 +209,11 @@ class HighSchool(models.Model):
         """Comma-joined hs_type_labels, for table cells and templates."""
         return ', '.join(self.hs_type_labels)
 
-    PAY_TYPE_OPTIONS = (
-        ('', ''),
-        ('Student Pay', 'Student Pay'),
-        ('School Full Pay', 'School Full Pay'),
-        ('School Partial Pay', 'School Partial Pay'),
-    )
+    # Tenant-overridable (#89); see cis.services.pay_types.
+    PAY_TYPE_OPTIONS = LazyChoices(highschool_pay_type_choices)
     hs_pay_type = models.CharField(
         max_length=150,
-        choices=PAY_TYPE_OPTIONS,
+        choices=highschool_pay_type_choices,
         blank=True,
         verbose_name='High School Pay Type',
         default='Student Pay'

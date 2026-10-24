@@ -30,6 +30,7 @@ from cis.utils import (
     upload_to_s3
 )
 
+from cis.services.pay_types import LazyChoices, registration_pay_type_choices
 from cis.storage_backend import PrivateMediaStorage
 
 from cis.models.note import ClassSectionNote
@@ -1754,16 +1755,11 @@ class StudentRegistration(models.Model):
 
     highschool = models.ForeignKey('cis.HighSchool', on_delete=models.PROTECT, blank=True, null=True)
 
-    PAY_OPTIONS = [
-        ('', '---'),
-        ('student', 'Student Pay'),
-        ('school_full', 'School Full Pay'),
-        ('school_partial', 'School Partial Pay'),
-        # ('frl', 'Free or Reduced Lunch'),
-    ]
+    # Tenant-overridable (#89); see cis.services.pay_types.
+    PAY_OPTIONS = LazyChoices(registration_pay_type_choices)
     pay_type = models.CharField(
         max_length=20,
-        choices=PAY_OPTIONS,
+        choices=registration_pay_type_choices,
         default=''
     )
     non_student_pay_amount = models.DecimalField(
@@ -1990,10 +1986,14 @@ class StudentRegistration(models.Model):
         return self
     
     def pay_type_actions_sexy(self):
+        from django.utils.html import escape
         from cis.utils import is_pay_type_review_open
         result = ''
         if is_pay_type_review_open():
-            result = f'<select name="registration_pay_type_{self.id}"  id="id_registration_{self.id}_pay_type" data-id="{self.id}" class="form-control pay_type" data-key="{self.id}"> <option value="">Select</option><option value=\'student\'>Student Pay</option><option value=\'school_full\'>School Full Pay</option><option value=\'school_partial\'>School Partial Pay</option></select><br><input type="number" data-id="{self.id}" name="registration_non_student_pay_amount_{self.id}" id="id_registration_{self.id}_non_student_pay_amount" class="form-control d-none non_student_pay_amount" placeholder="School Paying Amount" value=""><br>'
+            options = ''.join(
+                f"<option value='{escape(k)}'>{escape(v)}</option>"
+                for k, v in self.PAY_OPTIONS if k)
+            result = f'<select name="registration_pay_type_{self.id}"  id="id_registration_{self.id}_pay_type" data-id="{self.id}" class="form-control pay_type" data-key="{self.id}"> <option value="">Select</option>{options}</select><br><input type="number" data-id="{self.id}" name="registration_non_student_pay_amount_{self.id}" id="id_registration_{self.id}_non_student_pay_amount" class="form-control d-none non_student_pay_amount" placeholder="School Paying Amount" value=""><br>'
             
         return result
 
