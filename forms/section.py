@@ -1,3 +1,4 @@
+from django.conf import settings
 from django import forms
 from django.forms.formsets import BaseFormSet
 
@@ -691,10 +692,25 @@ class ClassSectionForm(forms.ModelForm):
         }
 
         widgets = {
-            'co_reqs': forms.CheckboxSelectMultiple
+            'co_reqs': forms.CheckboxSelectMultiple,
+            'registration_start_date': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
+            'registration_end_date': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
+            'payment_due_date': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
+            'grade_due_date': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
         }
+
+    DUE_DATE_FIELDS = (
+        'registration_start_date', 'registration_end_date',
+        'payment_due_date', 'grade_due_date',
+    )
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+        # The section due dates (#86) are opt-in per tenant.
+        if not getattr(settings, 'CLASS_SECTION_DUE_DATES', False):
+            for name in self.DUE_DATE_FIELDS:
+                self.fields.pop(name, None)
 
         if kwargs.get('instance'):
             instance = kwargs.get('instance')
@@ -714,6 +730,16 @@ class ClassSectionForm(forms.ModelForm):
             else:
                 self.fields['co_reqs'].queryset = ClassSection.objects.none()
 
+
+    def clean(self):
+        cleaned = super().clean()
+        reg_start = cleaned.get('registration_start_date')
+        reg_end = cleaned.get('registration_end_date')
+        if reg_start and reg_end and reg_end < reg_start:
+            self.add_error(
+                'registration_end_date',
+                'Registration end date must be on or after the registration start date.')
+        return cleaned
 
     def clean_co_reqs(self):
         co_reqs = self.cleaned_data.get('co_reqs')

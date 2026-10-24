@@ -10,3 +10,18 @@
         {{ record.asHTML|safe }}
     </div>
 </div>
+
+{% if record.registration_start_date or record.registration_end_date or record.payment_due_date or record.grade_due_date %}
+<div class="card mb-4">
+    <div class="card-body py-2">
+        <dl class="row mb-0 small">
+            <dt class="col-sm-3">Registration Window</dt>
+            <dd class="col-sm-9">{{ record.registration_start_date|date:"m/d/Y"|default:"&mdash;" }} &rarr; {{ record.registration_end_date|date:"m/d/Y"|default:"&mdash;" }}</dd>
+            <dt class="col-sm-3">Payment Due</dt>
+            <dd class="col-sm-9">{{ record.payment_due_date|date:"m/d/Y"|default:"&mdash;" }}</dd>
+            <dt class="col-sm-3">Grade Due</dt>
+            <dd class="col-sm-9">{{ record.grade_due_date|date:"m/d/Y"|default:"&mdash;" }}</dd>
+        </dl>
+    </div>
+</div>
+{% endif %}

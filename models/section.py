@@ -173,6 +173,22 @@ class ClassSection(MyCEBaseModel):
     start_date = models.DateField(blank=True, null=True)
     end_date = models.DateField(blank=True, null=True)
 
+    # Optional per-section due dates (#86). Shown on the section form and
+    # detail page only when settings.CLASS_SECTION_DUE_DATES is True. Field
+    # for field the same as nnu's 0061, so nnu can --fake 0113.
+    registration_start_date = models.DateField(
+        blank=True, null=True,
+        help_text='First day a student may select this section.')
+    registration_end_date = models.DateField(
+        blank=True, null=True,
+        help_text='Last day a student may self-register for this section.')
+    payment_due_date = models.DateField(
+        blank=True, null=True,
+        help_text='Last day payment must be received / state funds must be matched. For self-pay sections this typically equals registration_end_date; for state-funded sections it is typically ~1 month later.')
+    grade_due_date = models.DateField(
+        blank=True, null=True,
+        help_text='Date by which faculty must submit grades for this section.')
+
     term = models.ForeignKey('cis.Term', on_delete=models.PROTECT)
     registration_term = models.ForeignKey(
         'cis.Term',
