@@ -51,13 +51,61 @@ from cis.serializers.teacher import TeacherSerializer
 
 
 def datatables_serializer(view, slim_class):
-    """`slim_class` for a datatables list request, the view's own otherwise."""
+    """`slim_class` for a datatables list request, the view's own otherwise,
+    either way with the tenant's extra fields (#114 item 5)."""
     request = getattr(view, 'request', None)
     renderer = getattr(request, 'accepted_renderer', None)
     if (getattr(view, 'action', None) == 'list'
             and getattr(renderer, 'format', None) == 'datatables'):
-        return slim_class
-    return view.serializer_class
+        return with_tenant_fields(slim_class)
+    return with_tenant_fields(view.serializer_class)
+
+
+_extended = {}
+
+
+def with_tenant_fields(serializer_class):
+    """`serializer_class` plus the tenant's extra fields for its model.
+
+    A table column the serializer doesn't emit renders blank, and a tenant
+    can't add fields to these package serializers from its own table config.
+    So a tenant may define, in services/serializer_fields.py,
+
+        EXTRA_FIELDS = {
+            'student': {'eduid': serializers.CharField(
+                source='meta.eduid', read_only=True, default='')},
+        }
+
+    keyed by model name (student, studentregistration, classsection,
+    highschool, teacher, ...). The fields are added to every table
+    serializer for that model; sort on them with an ORM path in the column's
+    data-name (e.g. meta__eduid). Without the module nothing changes.
+    """
+    from cis.services.tenant_services import get_tenant_override
+
+    meta = getattr(serializer_class, 'Meta', None)
+    model = getattr(meta, 'model', None)
+    if model is None:
+        return serializer_class
+    extra = (get_tenant_override('serializer_fields', 'EXTRA_FIELDS') or {}).get(
+        model._meta.model_name)
+    if not extra:
+        return serializer_class
+
+    cached = _extended.get(serializer_class)
+    if cached is not None and cached[0] is extra:
+        return cached[1]
+
+    meta_attrs = {'ref_name': 'Tenant' + (getattr(meta, 'ref_name', None)
+                                          or serializer_class.__name__)}
+    fields = getattr(meta, 'fields', None)
+    if isinstance(fields, (list, tuple)):
+        meta_attrs['fields'] = list(fields) + [n for n in extra if n not in fields]
+    attrs = dict(extra)
+    attrs['Meta'] = type('Meta', (meta,), meta_attrs)
+    extended = type(serializer_class.__name__, (serializer_class,), attrs)
+    _extended[serializer_class] = (extra, extended)
+    return extended
 
 
 class _Trim:
