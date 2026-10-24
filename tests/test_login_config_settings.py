@@ -109,3 +109,13 @@ class CspPolicyTests(SimpleTestCase):
     @override_settings(CSP_REPORT_ONLY_POLICY="default-src 'self'")
     def test_tenant_policy(self):
         self.assertEqual(self._header(), "default-src 'self'")
+
+
+class LockoutThresholdGuardTests(TestCase):
+    @override_settings(ACCOUNT_LOCKOUT_THRESHOLD='three')
+    def test_bad_value_falls_back_to_the_default(self):
+        self.assertEqual(User.lockout_threshold(), User.MAX_FAILED_LOGINS)
+
+    @override_settings(ACCOUNT_LOCKOUT_THRESHOLD=0)
+    def test_threshold_is_at_least_one(self):
+        self.assertEqual(User.lockout_threshold(), 1)

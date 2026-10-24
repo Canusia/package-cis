@@ -130,7 +130,12 @@ class CustomUser(AbstractUser):
     def lockout_threshold(cls):
         """Failed sign-ins that lock an account: settings.ACCOUNT_LOCKOUT_THRESHOLD,
         default MAX_FAILED_LOGINS, read at call time."""
-        return int(getattr(settings, 'ACCOUNT_LOCKOUT_THRESHOLD', cls.MAX_FAILED_LOGINS))
+        try:
+            value = int(getattr(settings, 'ACCOUNT_LOCKOUT_THRESHOLD', cls.MAX_FAILED_LOGINS))
+        except (TypeError, ValueError):
+            # A typo must not turn every failed sign-in into a 500.
+            return cls.MAX_FAILED_LOGINS
+        return max(1, value)
 
     @staticmethod
     def lockout_minutes():

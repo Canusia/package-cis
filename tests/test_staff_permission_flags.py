@@ -72,3 +72,10 @@ class StaffPermissionFlagTests(TestCase):
     def test_superuser_has_every_flag(self):
         admin = User(is_superuser=True)
         self.assertTrue(admin.has_staff_permission('anything'))
+
+
+class ReservedFlagKeyTests(TestCase):
+    def test_built_in_keys_are_refused(self):
+        with _flags([('default_campus', 'Default', '')]):
+            with self.assertRaises(ValueError):
+                staff_permissions.extra_staff_permission_flags()
