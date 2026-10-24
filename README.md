@@ -160,6 +160,9 @@ to what is now the `StudentFerpa.campus` foreign key):
 | `roster_verification.py` | `pending_roster_sections(queryset, notif_settings)` | no extra narrowing | `ClassSection.objects.pending_roster_verification()`: which pending rosters get reminders and show on the instructor / HS admin dashboards. Receives the default result and returns a subset. |
 | `ferpa_form.py` | `get_form_class(campus)` (v0.1.15a) | `StudentFerpaForm` | `cis.ferpa.ferpa_form_class`: a different FERPA form per campus on a multi-campus deployment. Must accept `campus=None` (no campus context). |
 | `recommendation_form.py` | `get_form_class(campus)` (v0.1.15a) | `StudentRecommendationForm` | `cis.recommendations.recommendation_form_class`: a different recommendation form per campus. Must accept `campus=None`. |
+| `class_section_import.py` | `ROW_SCHEMA`, `TEACHER_MATCH_ORDER`, `TEACHER_EMAIL_IEXACT`, `BACKFILL_TEACHER_PSID`, `AUTO_CREATE_TEACHER`, `AUTO_CREATE_REQUIRES_NAMES`, `AUTO_CREATE_CERT_STATUS`, `COURSE_NAME_PATTERN`, `CLASS_SECTION_IMPORT_ALLOW_2DIGIT_YEAR` (#114 item 10) | `ClassSectionRow`; exact `secondary_email` match only; no auto-create; "BIO 101" names; four-digit years | Class-section CSV importer. See the `ClassSectionImporter` docstring. |
+| `instructor_import.py` | `INSTRUCTOR_IMPORT_UPDATE_FIELDS` (#114 item 10) | `()`: a matched teacher is reused unchanged | Instructor CSV importer: CustomUser fields refreshed on a match (blank cells skipped; login identity, status and orientation date never). |
+| `highschool_import.py` | `ROW_SCHEMA`, `EXTRA_UPDATE_FIELDS` (#114 item 10) | `HighSchoolRow`, `()` | High-school CSV importer: extra columns (Y/N cells via `validation.coerce_yes_no`), and which of them update existing schools. |
 
 ### Tenant table-config modules
 

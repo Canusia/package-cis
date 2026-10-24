@@ -429,8 +429,6 @@ def ajax_search(request):
 
 def import_from_file(request):
     """Handle CSV file upload for high school import."""
-    from cis.services.importers import HighSchoolRow
-
     form = HighSchoolUploadForm(request.POST, request.FILES)
 
     if form.is_valid():
@@ -466,19 +464,19 @@ def import_from_file(request):
 
 def download_highschool_template(request):
     """Download a blank CSV template with the correct headers for high school import."""
-    from cis.services.importers import HighSchoolRow
+    from cis.services.importers.highschool_schema import highschool_row_schema
 
     response = HttpResponse(content_type='text/csv')
     response['Content-Disposition'] = 'attachment; filename="highschool_import_template.csv"'
     writer = csv.writer(response)
-    writer.writerow(HighSchoolRow.csv_headers())
+    writer.writerow(highschool_row_schema().csv_headers())
     return response
 
 def add_new(request):
     '''
     Add new High school page
     '''
-    from cis.services.importers import HighSchoolRow
+    from cis.services.importers.highschool_schema import highschool_row_schema
 
     template = 'cis/highschools/add-new.html'
     upload_form = HighSchoolUploadForm()
@@ -508,8 +506,8 @@ def add_new(request):
         template, {
             'form': form,
             'upload_form': upload_form,
-            'schema_fields': HighSchoolRow.field_definitions(),
-            'required_header': HighSchoolRow.csv_headers(),
+            'schema_fields': highschool_row_schema().field_definitions(),
+            'required_header': highschool_row_schema().csv_headers(),
             'menu': draw_menu(cis_menu, 'highschools', 'all_highschools')
         })
 

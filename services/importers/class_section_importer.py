@@ -8,14 +8,49 @@ from django.db.models import Q
 from pydantic import ValidationError as PydanticValidationError
 
 from cis.models import ClassSection, Course, Cohort, AcademicYear
-from .validation import ValidationError, ImportResult
-from .class_section_schema import ClassSectionRow
+from .validation import ValidationError, ImportResult, import_option
+from .class_section_schema import (
+    TENANT_MODULE, ClassSectionRow, class_section_row_schema,
+    course_name_pattern)
 
 logger = logging.getLogger(__name__)
 
 
+def _tenant_module_or_none():
+    """The tenant's class_section_import module, or None if it ships none."""
+    from cis.services.tenant_services import get_tenant_override, get_tenant_service
+    if get_tenant_override(TENANT_MODULE, '__name__') is None:
+        return None
+    return get_tenant_service(TENANT_MODULE)
+
+
 class ClassSectionImporter:
-    """Handles the complex logic of importing ClassSections from CSV"""
+    """Handles the complex logic of importing ClassSections from CSV
+
+    Tenant knobs (#114 item 10), read from the tenant's `class_section_import`
+    service module; each defaults to the package behaviour:
+
+    - ROW_SCHEMA: a ClassSectionRow subclass with extra columns. Its direct
+      (non-lookup) columns are written on create and, beyond
+      ClassSection.UPDATABLE_FIELDS, on update too.
+    - TEACHER_MATCH_ORDER = ('email',): any of 'psid' (instructor_id against
+      CustomUser.psid) and 'email' (teacher_hs_email against
+      CustomUser.secondary_email), tried in order.
+    - TEACHER_EMAIL_IEXACT = False: match the email case-insensitively.
+    - BACKFILL_TEACHER_PSID = False: on an email match, store instructor_id
+      as the user's psid when they have none (and nobody else holds it).
+    - AUTO_CREATE_TEACHER = False: when nothing matches and the row has an
+      email and a resolved high school, create the user, Teacher and
+      TeacherHighSchool. AUTO_CREATE_REQUIRES_NAMES = True only does so when
+      instructor_firstname and instructor_lastname are filled; with names, a
+      TeacherCourseCertificate for the row's course is added with status
+      AUTO_CREATE_CERT_STATUS = 'Teaching' (None: no certificate).
+    - COURSE_NAME_PATTERN, CLASS_SECTION_IMPORT_ALLOW_2DIGIT_YEAR: see
+      class_section_schema.
+
+    The instructor_* columns are offered only when one of the teacher knobs
+    uses them.
+    """
 
     def __init__(self, use_bulk_operations=True, batch_size=500, use_transactions='none'):
         """
@@ -33,6 +68,35 @@ class ClassSectionImporter:
         self.use_bulk_operations = use_bulk_operations
         self.batch_size = batch_size
         self.use_transactions = use_transactions
+
+        self.row_schema = class_section_row_schema()
+        self.updatable_fields = self._updatable_fields(self.row_schema)
+        self.teacher_match_order = tuple(
+            import_option(TENANT_MODULE, 'TEACHER_MATCH_ORDER', ('email',)))
+        self.teacher_email_iexact = bool(
+            import_option(TENANT_MODULE, 'TEACHER_EMAIL_IEXACT', False))
+        self.backfill_teacher_psid = bool(
+            import_option(TENANT_MODULE, 'BACKFILL_TEACHER_PSID', False))
+        self.auto_create_teacher = bool(
+            import_option(TENANT_MODULE, 'AUTO_CREATE_TEACHER', False))
+        self.auto_create_requires_names = bool(
+            import_option(TENANT_MODULE, 'AUTO_CREATE_REQUIRES_NAMES', True))
+        # None is a meaningful value here (no certificate), so an unset knob
+        # cannot be told apart through import_option.
+        self.auto_create_cert_status = getattr(
+            _tenant_module_or_none(), 'AUTO_CREATE_CERT_STATUS', 'Teaching')
+
+    @staticmethod
+    def _updatable_fields(schema):
+        """ClassSection.UPDATABLE_FIELDS plus the direct columns a tenant
+        ROW_SCHEMA adds (never the term / class_number match key)."""
+        fields = list(ClassSection.UPDATABLE_FIELDS)
+        base = set(ClassSectionRow.db_field_mapping().values())
+        for db_field in schema.db_field_mapping().values():
+            if (db_field not in base and db_field not in fields
+                    and db_field not in ('term', 'class_number')):
+                fields.append(db_field)
+        return fields
 
     def process_csv(self, dictReader) -> Dict:
         """
@@ -228,7 +292,7 @@ class ClassSectionImporter:
                 # Use UPDATABLE_FIELDS from the model for bulk_update
                 ClassSection.objects.bulk_update(
                     to_update,
-                    fields=ClassSection.UPDATABLE_FIELDS,
+                    fields=self.updatable_fields,
                     batch_size=100
                 )
                 updated_count = len(to_update)
@@ -280,7 +344,7 @@ class ClassSectionImporter:
     def _build_db_fields(self, data: Dict) -> Dict:
         """
         Build model field dict from validated schema data and related objects.
-        Uses ClassSectionRow.db_field_mapping() for direct fields and
+        Uses the row schema's db_field_mapping() for direct fields and
         overlays FK lookups from related_objects.
         """
         validated = data['validated']
@@ -288,7 +352,7 @@ class ClassSectionImporter:
 
         # Direct fields from schema mapping
         field_mapping = {}
-        for csv_col, db_field in ClassSectionRow.db_field_mapping().items():
+        for csv_col, db_field in self.row_schema.db_field_mapping().items():
             value = getattr(validated, csv_col)
             if value is not None:
                 field_mapping[db_field] = value
@@ -316,12 +380,13 @@ class ClassSectionImporter:
     def _update_class_section(self, class_section: ClassSection, data: Dict):
         """
         Update an existing ClassSection instance.
-        Only updates fields that are in UPDATABLE_FIELDS.
+        Only updates fields that are in UPDATABLE_FIELDS (plus a tenant
+        ROW_SCHEMA's own columns).
         """
         field_mapping = self._build_db_fields(data)
 
         for field_name, value in field_mapping.items():
-            if field_name in ClassSection.UPDATABLE_FIELDS:
+            if field_name in self.updatable_fields:
                 setattr(class_section, field_name, value)
 
     def _build_summary(self, results: List[ImportResult]) -> Dict:
@@ -402,7 +467,7 @@ class ClassSectionImporter:
         Returns (validated_row, errors) - if errors is non-empty, validated_row is None.
         """
         try:
-            validated = ClassSectionRow.model_validate(row)
+            validated = self.row_schema.model_validate(row)
             return validated, []
         except PydanticValidationError as e:
             errors = []
@@ -424,8 +489,10 @@ class ClassSectionImporter:
             validated.credit_hours or 0
         )
 
-        related['teacher'] = self._get_teacher(validated.teacher_hs_email)
+        # High school first: an auto-created teacher is linked to it.
         related['highschool'] = self._get_highschool(validated.highschool_ceeb)
+        related['teacher'] = self._resolve_teacher(
+            validated, related['highschool'], related['course'])
 
         related['term'] = self._get_term(validated.term_code)
         if not related['term']:
@@ -442,7 +509,7 @@ class ClassSectionImporter:
         try:
             return Course.objects.get(name=course_name)
         except Course.DoesNotExist:
-            cohort_name, catalog = course_name.split(' ', 1)
+            cohort_name = self._cohort_name(course_name)
             cohort, _ = Cohort.objects.get_or_create(
                 name=cohort_name,
                 designator=cohort_name
@@ -457,18 +524,152 @@ class ClassSectionImporter:
             )
             return course
 
-    def _get_teacher(self, teacher_email: Optional[str]):
-        """Get teacher by email"""
+    @staticmethod
+    def _cohort_name(course_name: str) -> str:
+        """The cohort designator of a new course: the part before the first
+        space, or the tenant COURSE_NAME_PATTERN's cohort group, upper-cased."""
+        pattern = course_name_pattern()
+        if pattern is None:
+            cohort_name, _catalog = course_name.split(' ', 1)
+            return cohort_name
+        match = pattern.match(course_name or '')
+        if not match:
+            raise ValueError(
+                f"course_name '{course_name}' does not match the course name "
+                f"pattern (e.g. 'BIO 101').")
+        return (match.groupdict().get('cohort') or match.group(1)).upper()
+
+    def _resolve_teacher(self, validated, highschool=None, course=None):
+        """The row's teacher, by TEACHER_MATCH_ORDER; else auto-created when
+        AUTO_CREATE_TEACHER is on; else None (the section has no teacher)."""
         from cis.models.teacher import Teacher
 
-        if not teacher_email:
-            return None
+        email = validated.teacher_hs_email
+        instructor_id = getattr(validated, 'instructor_id', None)
 
+        for key in self.teacher_match_order:
+            if key == 'psid' and instructor_id:
+                teacher = Teacher.objects.filter(user__psid=instructor_id).first()
+                if teacher:
+                    return teacher
+            elif key == 'email' and email:
+                teacher = self._find_teacher_by_email(email)
+                if teacher:
+                    if self.backfill_teacher_psid and instructor_id:
+                        self._backfill_psid(teacher.user, instructor_id)
+                    return teacher
+
+        if self.auto_create_teacher:
+            return self._auto_create_teacher(validated, highschool, course)
+        if email:
+            logger.warning(f"Teacher not found with email: {email}")
+        return None
+
+    def _find_teacher_by_email(self, teacher_email: str):
+        """Teacher by CustomUser.secondary_email: exact (package default) or,
+        with TEACHER_EMAIL_IEXACT, case-insensitive."""
+        from cis.models.teacher import Teacher
+
+        if self.teacher_email_iexact:
+            return Teacher.objects.filter(
+                user__secondary_email__iexact=teacher_email.strip()).first()
         try:
             return Teacher.objects.get(user__secondary_email=teacher_email)
         except Teacher.DoesNotExist:
-            logger.warning(f"Teacher not found with email: {teacher_email}")
             return None
+
+    def _get_teacher(self, teacher_email: Optional[str]):
+        """Get teacher by email"""
+        if not teacher_email:
+            return None
+        teacher = self._find_teacher_by_email(teacher_email)
+        if teacher is None:
+            logger.warning(f"Teacher not found with email: {teacher_email}")
+        return teacher
+
+    @staticmethod
+    def _backfill_psid(user, instructor_id: str):
+        """Fill a missing psid; never overwrite one, nor take one in use."""
+        from cis.models.customuser import CustomUser
+
+        if user.psid:
+            return
+        if CustomUser.objects.filter(psid=instructor_id).exclude(pk=user.pk).exists():
+            logger.warning(
+                f"Not backfilling psid {instructor_id} on {user.username}: "
+                f"another user already has it.")
+            return
+        user.psid = instructor_id
+        user.save(update_fields=['psid'])
+
+    def _auto_create_teacher(self, validated, highschool, course):
+        """Create (or complete) the user, Teacher and TeacherHighSchool for an
+        unmatched row, plus a course certificate when the names are given."""
+        from cis.models.customuser import CustomUser
+        from cis.models.teacher import (
+            Teacher, TeacherHighSchool, TeacherCourseCertificate)
+
+        email = (validated.teacher_hs_email or '').strip().lower()
+        first_name = getattr(validated, 'instructor_firstname', None)
+        last_name = getattr(validated, 'instructor_lastname', None)
+        instructor_id = getattr(validated, 'instructor_id', None)
+        has_names = bool(first_name and last_name)
+
+        if not email or highschool is None:
+            if email:
+                logger.warning(
+                    f"Teacher not found with email: {email} and no high school "
+                    f"resolved on this row; not auto-creating.")
+            return None
+        if self.auto_create_requires_names and not has_names:
+            logger.warning(
+                f"Teacher not found with email: {email}; not auto-creating "
+                f"without instructor_firstname and instructor_lastname.")
+            return None
+
+        with transaction.atomic():
+            user = CustomUser.objects.filter(
+                Q(username__iexact=email) | Q(email__iexact=email)).first()
+            if user is None:
+                user = CustomUser(
+                    username=email,
+                    email=email,
+                    secondary_email=email,
+                    first_name=first_name or '',
+                    last_name=last_name or '',
+                    psid=instructor_id or None,
+                )
+                user.save()
+            else:
+                update_fields = []
+                if not user.secondary_email:
+                    user.secondary_email = email
+                    update_fields.append('secondary_email')
+                if has_names and not user.first_name:
+                    user.first_name = first_name
+                    update_fields.append('first_name')
+                if has_names and not user.last_name:
+                    user.last_name = last_name
+                    update_fields.append('last_name')
+                if update_fields:
+                    user.save(update_fields=update_fields)
+                if instructor_id:
+                    self._backfill_psid(user, instructor_id)
+
+            teacher, _ = Teacher.objects.get_or_create(user=user)
+            # TeacherHighSchool.save() adds the user to the instructor group.
+            teacher_hs, _ = TeacherHighSchool.objects.get_or_create(
+                teacher=teacher, highschool=highschool)
+
+            if has_names and course is not None and self.auto_create_cert_status:
+                TeacherCourseCertificate.objects.get_or_create(
+                    teacher_highschool=teacher_hs,
+                    course=course,
+                    defaults={'status': self.auto_create_cert_status},
+                )
+
+        logger.info(f"Auto-created teacher {email} at high school {highschool}.")
+        return teacher
 
     def _get_highschool(self, ceeb_code: Optional[str]):
         """Get highschool by CEEB code"""

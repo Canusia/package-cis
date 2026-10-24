@@ -60,7 +60,7 @@ from cis.models.note import ClassSectionNote
 from cis.forms.section import AddNewHighSchoolClassOfferingForm
 
 from cis.menu import cis_menu, draw_menu
-from cis.services.importers.class_section_schema import ClassSectionRow
+from cis.services.importers.class_section_schema import class_section_row_schema
 from cis.services.term_hierarchy import filter_by_term, expand_term_ids
 from cis.services.tenant_services import get_tenant_override
 from cis.services.table_configs import get_table_config
@@ -1258,7 +1258,7 @@ def download_section_template(request):
     response = HttpResponse(content_type='text/csv')
     response['Content-Disposition'] = 'attachment; filename="section_import_template.csv"'
     writer = csv.writer(response)
-    writer.writerow(ClassSectionRow.csv_headers())
+    writer.writerow(class_section_row_schema().csv_headers())
     return response
 
 def add_new(request):
@@ -1316,8 +1316,8 @@ def add_new(request):
         template, {
             # 'form': form,
             'upload_form': upload_form,
-            'required_header': ClassSectionRow.csv_headers(),
-            'schema_fields': ClassSectionRow.field_definitions(),
+            'required_header': class_section_row_schema().csv_headers(),
+            'schema_fields': class_section_row_schema().field_definitions(),
             'page_title': "Add New Section",
             'labels': {
                 'all_items': 'All Sections'

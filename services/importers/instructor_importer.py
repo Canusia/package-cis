@@ -4,7 +4,9 @@ Instructor (Teacher) CSV importer — individual row processing.
 Each row creates/reuses a Teacher (+ CustomUser), links it to a high school by
 CEEB code (TeacherHighSchool), and creates a TeacherCourseCertificate for each
 listed course. Matching is by psid, else primary email; existing teachers are
-reused without field updates (links are still ensured). Mirrors HSMemberImporter.
+reused without field updates (links are still ensured), unless the tenant lists
+the fields to refresh as INSTRUCTOR_IMPORT_UPDATE_FIELDS on its
+`instructor_import` service module (#114 item 10). Mirrors HSMemberImporter.
 """
 import logging
 from typing import Dict, List, Optional, Tuple
@@ -17,14 +19,45 @@ from cis.models.customuser import CustomUser
 from cis.models.teacher import Teacher, TeacherHighSchool, TeacherCourseCertificate
 from cis.models.highschool import HighSchool
 from cis.models.course import Course
-from .validation import ValidationError, ImportResult
+from .validation import ValidationError, ImportResult, import_option
 from .instructor_schema import InstructorRow
 
 logger = logging.getLogger(__name__)
 
+TENANT_MODULE = 'instructor_import'
+
+# Login identity and program state: never rewritten by a re-import, whatever
+# INSTRUCTOR_IMPORT_UPDATE_FIELDS lists.
+NEVER_UPDATED_FIELDS = frozenset({
+    'username', 'psid', 'email', 'alt_username', 'status', 'orientation_date'})
+
 
 class InstructorImporter:
-    """Handles importing Instructors (Teachers) from CSV."""
+    """Handles importing Instructors (Teachers) from CSV.
+
+    INSTRUCTOR_IMPORT_UPDATE_FIELDS = () (tenant `instructor_import` module):
+    CustomUser fields refreshed from the row when an existing teacher is
+    matched, named as the user field (e.g. 'first_name', 'alt_email',
+    'primary_phone', 'date_of_birth'). A blank cell never overwrites.
+    """
+
+    def __init__(self):
+        self.update_fields = self._configured_update_fields()
+
+    @staticmethod
+    def _configured_update_fields():
+        """[(user_field, csv_column)] for the tenant's update fields."""
+        by_db_field = {db: col for col, db in InstructorRow.db_field_mapping().items()}
+        user_fields = {f.name for f in CustomUser._meta.get_fields()}
+        pairs = []
+        for name in import_option(TENANT_MODULE, 'INSTRUCTOR_IMPORT_UPDATE_FIELDS', ()):
+            if name in NEVER_UPDATED_FIELDS:
+                logger.warning('INSTRUCTOR_IMPORT_UPDATE_FIELDS: %s is never updated.', name)
+            elif name not in by_db_field or name not in user_fields:
+                logger.warning('INSTRUCTOR_IMPORT_UPDATE_FIELDS: no %s column.', name)
+            else:
+                pairs.append((name, by_db_field[name]))
+        return pairs
 
     def process_csv(self, dictReader) -> Dict:
         """Main entry point for CSV import."""
@@ -77,6 +110,8 @@ class InstructorImporter:
                 teacher = self._find_teacher(validated)
                 if teacher is None:
                     teacher = self._create_teacher(validated)
+                elif self.update_fields:
+                    self._update_teacher_details(teacher, validated)
 
                 ths, _ = TeacherHighSchool.objects.get_or_create(
                     teacher=teacher, highschool=highschool)
@@ -132,6 +167,21 @@ class InstructorImporter:
         teacher.save()
         teacher.user.groups.add(Group.objects.get(name='instructor'))
         return teacher
+
+    def _update_teacher_details(self, teacher: Teacher, v: InstructorRow) -> None:
+        """Refresh the configured user fields from the row; blank cells are
+        skipped, so a re-import never wipes stored data."""
+        user = teacher.user
+        changed = []
+        for user_field, column in self.update_fields:
+            value = getattr(v, column)
+            if value in (None, ''):
+                continue
+            if getattr(user, user_field) != value:
+                setattr(user, user_field, value)
+                changed.append(user_field)
+        if changed:
+            user.save(update_fields=changed)
 
     def _ensure_certificates(self, ths: TeacherHighSchool, v: InstructorRow) -> List[str]:
         """Create get_or_create TeacherCourseCertificate for each non-empty course column."""

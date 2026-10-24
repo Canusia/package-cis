@@ -229,3 +229,17 @@ class HighSchoolRow(BaseModel):
             if extra.get("is_lookup"):
                 mapping[name] = extra.get("db_field")
         return mapping
+
+
+# Tenant knobs for this importer live on the tenant's `highschool_import`
+# service module (#114 item 10): ROW_SCHEMA (a HighSchoolRow subclass with
+# extra columns; read Y/N cells with validation.coerce_yes_no) and
+# EXTRA_UPDATE_FIELDS (see HighSchoolImporter).
+TENANT_MODULE = 'highschool_import'
+
+
+def highschool_row_schema():
+    """The tenant's ROW_SCHEMA, else HighSchoolRow. Drives the importer, the
+    sample file and the import page's column list alike."""
+    from .validation import import_option
+    return import_option(TENANT_MODULE, 'ROW_SCHEMA', None) or HighSchoolRow

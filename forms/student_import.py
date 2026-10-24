@@ -17,8 +17,6 @@ subclassed at import time (#57), so a changed TENANT_SERVICES_APP reaches it.
 `from cis.forms.student_import import StudentImportRowForm` keeps working
 through the module __getattr__ at the bottom, resolved when the import runs.
 """
-import re
-
 from django import forms
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -27,6 +25,9 @@ from cis.forms import student_profile as _profile
 from cis.models.highschool import HighSchool
 from cis.highschool_scope import picker_queryset
 from cis.models.student import Student
+from cis.services.importers.validation import (
+    DEFAULT_DATE_INPUT_FORMATS, NO_WORDS, YES_WORDS, coerce_yes_no,
+    has_two_digit_year, import_date_input_formats)
 
 
 class DelimitedMultipleChoiceField(forms.MultipleChoiceField):
@@ -40,8 +41,9 @@ class DelimitedMultipleChoiceField(forms.MultipleChoiceField):
         return [v.strip() for v in str(value).split('|') if v.strip()]
 
 
-YES_WORDS = frozenset({'yes', 'y', 'true', 't', '1'})
-NO_WORDS = frozenset({'no', 'n', 'false', 'f', '0'})
+# YES_WORDS / NO_WORDS and the date helpers live in
+# cis.services.importers.validation (#114 item 10) so the pydantic row schemas
+# share them; the names stay importable from here.
 
 _DATE_DIRECTIVES = (('%Y', 'YYYY'), ('%m', 'MM'), ('%d', 'DD'))
 
@@ -88,9 +90,10 @@ class StudentImportRowMixin:
 
     # Accepted date layouts (strptime). %m/%d also accept unpadded digits, so
     # '%m/%d/%Y' covers both MM/DD/YYYY and M/D/YYYY. A deployment may replace
-    # the list with settings.STUDENT_IMPORT_DATE_INPUT_FORMATS. Two-digit
+    # the list with settings.STUDENT_IMPORT_DATE_INPUT_FORMATS (student import
+    # only) or the generic settings.IMPORT_DATE_INPUT_FORMATS. Two-digit
     # years are always rejected: '5/2/11' has no safe century for a birth date.
-    DATE_INPUT_FORMATS = ('%m/%d/%Y', '%m-%d-%Y', '%Y-%m-%d', '%Y/%m/%d')
+    DATE_INPUT_FORMATS = DEFAULT_DATE_INPUT_FORMATS
     DATE_FIELDS = ('date_of_birth', 'start_date', 'graduation_date')
 
     # Optional Yes/No columns whose blank cell is stored as "No", so a
@@ -173,7 +176,7 @@ class StudentImportRowMixin:
     @classmethod
     def date_input_formats(cls):
         return tuple(getattr(settings, 'STUDENT_IMPORT_DATE_INPUT_FORMATS', None)
-                     or cls.DATE_INPUT_FORMATS)
+                     or import_date_input_formats(cls.DATE_INPUT_FORMATS))
 
     @classmethod
     def accepted_date_formats(cls):
@@ -204,11 +207,8 @@ class StudentImportRowMixin:
                    % self._message_formats_phrase())
 
         def wrapped(value):
-            if isinstance(value, str):
-                parts = re.split(r'[/\-.]', value.strip())
-                if (len(parts) == 3 and all(p.isdigit() for p in parts)
-                        and not any(len(p) == 4 for p in parts)):
-                    raise ValidationError(message, code='invalid')
+            if has_two_digit_year(value):
+                raise ValidationError(message, code='invalid')
             return to_python(value)
         return wrapped
 
@@ -225,11 +225,12 @@ class StudentImportRowMixin:
         data = data.copy()
         for name, field in self.fields.items():
             if isinstance(field, forms.BooleanField):
-                raw = str(data.get(name) or '').strip().casefold()
-                if raw in NO_WORDS:
-                    data[name] = 'false'
-                elif raw in YES_WORDS:
-                    data[name] = 'true'
+                try:
+                    answer = coerce_yes_no(data.get(name) or '')
+                except ValueError:
+                    answer = None
+                if answer is not None:
+                    data[name] = 'true' if answer else 'false'
                 continue
             if not _is_plain_choice_field(field):
                 continue

@@ -8,9 +8,47 @@ Single source of truth for:
 - Custom validation rules
 - DB field mapping metadata
 """
-from pydantic import BaseModel, Field, field_validator, model_validator
+import functools
+import re
+
+from pydantic import (
+    BaseModel, Field, ValidationInfo, create_model, field_validator,
+    model_validator)
 from typing import Optional
 from datetime import date
+
+from .validation import coerce_date, import_date_input_formats, import_option
+
+
+# Tenant knobs for this importer live on the tenant's `class_section_import`
+# service module (#114 item 10); every one is optional and defaults to the
+# package behaviour. See docs in class_section_importer.ClassSectionImporter.
+TENANT_MODULE = 'class_section_import'
+
+# Accepted section date layouts unless settings.IMPORT_DATE_INPUT_FORMATS
+# replaces them. ISO first, so well-formed exports stay cheap. Two-digit years
+# are rejected unless the tenant sets CLASS_SECTION_IMPORT_ALLOW_2DIGIT_YEAR.
+DATE_INPUT_FORMATS = ('%Y-%m-%d', '%m/%d/%Y', '%m-%d-%Y', '%Y/%m/%d')
+
+
+def course_name_pattern():
+    """The tenant's COURSE_NAME_PATTERN, compiled, or None for the package
+    rule ("<cohort> <catalog>", split on the first space).
+
+    The pattern's group named `cohort` (else its first group) is the cohort
+    designator of a new course, upper-cased. e.g. r'^\\s*([A-Za-z]+)\\s*(\\d.*)$'
+    accepts 'BIO 101', 'BIO101' and 'COMM 1030-01'.
+    """
+    pattern = import_option(TENANT_MODULE, 'COURSE_NAME_PATTERN', None)
+    if pattern is None or isinstance(pattern, re.Pattern):
+        return pattern
+    return re.compile(pattern)
+
+
+def _is_date_annotation(annotation):
+    if annotation is date:
+        return True
+    return date in getattr(annotation, '__args__', ())
 
 
 class ClassSectionRow(BaseModel):
@@ -32,8 +70,10 @@ class ClassSectionRow(BaseModel):
         min_length=1, description="Term code",
         json_schema_extra={"db_field": "term", "is_lookup": True}
     )
-    reference_number: int = Field(
-        description="CRN / Reference number",
+    # str, not int: ClassSection.class_number is a CharField, and int dropped
+    # leading zeros and rejected CRNs like '1030-01' (#114 item 10).
+    reference_number: str = Field(
+        min_length=1, description="CRN / Reference number",
         json_schema_extra={"db_field": "class_number"}
     )
     section_number: str = Field(
@@ -92,10 +132,20 @@ class ClassSectionRow(BaseModel):
     )
 
     # --- Validators ---
+    @field_validator('reference_number', mode='before')
+    @classmethod
+    def reference_number_as_text(cls, v):
+        """Keep the CRN as typed (an API payload may send a number)."""
+        if isinstance(v, int) and not isinstance(v, bool):
+            return str(v)
+        return v.strip() if isinstance(v, str) else v
+
     @field_validator('course_name')
     @classmethod
     def course_name_must_have_cohort(cls, v):
-        if ' ' not in v:
+        # A tenant COURSE_NAME_PATTERN is checked by the importer, and only
+        # when the course is new: an existing course matches by its exact name.
+        if course_name_pattern() is None and ' ' not in v:
             raise ValueError("Must contain cohort and catalog (e.g. 'BIO 101')")
         return v
 
@@ -106,20 +156,29 @@ class ClassSectionRow(BaseModel):
             raise ValueError("Must be 'Y' or 'N'")
         return v
 
-    @field_validator('start_date', 'end_date', mode='before')
+    @field_validator('*', mode='before')
     @classmethod
-    def parse_date_or_none(cls, v):
-        """Treat empty strings as None for optional date fields."""
-        if v == '' or v is None:
-            return None
-        return v
+    def parse_date_or_none(cls, v, info: ValidationInfo):
+        """Every date column, including a tenant ROW_SCHEMA's own: blank ->
+        None, else any accepted layout (see DATE_INPUT_FORMATS)."""
+        field = cls.model_fields.get(info.field_name)
+        if field is None or not _is_date_annotation(field.annotation):
+            return v
+        return coerce_date(
+            v, import_date_input_formats(DATE_INPUT_FORMATS),
+            allow_2digit_year=bool(import_option(
+                TENANT_MODULE, 'CLASS_SECTION_IMPORT_ALLOW_2DIGIT_YEAR', False)),
+        )
 
     @field_validator('tuition', mode='before')
     @classmethod
     def parse_tuition_or_default(cls, v):
-        """Treat empty strings as 0.0."""
-        if v == '' or v is None:
+        """Strip currency formatting ('$225', '1,200.50'); blank -> 0.0."""
+        if v is None:
             return 0.0
+        if isinstance(v, str):
+            cleaned = v.strip().lstrip('$').replace(',', '').strip()
+            return cleaned or 0.0
         return v
 
     @field_validator('credit_hours', mode='before')
@@ -164,7 +223,7 @@ class ClassSectionRow(BaseModel):
             'str': 'Text',
             'int': 'Integer',
             'float': 'Decimal',
-            'date': 'Date (YYYY-MM-DD)',
+            'date': 'Date (YYYY-MM-DD or MM/DD/YYYY)',
         }
         fields = []
         for name, info in cls.model_fields.items():
@@ -204,3 +263,63 @@ class ClassSectionRow(BaseModel):
             if extra.get("is_lookup"):
                 mapping[name] = extra.get("db_field")
         return mapping
+
+
+# --- Tenant-selected schema -------------------------------------------------
+
+# Columns offered only when the tenant matches teachers by instructor id or
+# auto-creates them (TEACHER_MATCH_ORDER / AUTO_CREATE_TEACHER).
+INSTRUCTOR_COLUMNS = {
+    'instructor_firstname': "Instructor first name (used when auto-creating a new teacher)",
+    'instructor_lastname': "Instructor last name (used when auto-creating a new teacher)",
+    'instructor_id': "Instructor ID (matched against the user's PSID; stored as PSID on a new teacher)",
+}
+
+
+def _blank_to_none(v):
+    if isinstance(v, str):
+        v = v.strip()
+        return v or None
+    return v
+
+
+@functools.lru_cache(maxsize=None)
+def _with_instructor_columns(base):
+    """`base` plus whichever INSTRUCTOR_COLUMNS it does not declare itself."""
+    missing = {name: desc for name, desc in INSTRUCTOR_COLUMNS.items()
+               if name not in base.model_fields}
+    if not missing:
+        return base
+    fields = {
+        name: (Optional[str], Field(default=None, description=desc,
+                                    json_schema_extra={"db_field": None}))
+        for name, desc in missing.items()
+    }
+    validators = {
+        'instructor_columns_blank_to_none': field_validator(
+            *missing, mode='before')(_blank_to_none),
+    }
+    return create_model(
+        base.__name__, __base__=base, __module__=base.__module__,
+        __validators__=validators, **fields)
+
+
+def instructor_columns_enabled():
+    order = import_option(TENANT_MODULE, 'TEACHER_MATCH_ORDER', ('email',))
+    return (bool(import_option(TENANT_MODULE, 'AUTO_CREATE_TEACHER', False))
+            or 'psid' in tuple(order)
+            or bool(import_option(TENANT_MODULE, 'BACKFILL_TEACHER_PSID', False)))
+
+
+def class_section_row_schema():
+    """The row schema this tenant imports with.
+
+    The tenant's ROW_SCHEMA (a ClassSectionRow subclass, e.g. adding the
+    section due dates) or ClassSectionRow; plus the instructor columns when
+    the tenant's teacher-matching knobs use them. Drives the importer, the
+    sample file and the import page's column list alike.
+    """
+    schema = import_option(TENANT_MODULE, 'ROW_SCHEMA', None) or ClassSectionRow
+    if instructor_columns_enabled():
+        schema = _with_instructor_columns(schema)
+    return schema

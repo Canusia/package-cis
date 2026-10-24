@@ -11,14 +11,33 @@ from cis.models.highschool import HighSchool, HighSchoolCampus
 from cis.signals.highschool_campus import (
     link_campus, link_new_highschools, set_link_codes, set_link_statuses)
 from cis.models.district import District
-from .validation import ValidationError, ImportResult
-from .highschool_schema import HighSchoolRow
+from .validation import ValidationError, ImportResult, import_option
+from .highschool_schema import TENANT_MODULE, HighSchoolRow, highschool_row_schema
 
 logger = logging.getLogger(__name__)
 
 
 class HighSchoolImporter:
-    """Handles importing HighSchools from CSV"""
+    """Handles importing HighSchools from CSV
+
+    Tenant knobs (#114 item 10), on the tenant's `highschool_import` service
+    module:
+
+    - ROW_SCHEMA: a HighSchoolRow subclass with extra columns. Its direct
+      columns are written when a school is created.
+    - EXTRA_UPDATE_FIELDS = (): HighSchool fields beyond the package's own
+      that a row may also update on an existing school. A ROW_SCHEMA column
+      whose field is not listed here is create-only.
+    """
+
+    # The fields a row updates on an existing school. HighSchool.status is
+    # derived from campus links; the row's status is written to the current
+    # campus's link instead.
+    UPDATE_FIELDS = (
+        'name', 'sau', 'district', 'address1', 'address2',
+        'city', 'state', 'postal_code', 'primary_phone', 'secondary_phone',
+        'fax', 'url', 'state_code', 'hs_type', 'hs_pay_type',
+    )
 
     def __init__(self, use_bulk_operations=True, batch_size=500, use_transactions='none',
                  user=None):
@@ -28,6 +47,16 @@ class HighSchoolImporter:
         self.user = user
         self.batch_size = batch_size
         self.use_transactions = use_transactions
+
+        self.row_schema = highschool_row_schema()
+        extra = tuple(import_option(TENANT_MODULE, 'EXTRA_UPDATE_FIELDS', ()))
+        self.update_fields = list(self.UPDATE_FIELDS) + [
+            f for f in extra if f not in self.UPDATE_FIELDS and f != 'code']
+        # Columns only a tenant schema adds, and which of them are create-only.
+        base = set(HighSchoolRow.db_field_mapping().values())
+        self.create_only_fields = {
+            f for f in self.row_schema.db_field_mapping().values()
+            if f not in base and f not in self.update_fields}
 
     def _link_restriction_campus(self):
         """The campus whose existing links bound this import, or None.
@@ -231,15 +260,9 @@ class HighSchoolImporter:
                             logger.error(f"Failed to save {hs.name}: {save_error}")
 
         if to_update:
-            # HighSchool.status is derived from campus links; the row's status
-            # is written to the current campus's link below instead.
-            update_fields = [
-                'name', 'sau', 'district', 'address1', 'address2',
-                'city', 'state', 'postal_code', 'primary_phone', 'secondary_phone',
-                'fax', 'url', 'state_code', 'hs_type', 'hs_pay_type',
-            ]
             try:
-                HighSchool.objects.bulk_update(to_update, fields=update_fields, batch_size=100)
+                HighSchool.objects.bulk_update(
+                    to_update, fields=self.update_fields, batch_size=100)
                 updated_count = len(to_update)
                 logger.info(f"Bulk updated {updated_count} records")
             except Exception as e:
@@ -331,7 +354,7 @@ class HighSchoolImporter:
         related = data['related_objects']
 
         field_mapping = {}
-        for csv_col, db_field in HighSchoolRow.db_field_mapping().items():
+        for csv_col, db_field in self.row_schema.db_field_mapping().items():
             value = getattr(validated, csv_col)
             if value is not None:
                 field_mapping[db_field] = value
@@ -353,7 +376,8 @@ class HighSchoolImporter:
     def _update_highschool(self, highschool: HighSchool, data: Dict):
         field_mapping = self._build_db_fields(data)
         for field_name, value in field_mapping.items():
-            if field_name != 'code':  # Don't update the match key
+            # Never the match key, nor a tenant column left create-only.
+            if field_name != 'code' and field_name not in self.create_only_fields:
                 setattr(highschool, field_name, value)
 
     def _build_summary(self, results: List[ImportResult]) -> Dict:
@@ -429,7 +453,7 @@ class HighSchoolImporter:
     def _validate_and_clean_row(self, row: Dict) -> Tuple[Optional[HighSchoolRow], List[ValidationError]]:
         """Validate and clean a CSV row using the pydantic schema."""
         try:
-            validated = HighSchoolRow.model_validate(row)
+            validated = self.row_schema.model_validate(row)
             return validated, []
         except PydanticValidationError as e:
             errors = []
