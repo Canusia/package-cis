@@ -9,9 +9,9 @@ from cis.menu import draw_menu, cis_menu
 from cis.models.section import StudentRegistration
 from cis.utils import CIS_user_only, user_has_cis_role
 from cis.serializers.registration import PendingSisMirrorRegistrationSerializer
-from cis.services.table_configs import get_table_config
+from cis.services.table_configs import lazy_table_config
 
-build_pending_mirror_table_config = get_table_config('pending_sis_mirror_table').build_config
+build_pending_mirror_table_config = lazy_table_config('pending_sis_mirror_table')
 
 
 class PendingSisMirrorRegistrationViewSet(viewsets.ReadOnlyModelViewSet):

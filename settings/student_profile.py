@@ -11,6 +11,7 @@ from django.utils.safestring import mark_safe
 from crispy_forms.helper import FormHelper
 from crispy_forms.layout import Submit
 
+from cis.services.tenant_services import tenant_services_app
 from cis.validators import validate_html_short_code, validate_profile_display
 from ..models.settings import Setting
 
@@ -37,7 +38,7 @@ def profile_fields():
     so re-deriving on every call would buy nothing. Tests that patch the tenant
     form in place must call reset_profile_fields_cache().
     """
-    key = settings.TENANT_SERVICES_APP
+    key = tenant_services_app()
     if key not in _profile_fields_cache:
         from cis.forms.student_profile import StudentProfileForm
         _profile_fields_cache[key] = [

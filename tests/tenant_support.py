@@ -18,12 +18,12 @@ import importlib
 import importlib.util
 import unittest
 
-from django.conf import settings
+from cis.services.tenant_services import tenant_services_app
 
 
 def tenant_service_module(module_name):
     """Import the tenant's service module, or return None when absent."""
-    dotted = f'{settings.TENANT_SERVICES_APP}.services.{module_name}'
+    dotted = f'{tenant_services_app()}.services.{module_name}'
     try:
         if importlib.util.find_spec(dotted) is None:
             return None
@@ -48,5 +48,5 @@ def requires_tenant_service(module_name):
     """
     return unittest.skipUnless(
         has_tenant_service(module_name),
-        f'{settings.TENANT_SERVICES_APP} does not ship a '
+        f'{tenant_services_app()} does not ship a '
         f'services.{module_name} module')

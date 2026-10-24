@@ -52,10 +52,10 @@ from ..serializers.teacher import (
 )
 from ..serializers.highschool import HighSchoolTeacherSerializer, TeacherCourseSerializer
 from ..serializers.note import TeacherNoteSerializer
-from cis.services.table_configs import get_table_config
-build_sections_table_config = get_table_config('sections_table').build_config
-build_instructors_table_config = get_table_config('instructors_table').build_config
-build_instructor_dangling_table_config = get_table_config('instructor_dangling_table').build_config
+from cis.services.table_configs import lazy_table_config
+build_sections_table_config = lazy_table_config('sections_table')
+build_instructors_table_config = lazy_table_config('instructors_table')
+build_instructor_dangling_table_config = lazy_table_config('instructor_dangling_table')
 
 from myce.component_registry.teacher import teacher_tabs
 

@@ -63,9 +63,9 @@ from cis.menu import cis_menu, draw_menu
 from cis.services.importers.class_section_schema import class_section_row_schema
 from cis.services.term_hierarchy import filter_by_term, expand_term_ids
 from cis.services.tenant_services import get_tenant_override
-from cis.services.table_configs import get_table_config
-build_registrations_table_config = get_table_config('registrations_table').build_config
-build_sections_table_config = get_table_config('sections_table').build_config
+from cis.services.table_configs import lazy_table_config
+build_registrations_table_config = lazy_table_config('registrations_table')
+build_sections_table_config = lazy_table_config('sections_table')
 
 from myce.component_registry.class_section_index import class_section_index_tabs
 

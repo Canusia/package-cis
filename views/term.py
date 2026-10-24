@@ -17,10 +17,10 @@ from cis.campus_context import is_multi_campus
 from cis.campus_gate import can_process_campus, deny_other_campus, scope_queryset_by_campus
 from cis.forms.term import AcademicYearForm, TermForm, MigrateTermForm, TermUploadForm
 from cis.menu import cis_menu, draw_menu
-from cis.services.table_configs import get_table_config
+from cis.services.table_configs import lazy_table_config
 from cis.services.comparison import build_compare_context
 from cis.services.term_hierarchy import term_tree
-build_terms_table_config = get_table_config('terms_table').build_config
+build_terms_table_config = lazy_table_config('terms_table')
 from myce.component_registry.term import term_actions, term_tabs
 
 # Ensure ethos section handlers are registered via their decorators (a no-op

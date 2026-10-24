@@ -16,9 +16,9 @@ from ..models.section import ClassSection
 from cis.forms.course import CohortForm, MigrateCohortForm, CohortUploadForm
 
 from cis.menu import cis_menu, draw_menu
-from cis.services.table_configs import get_table_config
-build_instructors_table_config = get_table_config('instructors_table').build_config
-build_cohorts_table_config = get_table_config('cohorts_table').build_config
+from cis.services.table_configs import lazy_table_config
+build_instructors_table_config = lazy_table_config('instructors_table')
+build_cohorts_table_config = lazy_table_config('cohorts_table')
 
 
 from rest_framework import viewsets

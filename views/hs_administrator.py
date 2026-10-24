@@ -33,9 +33,9 @@ from cis.models.highschool_administrator import (
 
 from cis.forms.utils import EmailForm
 from cis.utils import user_has_cis_role
-from cis.services.table_configs import get_table_config
+from cis.services.table_configs import lazy_table_config
 from cis.services.settings_overview import profile_exists
-build_access_requests_table_config = get_table_config('access_requests_table').build_config
+build_access_requests_table_config = lazy_table_config('access_requests_table')
 
 from cis.forms.highschool import (
     HSAdministratorForm, HSAdministratorAddForm,
@@ -46,9 +46,9 @@ from cis.forms.highschool import (
 
 from cis.models.note import HSAdministratorNote
 from cis.menu import cis_menu, draw_menu
-build_hs_admins_table_config = get_table_config('hs_admins_table').build_config
-build_hs_admin_people_table_config = get_table_config('hs_admin_people_table').build_config
-build_hs_admin_dangling_table_config = get_table_config('hs_admin_dangling_table').build_config
+build_hs_admins_table_config = lazy_table_config('hs_admins_table')
+build_hs_admin_people_table_config = lazy_table_config('hs_admin_people_table')
+build_hs_admin_dangling_table_config = lazy_table_config('hs_admin_dangling_table')
 from myce.component_registry.hs_administrator import hs_administrator_tabs
 from myce.component_registry.access_request import access_request_tabs
 

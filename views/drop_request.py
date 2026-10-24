@@ -31,8 +31,7 @@ from cis.utils import (
 from cis.menu import cis_menu, draw_menu
 from cis.settings.registrations import RegistrationForm
 from cis.forms.section import (
-    EditStudentRegistration, AddNewStudentRegistrationForm,
-    ProcessStudentDropRequest
+    AddNewStudentRegistrationForm, ProcessStudentDropRequest
 )
 
 from django.views.decorators.clickjacking import xframe_options_exempt

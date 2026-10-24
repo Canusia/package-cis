@@ -26,13 +26,13 @@ from ..models.section import ClassSection
 from ..models.teacher import TeacherCourseCertificate
 from myce.component_registry.course import course_tabs
 from cis.services.term_hierarchy import filter_by_term
-from cis.services.table_configs import get_table_config
+from cis.services.table_configs import lazy_table_config
 
-build_courses_table_config = get_table_config('courses_table').build_config
+build_courses_table_config = lazy_table_config('courses_table')
 build_course_app_requirements_table_config = (
-    get_table_config('course_app_requirements_table').build_config)
+    lazy_table_config('course_app_requirements_table'))
 build_course_document_requirements_table_config = (
-    get_table_config('course_document_requirements_table').build_config)
+    lazy_table_config('course_document_requirements_table'))
 
 from cis.forms.course import (
     CourseForm, CourseAppRequirementForm,

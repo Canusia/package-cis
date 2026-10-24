@@ -45,9 +45,9 @@ from cis.utils import (
 from cis.campus_gate import scope_queryset_by_campus, campus_gate, get_accessible_campuses, processable_ids
 from cis.menu import cis_menu, draw_menu
 from cis.services.term_hierarchy import filter_by_term
-from cis.services.table_configs import get_table_config
+from cis.services.table_configs import lazy_table_config
 from cis.services.tenant_services import get_tenant_service
-build_registrations_table_config = get_table_config('registrations_table').build_config
+build_registrations_table_config = lazy_table_config('registrations_table')
 from cis.settings.registrations import RegistrationForm
 from cis.forms.section import (
     AddNewStudentRegistrationForm,

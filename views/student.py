@@ -60,13 +60,13 @@ from cis.models.note import StudentNote
 from cis.utils import registration_terms
 from cis.menu import cis_menu, draw_menu
 from cis.services.term_hierarchy import filter_by_term, expand_term_ids
-from cis.services.table_configs import get_table_config
-build_registrations_table_config = get_table_config('registrations_table').build_config
-build_students_table_config                = get_table_config('students_table').build_config
-build_student_recommendations_table_config = get_table_config('student_recommendations_table').build_config
-build_support_docs_table_config            = get_table_config('support_docs_table').build_config
-build_student_notes_table_config           = get_table_config('student_notes_table').build_config
-build_student_dangling_table_config        = get_table_config('student_dangling_table').build_config
+from cis.services.table_configs import lazy_table_config
+build_registrations_table_config = lazy_table_config('registrations_table')
+build_students_table_config                = lazy_table_config('students_table')
+build_student_recommendations_table_config = lazy_table_config('student_recommendations_table')
+build_support_docs_table_config            = lazy_table_config('support_docs_table')
+build_student_notes_table_config           = lazy_table_config('student_notes_table')
+build_student_dangling_table_config        = lazy_table_config('student_dangling_table')
 from cis.integrations import ethos as ethos_integration
 from myce.component_registry.student import student_actions, student_tabs
 from myce.component_registry.support_docs import support_docs_actions

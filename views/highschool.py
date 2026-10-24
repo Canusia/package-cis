@@ -24,12 +24,12 @@ from cis.models.course import Course
 from django.utils.safestring import mark_safe
 
 from cis.services.term_hierarchy import expand_term_ids
-from cis.services.table_configs import get_table_config
+from cis.services.table_configs import lazy_table_config
 from cis.highschool_scope import scope_highschools
 from cis.campus_context import current_campus_or_none
-build_sections_table_config = get_table_config('sections_table').build_config
-build_instructors_table_config = get_table_config('instructors_table').build_config
-build_highschools_table_config = get_table_config('highschools_table').build_config
+build_sections_table_config = lazy_table_config('sections_table')
+build_instructors_table_config = lazy_table_config('instructors_table')
+build_highschools_table_config = lazy_table_config('highschools_table')
 
 # Bulk buttons on both index tabs. Dispatched by do_bulk_action below.
 HIGHSCHOOL_BULK_ACTIONS = {

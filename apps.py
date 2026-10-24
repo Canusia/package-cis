@@ -677,8 +677,19 @@ class CisConfig(AppConfig):
         if not portal_text_owned_by_package(record['name'])
     ]
 
+    def __init__(self, app_name, app_module):
+        super().__init__(app_name, app_module)
+        # Stand-ins for host myce.component_registry modules the tenant does
+        # not ship (#97); a host module always wins. Installed here, before
+        # any app's ready() can import a cis view that needs one.
+        from cis.component_registries import install_defaults
+        self.default_registries = install_defaults()
+
     def ready(self):
         import cis.checks  # noqa: F401  (registers system checks, e.g. STRIPE_WEBHOOK_SECRET)
+
+        from cis.component_registries import load_defaults
+        load_defaults(self.default_registries)
 
         import cis.signals.students
         import cis.signals.registrations

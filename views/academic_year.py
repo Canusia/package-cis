@@ -21,9 +21,9 @@ from cis.campus_gate import (
 )
 from cis.forms.term import AcademicYearForm, MigrateAcademicYearForm, AcademicYearUploadForm
 from cis.menu import cis_menu, draw_menu
-from cis.services.table_configs import get_table_config
+from cis.services.table_configs import lazy_table_config
 from cis.services.comparison import build_compare_context
-build_academic_years_table_config = get_table_config('academic_years_table').build_config
+build_academic_years_table_config = lazy_table_config('academic_years_table')
 
 from rest_framework import viewsets
 from rest_framework.decorators import api_view

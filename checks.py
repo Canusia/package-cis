@@ -17,6 +17,11 @@ E004 / W009 (package-cis#100): sibling apps cis imports. E004 names a
 required one that is missing (cis cannot run without it); W009 names an
 optional one whose features are skipped without it.
 
+W010 / W011 / W012 (package-cis#97): tenant modules cis expects -- table
+configs, required tenant service modules and host component registries
+cis has no default for. Each names one missing module; only the page or
+feature that needs it fails.
+
 W002 (v0.0.42+): the tenant's table-config app should ship
 `services/document_types_table.py` for the CE Document Types page. The page
 falls back to a plain list without it, so this warns rather than errors.
@@ -263,4 +268,70 @@ def sibling_apps_check(app_configs, **kwargs):
                 f"The '{label}' app is not in INSTALLED_APPS.",
                 hint=f'cis runs without it, but {effect}.',
                 id='cis.W009'))
+    return messages
+
+
+# Tenant service modules cis resolves with get_tenant_service and cannot run
+# the feature without (#97). onboarding_steps degrades to an empty checklist;
+# the rest fail at first use. Opt-in modules (get_tenant_override) are not
+# listed: a tenant without them gets the cis default.
+REQUIRED_TENANT_SERVICES = {
+    'verify_email_form': 'student signup at /student/start_request/',
+    'ferpa_form': 'the student FERPA page and FERPA export',
+    'recommendation_form': 'HS-admin student recommendations',
+    'registration_form': 'CE registration detail and edit',
+    'student_profile_form': 'the student profile, CE student edit and the importer',
+    'highschool_types': 'high school type choices and labels',
+    'registration': 'sending registrations to the SIS',
+    'onboarding_steps': 'student onboarding (students get no checklist steps)',
+}
+
+
+def _module_missing(dotted):
+    try:
+        return importlib.util.find_spec(dotted) is None
+    except ModuleNotFoundError:
+        return True
+
+
+@register()
+def tenant_modules_check(app_configs, **kwargs):
+    """W010 / W011 / W012 (#97): name each tenant module cis expects and the
+    tenant does not ship. Each is a Warning, not an Error: cis starts and
+    only the page or feature that needs the module fails, with an
+    ImproperlyConfigured naming it."""
+    from cis.component_registries import missing_registries
+    from cis.services.table_configs import REQUIRED_TABLE_CONFIGS, table_configs_app
+    from cis.services.tenant_services import tenant_services_app
+
+    messages = []
+    app = table_configs_app()
+    for name in REQUIRED_TABLE_CONFIGS:
+        dotted = f'{app}.services.{name}'
+        if _module_missing(dotted):
+            messages.append(CheckWarning(
+                f'Table config {dotted} is missing.',
+                hint=(f'Ship services/{name}.py in {app}, with its template and '
+                      f'JS (copy them from Canusia/ewu myce_tenant_configs). cis '
+                      f'has no default: the pages that render this table fail.'),
+                id='cis.W010'))
+
+    app = tenant_services_app()
+    for name, used_by in REQUIRED_TENANT_SERVICES.items():
+        dotted = f'{app}.services.{name}'
+        if _module_missing(dotted):
+            messages.append(CheckWarning(
+                f'Tenant service module {dotted} is missing.',
+                hint=(f'Ship services/{name}.py in {app}; without it {used_by} '
+                      f'fails. See the package-cis README, "Required tenant '
+                      f'service modules".'),
+                id='cis.W011'))
+
+    for name in missing_registries():
+        messages.append(CheckWarning(
+            f'myce.component_registry.{name} is missing.',
+            hint=(f'Ship myce/component_registry/{name}.py (copy it from '
+                  f'Canusia/ewu). cis has no default for it, and the cis views '
+                  f'that import it cannot load.'),
+            id='cis.W012'))
     return messages

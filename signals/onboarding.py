@@ -25,7 +25,9 @@ from student_onboarding.api import (
 from student_onboarding.step_registry import register, all_steps, get as get_step
 
 from cis.models.student import Student
-from cis.services.tenant_services import get_tenant_service
+from cis.services.tenant_services import (
+    MissingTenantService, get_tenant_service, tenant_services_app,
+)
 from cis.campus_context import NoCampusContext, is_multi_campus
 from cis.utils import TermNotConfigured, active_term
 
@@ -123,16 +125,33 @@ def _make_completion_handler(step_key):
     return handler
 
 
+def _steps_module():
+    """The tenant's onboarding step catalog, or None when it ships none.
+
+    A tenant without `services/onboarding_steps.py` still starts (#97): no
+    steps are registered, so students get an empty checklist, and system check
+    cis.W011 names the missing module. An ImportError from inside a catalog
+    that exists still propagates.
+    """
+    try:
+        return get_tenant_service('onboarding_steps')
+    except MissingTenantService as exc:
+        if exc.name != f'{tenant_services_app()}.services.onboarding_steps':
+            raise
+        logger.warning('%s is missing; student onboarding has no steps.', exc.name)
+        return None
+
+
 def register_handlers():
-    steps_module = get_tenant_service('onboarding_steps')
+    steps_module = _steps_module()
 
     # Register step definitions with the student_onboarding registry.
-    for step in steps_module.STEPS:
+    for step in getattr(steps_module, 'STEPS', ()):
         register(step)
 
     # Wire event bus.
     handlers.register(events.APPLICATION_STARTED, on_application_started)
-    for event_name, step_key in steps_module.EVENT_TO_STEP_KEY.items():
+    for event_name, step_key in getattr(steps_module, 'EVENT_TO_STEP_KEY', {}).items():
         handlers.register(event_name, _make_completion_handler(step_key))
 
     # Registered last: handlers run in registration order, so the

@@ -14,8 +14,8 @@ from cis.forms.district import DistrictForm, MigrateForm
 from cis.menu import cis_menu, draw_menu
 from cis.utils import CIS_user_only
 from cis.serializers.highschool import DistrictListSerializer
-from cis.services.table_configs import get_table_config
-build_districts_table_config = get_table_config('districts_table').build_config
+from cis.services.table_configs import lazy_table_config
+build_districts_table_config = lazy_table_config('districts_table')
 
 
 class DistrictViewSet(viewsets.ReadOnlyModelViewSet):

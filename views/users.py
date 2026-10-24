@@ -27,13 +27,13 @@ from cis.serializers.user import (
 )
 from cis.services import user_deletion
 from cis.services.role_access import is_roleless, roleless_users
-from cis.services.table_configs import get_table_config
+from cis.services.table_configs import get_table_config, lazy_table_config
 from cis.utils import CIS_user_only
 
 from cis.forms.user import UserForm
 
-build_users_table_config = get_table_config('users_table').build_config
-build_locked_users_table_config = get_table_config('locked_users_table').build_config
+build_users_table_config = lazy_table_config('users_table')
+build_locked_users_table_config = lazy_table_config('locked_users_table')
 
 logger = logging.getLogger(__name__)
 

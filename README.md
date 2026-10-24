@@ -120,6 +120,17 @@ a circular pin with `future_sections`, which imports `cis` 150 times.
 
 ### Required tenant service modules
 
+`TENANT_SERVICES_APP` defaults to `TABLE_CONFIGS_APP` when unset (#97). A missing module
+raises `MissingTenantService` (an `ImproperlyConfigured` naming it) at first use, and system
+check `cis.W011` lists each missing one at startup. Besides the forms below, cis needs
+`highschool_types.py`, `registration.py` (`mirror_to_sis`) and `onboarding_steps.py`
+(without it cis starts, but students get an empty onboarding checklist).
+
+Host component registries (`myce/component_registry/<name>.py`): cis supplies a stand-in for
+each one that is only empty registries plus an import of cis's own tabs/actions, when the
+host does not ship it (`cis/component_registries.py`; a host module always wins). `course`
+and `academic_year` wire SIS actions and have no stand-in; `cis.W012` names them if missing.
+
 Some forms live in the tenant app and are re-exported by a `cis` shim. A host **must** ship
 each of these under `myce_tenant_configs/services/`, or the corresponding import raises at
 first use:
@@ -168,9 +179,12 @@ to what is now the `StudentFerpa.campus` foreign key):
 
 CE index pages get their DataTable columns from `<TABLE_CONFIGS_APP>.services.<name>_table`
 (`cis/services/table_configs.py`; `TABLE_CONFIGS_APP` defaults to `myce_tenant_configs`).
-Most views resolve theirs at import time, so a missing module is an `ImportError` for the
-whole cis URLconf. Modules added from v0.0.42 on are resolved lazily instead, and the page
-falls back to a plain list.
+Every view resolves its module per request (#97; module-level builders use
+`lazy_table_config`), so a missing module fails only the pages that render that table, with
+an `ImproperlyConfigured` naming it. System check `cis.W010` lists each missing module at
+startup. cis ships no default table configs: copy them, with their templates and JS, from
+`Canusia/ewu` (`webapp/myce_tenant_configs/`). The modules below are optional — the page
+falls back without them:
 
 | Module | New in | Also ship | Without it |
 |---|---|---|---|

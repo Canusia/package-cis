@@ -38,13 +38,12 @@ Settings-driven field ordering and relabelling are on MetaFormMixin
 (cis/forms/utils.py), shared with the spec-driven application form.
 """
 from django import forms
-from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db.models import Q
 from django.utils.translation import gettext_lazy as _
 
 from cis.models.customuser import CustomUser
-from cis.services.tenant_services import get_tenant_service
+from cis.services.tenant_services import get_tenant_service, tenant_services_app
 
 _TENANT_MODULE = 'student_profile_form'
 
@@ -374,7 +373,7 @@ def __getattr__(name):
     if name == 'StudentProfileForm':
         return _tenant_module().StudentProfileForm
     if name in _DERIVED_MIXINS:
-        key = (settings.TENANT_SERVICES_APP, name)
+        key = (tenant_services_app(), name)
         if key not in _class_cache:
             _class_cache[key] = _build(name)
         return _class_cache[key]
