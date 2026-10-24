@@ -121,6 +121,30 @@ class Term(models.Model):
         return str(self)
 
     @classmethod
+    def by_code(cls, code, campus=None):
+        """Terms with ``code``, the right campus's first (#94).
+
+        Term.code is not unique: two campuses' terms may share a code. In
+        multi-campus mode the lookup is limited to ``campus`` (default: the
+        active campus, if any) plus campus-less years, so an importer never
+        lands on another campus's term. Single-campus deployments get every
+        term with the code, as before. Use ``.first()`` for one term.
+        """
+        from cis.campus_context import current_campus_or_none, is_multi_campus
+
+        terms = cls.objects.filter(code=code)
+        if is_multi_campus():
+            campus = campus or current_campus_or_none()
+            if campus is not None:
+                terms = terms.filter(
+                    models.Q(academic_year__campus=campus)
+                    | models.Q(academic_year__campus__isnull=True)
+                ).order_by(
+                    models.F('academic_year__campus').asc(nulls_last=True),
+                    '-academic_year__name')
+        return terms
+
+    @classmethod
     def with_descendants(cls, term_ids):
         """Terms `term_ids` plus every sub-term below them, at any depth."""
         from cis.services.term_hierarchy import expand_term_ids

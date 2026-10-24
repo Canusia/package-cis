@@ -486,13 +486,13 @@ class ClassSectionImporter:
     def _get_term(self, term_code: str):
         """Get term by code"""
         from cis.models.term import Term
-        return Term.objects.filter(code=term_code).first()
+        return Term.by_code(term_code).first()
 
     def _get_or_create_registration_term(self, term_code: str):
         """Get or create registration term"""
         from cis.models.term import Term
 
-        if not Term.objects.filter(code=term_code).exists():
+        if not Term.by_code(term_code).exists():
             registration_term, _ = Term.objects.get_or_create(
                 code=term_code,
                 defaults={
@@ -502,4 +502,4 @@ class ClassSectionImporter:
             )
             return registration_term
 
-        return Term.objects.filter(code=term_code).first()
+        return Term.by_code(term_code).first()

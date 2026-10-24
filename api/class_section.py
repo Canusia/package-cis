@@ -216,7 +216,7 @@ class ClassSectionSerializer(serializers.ModelSerializer):
         # Term
         term = None
         try:
-            term = Term.objects.get(code=validated_row.term_code)
+            term = Term.by_code(validated_row.term_code).get()
         except Term.DoesNotExist:
             errors['term_code'] = ['Term code does not exist.']
         except Term.MultipleObjectsReturned:
@@ -225,9 +225,9 @@ class ClassSectionSerializer(serializers.ModelSerializer):
         # Registration Term
         registration_term = None
         try:
-            registration_term = Term.objects.get(
-                code=validated_row.registration_term_code
-            )
+            registration_term = Term.by_code(
+                validated_row.registration_term_code
+            ).get()
         except Term.DoesNotExist:
             errors['registration_term_code'] = [
                 'Registration term code does not exist.'
