@@ -17,6 +17,7 @@ from django_login_history.models import Login
 
 from rest_framework import viewsets
 
+from cis.services.staff_permissions import extra_staff_permission_flags
 from cis.actions.user import registered_slugs, user_actions
 from cis.menu import draw_menu, cis_menu
 from cis.models.customuser import CustomUser
@@ -641,6 +642,7 @@ def detail(request, record_id):
             'manage_settings': campus.get('manage_settings'),
             'manage_staff_accounts': campus.get('manage_staff_accounts'),
             'default_campus': campus.get('default_campus', ''),
+            **{key: campus.get(key) for key, _, _ in extra_staff_permission_flags()},
         })
 
     return render(

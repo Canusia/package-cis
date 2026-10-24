@@ -272,6 +272,8 @@ class CustomUser(AbstractUser):
 
         user.campus['manage_settings'] = form.cleaned_data['manage_settings']
         user.campus['manage_staff_accounts'] = form.cleaned_data['manage_staff_accounts']
+        for key in getattr(form, 'extra_permission_flags', ()):
+            user.campus[key] = form.cleaned_data.get(key) or 'No'
 
         user.save()
         user.set_process_campuses(form.cleaned_data['process_campus'])
@@ -298,6 +300,8 @@ class CustomUser(AbstractUser):
         self.campus['default_campus'] = form.cleaned_data['default_campus']
         self.campus['manage_settings'] = form.cleaned_data['manage_settings']
         self.campus['manage_staff_accounts'] = form.cleaned_data['manage_staff_accounts']
+        for key in getattr(form, 'extra_permission_flags', ()):
+            self.campus[key] = form.cleaned_data.get(key) or 'No'
 
         self.save()
         self.set_process_campuses(form.cleaned_data['process_campus'])
@@ -324,6 +328,13 @@ class CustomUser(AbstractUser):
             perms = {}
 
         return True if perms.get('manage_staff_accounts') == 'Yes' else False
+
+    def has_staff_permission(self, key):
+        """A staff permission flag stored on the account, e.g. a tenant's
+        extra flag (#91). Superusers have every flag."""
+        if self.is_superuser:
+            return True
+        return (self.campus or {}).get(key) == 'Yes'
 
     @property
     def can_edit_settings(self):

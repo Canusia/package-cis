@@ -83,6 +83,20 @@ class UserForm(forms.Form):
         super().__init__(*args, **kwargs)
         self.record = record
 
+        # Tenant permission flags (#91) go right after the built-in two.
+        from cis.services.staff_permissions import extra_staff_permission_flags
+        extra = extra_staff_permission_flags()
+        if extra:
+            fields = list(self.fields.items())
+            at = [name for name, _ in fields].index('manage_staff_accounts') + 1
+            added = [(key, forms.ChoiceField(
+                choices=self.STATUS_OPTIONS, label=label, help_text=help_text,
+                required=False,
+                widget=forms.Select(attrs={'class': 'col-md-4 col-sm-12'})))
+                for key, label, help_text in extra]
+            self.fields = dict(fields[:at] + added + fields[at:])
+        self.extra_permission_flags = [key for key, _, _ in extra]
+
         from cis.campus_gate import get_accessible_campuses
         if user is not None:
             campus = get_accessible_campuses(user)
