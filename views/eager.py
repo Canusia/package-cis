@@ -237,6 +237,20 @@ def student_select_related(prefix=''):
     return prefixed(prefix, ('user', 'highschool__district'))
 
 
+def with_student_related(records):
+    """StudentSerializer(user, highschool -> district) -- the /ce/students/
+    feed. Not bound yet: StudentViewSet still needs
+    ``@eager_queryset(with_student_related)`` (package-cis#99)."""
+    return records.select_related(*student_select_related())
+
+
+def with_highschool_related(records):
+    """HighSchoolSerializer(district) -- the /ce/highschools/ feed. Not bound
+    yet: HighSchoolViewSet still needs
+    ``@eager_queryset(with_highschool_related)`` (package-cis#99)."""
+    return records.select_related('district')
+
+
 def annotate_registration_flags(records):
     """Replace the three per-row sign-off checks with subqueries.
 
