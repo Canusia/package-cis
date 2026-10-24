@@ -249,14 +249,14 @@ def section_scope_applies(user):
     Rollout gate (package-cis#114 item 8): before the faculty scope existed a
     faculty caller with no teacher_id got every section, and nothing told CE
     to set mentors up first. So the narrowing starts once CE has set this
-    user up for the active academic year (``is_set_up``: a FacultyYearSetup
-    marker or assignment rows); until then the section feed keeps its old
-    behaviour. Every other faculty-scoped endpoint narrows unconditionally.
+    user up for any academic year (``is_set_up``: a FacultyYearSetup marker
+    or assignment rows); until then the section feed keeps its old
+    behaviour. Any year, not just the active one: a mentor set up last year
+    and not yet this year sees what My Instructors shows (nothing), not
+    every section. Every other faculty-scoped endpoint narrows
+    unconditionally.
     """
-    year = active_academic_year()
-    if year is None:
-        return False
-    return is_set_up(user, year)
+    return is_set_up(user)
 
 
 def active_certificate_q(prefix=''):

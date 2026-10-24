@@ -254,6 +254,16 @@ class FacultyApiScopeTests(TestCase):
         self._assert_scoped('/ce/api/class_section/', self.sec_mine,
                             self.sec_other, {'term': '-1'})
 
+    def test_class_section_narrowed_when_set_up_for_an_earlier_year_only(self):
+        # Set up last year, not this one: the feed narrows (to what My
+        # Instructors shows) rather than falling back to every section.
+        from cis.models.term import AcademicYear
+        earlier = AcademicYear.objects.create(name=f'{self.year.name}-prev')
+        self._active_year(self.year)
+        FacultyYearSetup.objects.create(user=self.idle_faculty, academic_year=earlier)
+        ids = self._ids(self.idle_faculty, '/ce/api/class_section/', {'term': '-1'})
+        self.assertNotIn(str(self.sec_other.id), ids)
+
     def test_class_section_unchanged_before_year_is_set_up(self):
         # Rollout gate: no FacultyYearSetup for the active year -> the feed
         # keeps its old behaviour for faculty.
