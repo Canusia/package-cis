@@ -15,6 +15,7 @@ from django.test import TestCase
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.contrib.auth.signals import user_logged_in
+from django.core.files.storage import InMemoryStorage
 from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework.test import APIClient
 
@@ -30,6 +31,16 @@ from cis.models.highschool_administrator import (
 )
 
 User = get_user_model()
+
+
+def _in_memory_media():
+    """Swap TeacherUpload.media's S3-backed storage (no bucket here) for an
+    in-memory one, so fixtures can save a file and the download action can
+    open it. Started in setUpClass, stopped in tearDownClass."""
+    patcher = mock.patch.object(
+        TeacherUpload._meta.get_field('media'), 'storage', InMemoryStorage())
+    patcher.start()
+    return patcher
 
 
 def _upload_for(teacher):
@@ -48,11 +59,13 @@ class _TeacherUploadAuthzData:
     def setUpClass(cls):
         if _login_history_post_login is not None:
             user_logged_in.disconnect(_login_history_post_login)
+        cls._media_storage = _in_memory_media()
         super().setUpClass()
 
     @classmethod
     def tearDownClass(cls):
         super().tearDownClass()
+        cls._media_storage.stop()
         if _login_history_post_login is not None:
             user_logged_in.connect(_login_history_post_login)
 
@@ -318,11 +331,13 @@ class TeacherUploadTeacherIdUuidGuardTests(TestCase):
     def setUpClass(cls):
         if _login_history_post_login is not None:
             user_logged_in.disconnect(_login_history_post_login)
+        cls._media_storage = _in_memory_media()
         super().setUpClass()
 
     @classmethod
     def tearDownClass(cls):
         super().tearDownClass()
+        cls._media_storage.stop()
         if _login_history_post_login is not None:
             user_logged_in.connect(_login_history_post_login)
 

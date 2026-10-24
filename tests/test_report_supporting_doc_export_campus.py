@@ -5,6 +5,7 @@ class_section -> course -> campus), optionally narrowed to a selected campus.
 Superusers are unscoped.
 """
 import uuid
+from unittest import mock
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -83,9 +84,13 @@ class SupportingDocExportReportCampusTests(TestCase):
         StudentRegistration.objects.create(
             student=student, class_section=section, status='applied',
             status_changed_on={'applied_on': '01/01/2024'})
-        return StudentSupportingDocument.objects.create(
-            student=student, term=self.term,
-            media=SimpleUploadedFile(f'{_sfx()}.pdf', b'data'))
+        # `media` is bound to S3-backed storage with no bucket here; patch
+        # `_save` as test_document_type.py does -- the upload is not under test.
+        with mock.patch('cis.storage_backend.PrivateMediaStorage._save',
+                        side_effect=lambda name, content: name):
+            return StudentSupportingDocument.objects.create(
+                student=student, term=self.term,
+                media=SimpleUploadedFile(f'{_sfx()}.pdf', b'data'))
 
     def _data(self, campus):
         return {
