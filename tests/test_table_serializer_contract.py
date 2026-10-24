@@ -210,6 +210,13 @@ TABLE_CONTRACTS = (
      'term_detail_by_hs', 'sections_table', 'class_section', {'term': '-1'}),
     ('student detail > files (student profile)', 'support_docs_table',
      'student_detail', 'support_docs_table', 'student_support_docs', {}),
+    # instructor_app's /ce/courses/ Course Administrators pane, added to the
+    # course_administrator feed after the contract was built. Its View Details
+    # renderer reads row.course.id, which the shared faculty_coords_table.js
+    # grep also attributes to the other two faculty_coords profiles.
+    ('/ce/courses/ > course administrators', 'faculty_coords_table',
+     'faculty_coords_by_course', 'faculty_coords_table',
+     'course_administrator', {}),
 )
 
 # Bytes per row each feed may ship: measured against this fixture, plus
@@ -296,7 +303,7 @@ def render_feed(basename, columns, extra, user, length=20):
 # test_the_registries_still_say_what_the_contract_was_built_from re-derives and
 # compares, so a new column or callback fails there first.
 #
-# All 31 profiles that read a trimmed feed are covered. Under the v0.0.26
+# All 32 profiles that read a trimmed feed are covered. Under the v0.0.26
 # design, where the serializers enumerated their fields, a profile left out of
 # this list meant a silently blank column -- that cost profile_dirty_at,
 # `since` and pay_type (package-cis#11). The serializers subclass their
@@ -372,7 +379,7 @@ FROZEN_PATHS = {
         'user.last_login', 'user.last_name', 'user.primary_phone',
     ],
     '/ce/faculty_coordinators/': [
-        'course.name', 'faculty_id', 'id', 'role', 'status',
+        'course.id', 'course.name', 'faculty_id', 'id', 'role', 'status',
         'user.email', 'user.first_name', 'user.last_login',
         'user.last_name',
     ],
@@ -392,7 +399,7 @@ FROZEN_PATHS = {
         'term.code', 'term.label',
     ],
     'course detail > administrators': [
-        'course.name', 'faculty_id', 'id', 'role', 'status',
+        'course.id', 'course.name', 'faculty_id', 'id', 'role', 'status',
     ],
     'section detail > students': [
         'ce_url', 'changed_on', 'class_section.class_number',
@@ -534,6 +541,10 @@ FROZEN_PATHS = {
     ],
     'student detail > files (student profile)': [
         'description', 'id', 'media', 'term.label', 'uploaded_on',
+    ],
+    '/ce/courses/ > course administrators': [
+        'course.id', 'course.name', 'faculty_id', 'id', 'role', 'status',
+        'user.email', 'user.first_name', 'user.last_login', 'user.last_name',
     ],
 }
 
