@@ -58,3 +58,46 @@ class TermByCodeTests(TestCase):
         importer = ClassSectionImporter()
         with campus_context(self.campus_b):
             self.assertEqual(importer._get_term(self.code), self.term_b)
+
+    @override_settings(MULTI_CAMPUS=True)
+    def test_registration_term_is_created_on_the_active_campus(self):
+        from cis.services.importers.class_section_importer import ClassSectionImporter
+        code = _sfx()[:6]
+        Term.objects.create(academic_year=self.term_a.academic_year, code=code, label=code)
+        with campus_context(self.campus_b):
+            term = ClassSectionImporter()._get_or_create_registration_term(code)
+        self.assertEqual(term.code, code)
+        self.assertEqual(term.academic_year.campus, self.campus_b)
+
+    @override_settings(MULTI_CAMPUS=True)
+    def test_registration_term_found_on_the_active_campus(self):
+        from cis.services.importers.class_section_importer import ClassSectionImporter
+        with campus_context(self.campus_b):
+            term = ClassSectionImporter()._get_or_create_registration_term(self.code)
+        self.assertEqual(term, self.term_b)
+
+    @override_settings(MULTI_CAMPUS=False)
+    def test_registration_term_single_campus_unchanged(self):
+        from cis.services.importers.class_section_importer import ClassSectionImporter
+        code = _sfx()[:6]
+        term = ClassSectionImporter()._get_or_create_registration_term(code)
+        self.assertEqual(term.code, code)
+        self.assertEqual(ClassSectionImporter()._get_or_create_registration_term(code), term)
+
+    @override_settings(MULTI_CAMPUS=True)
+    def test_api_term_lookup_prefers_the_campus_term(self):
+        from cis.api.class_section import _term_by_code
+        with override_settings(MULTI_CAMPUS=False):  # legacy campus-less year
+            Term.objects.create(
+                academic_year=AcademicYear.objects.create(name=f'N{_sfx()}'),
+                code=self.code, label='Spring')
+        with campus_context(self.campus_a):
+            self.assertEqual(_term_by_code(self.code), self.term_a)
+
+    @override_settings(MULTI_CAMPUS=False)
+    def test_api_term_lookup_single_campus_still_rejects_duplicates(self):
+        from cis.api.class_section import _term_by_code
+        with self.assertRaises(Term.MultipleObjectsReturned):
+            _term_by_code(self.code)
+        with self.assertRaises(Term.DoesNotExist):
+            _term_by_code('nope' + _sfx())

@@ -262,6 +262,99 @@ class AutoCreateTeacherTests(ClassSectionKnobTestBase):
         self.assertEqual(Teacher.objects.filter(user__email='new.teacher@hs.test').count(), 1)
 
 
+class AutoCreateSafetyTests(ClassSectionKnobTestBase):
+    """Review fixes (#114 item 10): no orphan instructors, no role hijack."""
+    def named_row(self, **overrides):
+        return self.row(teacher_hs_email='Safe.Teacher@HS.test',
+                        instructor_firstname='Safe', instructor_lastname='Teacher',
+                        instructor_id='P901', **overrides)
+
+    def assertNoNewUser(self):
+        self.assertFalse(CustomUser.objects.filter(email='safe.teacher@hs.test').exists())
+
+    def test_unknown_term_creates_no_teacher_bulk(self):
+        row = self.named_row(term_code='NOPE' + _sfx())
+        with knob('AUTO_CREATE_TEACHER', True):
+            result = self.run_import(row)
+        self.assertEqual(result['summary']['failed'], 1)
+        self.assertNoNewUser()
+
+    def test_unknown_term_creates_no_teacher_individual(self):
+        row = self.named_row(term_code='NOPE' + _sfx())
+        with knob('AUTO_CREATE_TEACHER', True):
+            result = self.run_import(row, bulk=False)
+        self.assertEqual(result['summary']['failed'], 1)
+        self.assertNoNewUser()
+
+    def test_failed_section_save_leaves_no_teacher(self):
+        row = self.named_row()
+        boom = mock.Mock(side_effect=RuntimeError('db down'))
+        with knob('AUTO_CREATE_TEACHER', True), \
+                mock.patch.object(ClassSection.objects, 'bulk_create', boom), \
+                mock.patch.object(ClassSection, 'save', boom):
+            result = self.run_import(row)
+        self.assertEqual(result['summary']['failed'], 1)
+        self.assertNoNewUser()
+
+    def test_failed_section_save_leaves_no_teacher_individual(self):
+        row = self.named_row()
+        with knob('AUTO_CREATE_TEACHER', True), \
+                mock.patch.object(ClassSection, 'save', side_effect=RuntimeError('db down')):
+            result = self.run_import(row, bulk=False)
+        self.assertEqual(result['summary']['failed'], 1)
+        self.assertNoNewUser()
+
+    def test_never_turns_a_student_into_an_instructor(self):
+        student = CustomUser.objects.create(
+            username='safe.teacher@hs.test', email='safe.teacher@hs.test')
+        student.groups.add(Group.objects.get_or_create(name='student')[0])
+        row = self.named_row()
+        with knob('AUTO_CREATE_TEACHER', True):
+            result = self.run_import(row)
+        self.assertEqual(result['summary']['successful'], 1)
+        self.assertIsNone(self.section(row).teacher)
+        self.assertFalse(Teacher.objects.filter(user=student).exists())
+        self.assertFalse(student.groups.filter(name='instructor').exists())
+        self.assertIn('not auto-creating', result['records'][0]['RESULT'])
+
+    def test_links_an_existing_teacher_account(self):
+        user = CustomUser.objects.create(
+            username='safe.teacher@hs.test', email='safe.teacher@hs.test',
+            secondary_email='other@hs.test')
+        user.groups.add(Group.objects.get_or_create(name='instructor')[0])
+        teacher = Teacher.objects.create(user=user)
+        row = self.named_row()
+        with knob('AUTO_CREATE_TEACHER', True):
+            self.run_import(row)
+        self.assertEqual(self.section(row).teacher, teacher)
+
+    def test_prefers_the_teacher_account_among_duplicates(self):
+        student = CustomUser.objects.create(
+            username='safe.teacher@hs.test', email='x@login.test')
+        student.groups.add(Group.objects.get_or_create(name='student')[0])
+        user = CustomUser.objects.create(username=f'u{_sfx()}', email='safe.teacher@hs.test')
+        teacher = Teacher.objects.create(user=user)
+        row = self.named_row()
+        with knob('AUTO_CREATE_TEACHER', True):
+            self.run_import(row)
+        self.assertEqual(self.section(row).teacher, teacher)
+
+    def test_new_user_has_unusable_password(self):
+        row = self.named_row()
+        with knob('AUTO_CREATE_TEACHER', True):
+            self.run_import(row)
+        self.assertFalse(self.section(row).teacher.user.has_usable_password())
+
+    def test_new_user_does_not_take_a_psid_in_use(self):
+        other = CustomUser.objects.create(username=f'u{_sfx()}', psid='P901')
+        row = self.named_row()
+        with knob('AUTO_CREATE_TEACHER', True):
+            self.run_import(row)
+        user = self.section(row).teacher.user
+        self.assertNotEqual(user, other)
+        self.assertIsNone(user.psid)
+
+
 class SectionDateTests(ClassSectionKnobTestBase):
     def test_us_style_four_digit_dates(self):
         row = self.row(start_date='8/25/2026', end_date='12-11-2026')

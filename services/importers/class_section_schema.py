@@ -141,6 +141,11 @@ class ClassSectionRow(BaseModel):
         must still match them rather than create duplicates."""
         if isinstance(v, int) and not isinstance(v, bool):
             return str(v)
+        if isinstance(v, float):
+            # A spreadsheet hands a numeric CRN over as 1234.0.
+            if not v.is_integer():
+                raise ValueError("Must be a whole number or text, not a decimal")
+            return str(int(v))
         if isinstance(v, str):
             v = v.strip()
             if v.isdigit():

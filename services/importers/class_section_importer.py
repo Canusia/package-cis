@@ -2,6 +2,7 @@
 ClassSection CSV importer with bulk operations support.
 """
 import logging
+from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 from django.db import transaction
 from django.db.models import Q
@@ -14,6 +15,15 @@ from .class_section_schema import (
     course_name_pattern)
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class _PendingTeacher:
+    """An auto-create decided while preparing a row; written only together
+    with the row's section, so a row that fails leaves no instructor behind."""
+    validated: object
+    highschool: object
+    course: object
 
 
 def _tenant_module_or_none():
@@ -41,7 +51,10 @@ class ClassSectionImporter:
       as the user's psid when they have none (and nobody else holds it).
     - AUTO_CREATE_TEACHER = False: when nothing matches and the row has an
       email and a resolved high school, create the user, Teacher and
-      TeacherHighSchool. AUTO_CREATE_REQUIRES_NAMES = True only does so when
+      TeacherHighSchool, in the same transaction as the row's section. An
+      existing account with the row's email is reused only when it already
+      has a Teacher record or holds no role at all; otherwise the row imports
+      without a teacher and says why. AUTO_CREATE_REQUIRES_NAMES = True only does so when
       instructor_firstname and instructor_lastname are filled; with names, a
       TeacherCourseCertificate for the row's course is added with status
       AUTO_CREATE_CERT_STATUS = 'Teaching' (None: no certificate).
@@ -247,6 +260,7 @@ class ClassSectionImporter:
         # Phase 2c: Separate creates from updates
         to_create = []
         to_update = []
+        entries = []
 
         for data in prepared_data:
             term_id = data['related_objects']['term'].id
@@ -260,68 +274,71 @@ class ClassSectionImporter:
             else:
                 class_section = self._create_class_section_instance(data)
                 to_create.append(class_section)
+            entries.append((data, class_section))
 
-        # Phase 2d: Execute bulk operations
-        created_count = 0
-        updated_count = 0
+        # Phase 2d: Execute bulk operations. Auto-created teachers are written
+        # in the same savepoint, so a failed batch leaves none behind.
+        try:
+            with transaction.atomic():
+                for data, class_section in entries:
+                    self._materialize_teacher(class_section, data)
+                if to_create:
+                    ClassSection.objects.bulk_create(to_create, batch_size=100)
+                if to_update:
+                    # Use UPDATABLE_FIELDS from the model for bulk_update
+                    ClassSection.objects.bulk_update(
+                        to_update,
+                        fields=self.updatable_fields,
+                        batch_size=100
+                    )
+            logger.info(f"Bulk created {len(to_create)}, updated {len(to_update)} records")
+        except Exception as e:
+            logger.error(f"Bulk create/update failed: {e}", exc_info=True)
 
-        if to_create:
-            try:
-                ClassSection.objects.bulk_create(to_create, batch_size=100)
-                created_count = len(to_create)
-                logger.info(f"Bulk created {created_count} records")
-            except Exception as e:
-                logger.error(f"Bulk create failed: {e}", exc_info=True)
-
-                if self.use_transactions == 'per_batch':
-                    raise
-                else:
-                    # Try individual saves as fallback
-                    for cs in to_create:
-                        try:
-                            cs.save()
-                            created_count += 1
-                        except Exception as save_error:
-                            # Per-row failures during a bulk import are
-                            # expected; log at WARNING so they don't trigger
-                            # the AdminEmailHandler.
-                            logger.warning(f"Failed to save {cs.class_number}: {save_error}")
-
-        if to_update:
-            try:
-                # Use UPDATABLE_FIELDS from the model for bulk_update
-                ClassSection.objects.bulk_update(
-                    to_update,
-                    fields=self.updatable_fields,
-                    batch_size=100
-                )
-                updated_count = len(to_update)
-                logger.info(f"Bulk updated {updated_count} records")
-            except Exception as e:
-                logger.error(f"Bulk update failed: {e}", exc_info=True)
-
-                if self.use_transactions == 'per_batch':
-                    raise
-                else:
-                    # Try individual updates as fallback
-                    for cs in to_update:
-                        try:
-                            cs.save()
-                            updated_count += 1
-                        except Exception as save_error:
-                            # Per-row failures during a bulk import are
-                            # expected; log at WARNING so they don't trigger
-                            # the AdminEmailHandler.
-                            logger.warning(f"Failed to update {cs.class_number}: {save_error}")
+            if self.use_transactions == 'per_batch':
+                raise
+            # Fall back to one savepoint per row: its teacher and section
+            # are written together or not at all.
+            for data, class_section in entries:
+                try:
+                    with transaction.atomic():
+                        self._materialize_teacher(class_section, data)
+                        class_section.save()
+                except Exception as save_error:
+                    # Per-row failures during a bulk import are
+                    # expected; log at WARNING so they don't trigger
+                    # the AdminEmailHandler.
+                    logger.warning(f"Failed to save {class_section.class_number}: {save_error}")
+                    data['error'] = str(save_error)
 
         # Phase 2e: Build results
         for data in prepared_data:
-            data['row']['RESULT'] = 'Success'
-            results.append(ImportResult(success=True, row_data=data['row']))
-
-        logger.info(f"Batch complete: {created_count} created, {updated_count} updated")
+            if data.get('error'):
+                data['row']['RESULT'] = data['error']
+                results.append(ImportResult(
+                    success=False, row_data=data['row'], error_message=data['error']))
+            else:
+                data['row']['RESULT'] = self._success_text(data)
+                results.append(ImportResult(success=True, row_data=data['row']))
 
         return results
+
+    @staticmethod
+    def _success_text(data: Dict) -> str:
+        warnings = list(dict.fromkeys(data['related_objects'].get('warnings') or []))
+        return 'Success' + (f" - {'; '.join(warnings)}" if warnings else '')
+
+    def _materialize_teacher(self, class_section: ClassSection, data: Dict):
+        """Write the row's pending auto-created teacher (if any) and put it on
+        the section. Call inside the transaction that saves the section."""
+        related = data['related_objects']
+        pending = related.get('pending_teacher')
+        if pending is None:
+            return
+        if not class_section._state.adding and 'teacher' not in self.updatable_fields:
+            return
+        class_section.teacher = self._auto_create_teacher(
+            pending, related.setdefault('warnings', []))
 
     def _fetch_existing_records(self, term_class_pairs: List[Tuple]) -> Dict:
         """Fetch existing ClassSection records in bulk"""
@@ -442,12 +459,14 @@ class ClassSectionImporter:
                     class_number=validated.reference_number
                 )
                 self._update_class_section(class_section, data)
-                class_section.save()
             except ClassSection.DoesNotExist:
                 class_section = self._create_class_section_instance(data)
+            # The auto-created teacher, if any, lands with the section or not at all.
+            with transaction.atomic():
+                self._materialize_teacher(class_section, data)
                 class_section.save()
 
-            row['RESULT'] = 'Success'
+            row['RESULT'] = self._success_text(data)
             return ImportResult(success=True, row_data=row)
 
         try:
@@ -481,7 +500,16 @@ class ClassSectionImporter:
 
     def _get_related_objects(self, validated: ClassSectionRow) -> Dict:
         """Lookup or create all related objects from validated schema data"""
-        related = {}
+        related = {'warnings': []}
+
+        # Term first: a row that cannot import must not get as far as the teacher.
+        related['term'] = self._get_term(validated.term_code)
+        if not related['term']:
+            raise ValueError(f"Term does not exist: {validated.term_code}")
+
+        related['registration_term'] = self._get_or_create_registration_term(
+            validated.registration_term_code
+        )
 
         related['course'] = self._get_or_create_course(
             validated.course_name,
@@ -491,16 +519,13 @@ class ClassSectionImporter:
 
         # High school first: an auto-created teacher is linked to it.
         related['highschool'] = self._get_highschool(validated.highschool_ceeb)
-        related['teacher'] = self._resolve_teacher(
-            validated, related['highschool'], related['course'])
-
-        related['term'] = self._get_term(validated.term_code)
-        if not related['term']:
-            raise ValueError(f"Term does not exist: {validated.term_code}")
-
-        related['registration_term'] = self._get_or_create_registration_term(
-            validated.registration_term_code
-        )
+        teacher = self._resolve_teacher(
+            validated, related['highschool'], related['course'], related['warnings'])
+        if isinstance(teacher, _PendingTeacher):
+            # Written with the section (see _materialize_teacher).
+            related['pending_teacher'] = teacher
+            teacher = None
+        related['teacher'] = teacher
 
         return related
 
@@ -539,9 +564,10 @@ class ClassSectionImporter:
                 f"pattern (e.g. 'BIO 101').")
         return (match.groupdict().get('cohort') or match.group(1)).upper()
 
-    def _resolve_teacher(self, validated, highschool=None, course=None):
-        """The row's teacher, by TEACHER_MATCH_ORDER; else auto-created when
-        AUTO_CREATE_TEACHER is on; else None (the section has no teacher)."""
+    def _resolve_teacher(self, validated, highschool=None, course=None, warnings=None):
+        """The row's teacher, by TEACHER_MATCH_ORDER; else, when
+        AUTO_CREATE_TEACHER is on and the row qualifies, a _PendingTeacher to
+        write with the section; else None (the section has no teacher)."""
         from cis.models.teacher import Teacher
 
         email = validated.teacher_hs_email
@@ -549,7 +575,8 @@ class ClassSectionImporter:
 
         for key in self.teacher_match_order:
             if key == 'psid' and instructor_id:
-                teacher = Teacher.objects.filter(user__psid=instructor_id).first()
+                teacher = Teacher.objects.filter(
+                    user__psid=instructor_id).order_by('pk').first()
                 if teacher:
                     return teacher
             elif key == 'email' and email:
@@ -560,7 +587,9 @@ class ClassSectionImporter:
                     return teacher
 
         if self.auto_create_teacher:
-            return self._auto_create_teacher(validated, highschool, course)
+            return self._plan_auto_create(
+                validated, highschool, course,
+                warnings if warnings is not None else [])
         if email:
             logger.warning(f"Teacher not found with email: {email}")
         return None
@@ -572,7 +601,7 @@ class ClassSectionImporter:
 
         if self.teacher_email_iexact:
             return Teacher.objects.filter(
-                user__secondary_email__iexact=teacher_email.strip()).first()
+                user__secondary_email__iexact=teacher_email.strip()).order_by('pk').first()
         try:
             return Teacher.objects.get(user__secondary_email=teacher_email)
         except Teacher.DoesNotExist:
@@ -602,17 +631,37 @@ class ClassSectionImporter:
         user.psid = instructor_id
         user.save(update_fields=['psid'])
 
-    def _auto_create_teacher(self, validated, highschool, course):
-        """Create (or complete) the user, Teacher and TeacherHighSchool for an
-        unmatched row, plus a course certificate when the names are given."""
+    @staticmethod
+    def _auto_create_account(email):
+        """(user, ok) for an auto-create with ``email``: (None, True) when no
+        account has it; an account already holding a Teacher record, else one
+        with no role at all; (None, False) when every match holds another role,
+        so a CSV row can never turn a student, high-school admin or staff
+        account into an instructor. Oldest account first among duplicates."""
         from cis.models.customuser import CustomUser
-        from cis.models.teacher import (
-            Teacher, TeacherHighSchool, TeacherCourseCertificate)
+        from cis.models.teacher import Teacher
 
+        candidates = list(CustomUser.objects.filter(
+            Q(username__iexact=email) | Q(email__iexact=email)).order_by('pk'))
+        if not candidates:
+            return None, True
+        with_teacher = set(Teacher.objects.filter(
+            user__in=candidates).values_list('user_id', flat=True))
+        for user in candidates:
+            if user.pk in with_teacher:
+                return user, True
+        for user in candidates:
+            if not (user.is_staff or user.is_superuser or user.groups.exists()):
+                return user, True
+        return None, False
+
+    def _plan_auto_create(self, validated, highschool, course, warnings):
+        """A _PendingTeacher when the unmatched row qualifies for auto-create;
+        otherwise None, with the reason logged (and, for a role conflict, in
+        the row's result). Reads only."""
         email = (validated.teacher_hs_email or '').strip().lower()
         first_name = getattr(validated, 'instructor_firstname', None)
         last_name = getattr(validated, 'instructor_lastname', None)
-        instructor_id = getattr(validated, 'instructor_id', None)
         has_names = bool(first_name and last_name)
 
         if not email or highschool is None:
@@ -626,10 +675,40 @@ class ClassSectionImporter:
                 f"Teacher not found with email: {email}; not auto-creating "
                 f"without instructor_firstname and instructor_lastname.")
             return None
+        _user, ok = self._auto_create_account(email)
+        if not ok:
+            warnings.append(self._role_conflict_warning(email))
+            return None
+        return _PendingTeacher(validated, highschool, course)
+
+    @staticmethod
+    def _role_conflict_warning(email):
+        message = (f"Teacher not found with email: {email}; an account with "
+                   f"another role has it, so not auto-creating a teacher.")
+        logger.warning(message)
+        return message
+
+    def _auto_create_teacher(self, pending, warnings):
+        """Create (or complete) the user, Teacher and TeacherHighSchool for an
+        unmatched row, plus a course certificate when the names are given.
+        Run inside the transaction that saves the row's section."""
+        from cis.models.customuser import CustomUser
+        from cis.models.teacher import (
+            Teacher, TeacherHighSchool, TeacherCourseCertificate)
+
+        validated, highschool, course = pending.validated, pending.highschool, pending.course
+        email = (validated.teacher_hs_email or '').strip().lower()
+        first_name = getattr(validated, 'instructor_firstname', None)
+        last_name = getattr(validated, 'instructor_lastname', None)
+        instructor_id = getattr(validated, 'instructor_id', None)
+        has_names = bool(first_name and last_name)
 
         with transaction.atomic():
-            user = CustomUser.objects.filter(
-                Q(username__iexact=email) | Q(email__iexact=email)).first()
+            # Checked again: an earlier row may have changed the account.
+            user, ok = self._auto_create_account(email)
+            if not ok:
+                warnings.append(self._role_conflict_warning(email))
+                return None
             if user is None:
                 user = CustomUser(
                     username=email,
@@ -637,9 +716,11 @@ class ClassSectionImporter:
                     secondary_email=email,
                     first_name=first_name or '',
                     last_name=last_name or '',
-                    psid=instructor_id or None,
                 )
+                user.set_unusable_password()
                 user.save()
+                if instructor_id:
+                    self._backfill_psid(user, instructor_id)
             else:
                 update_fields = []
                 if not user.secondary_email:
@@ -690,10 +771,19 @@ class ClassSectionImporter:
         return Term.by_code(term_code).first()
 
     def _get_or_create_registration_term(self, term_code: str):
-        """Get or create registration term"""
+        """The registration term by code (the active campus's first); else a
+        new one. In multi-campus mode with an active campus it is created
+        under that campus's academic year, never matched to another
+        campus's term with the same code."""
+        from cis.campus_context import current_campus_or_none, is_multi_campus
         from cis.models.term import Term
 
-        if not Term.by_code(term_code).exists():
+        registration_term = Term.by_code(term_code).first()
+        if registration_term is not None:
+            return registration_term
+
+        campus = current_campus_or_none() if is_multi_campus() else None
+        if campus is None:
             registration_term, _ = Term.objects.get_or_create(
                 code=term_code,
                 defaults={
@@ -703,4 +793,12 @@ class ClassSectionImporter:
             )
             return registration_term
 
-        return Term.by_code(term_code).first()
+        academic_year = (
+            AcademicYear.objects.filter(campus=campus).order_by('-name').first()
+            or AcademicYear.objects.filter(campus__isnull=True).order_by('-name').first())
+        if academic_year is None:
+            raise ValueError(
+                f"Registration term {term_code} does not exist and campus "
+                f"{campus} has no academic year to create it under.")
+        return Term.objects.create(
+            code=term_code, label=f"{term_code}", academic_year=academic_year)

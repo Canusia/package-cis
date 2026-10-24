@@ -136,6 +136,11 @@ class ClassSectionPlainFixTests(SimpleTestCase):
         # An API payload may send a number.
         self.assertEqual(ClassSectionRow.model_validate(_row(reference_number=12345)).reference_number, '12345')
 
+    def test_reference_number_from_a_spreadsheet_float(self):
+        self.assertEqual(ClassSectionRow.model_validate(_row(reference_number=1234.0)).reference_number, '1234')
+        with self.assertRaises(Exception):
+            ClassSectionRow.model_validate(_row(reference_number=1234.5))
+
     def test_reference_number_required(self):
         with self.assertRaises(Exception):
             ClassSectionRow.model_validate(_row(reference_number=''))

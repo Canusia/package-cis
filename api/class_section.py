@@ -30,6 +30,22 @@ from ..services.importers.class_section_schema import ClassSectionRow
 
 logger = logging.getLogger(__name__)
 
+
+def _term_by_code(code):
+    """The term with ``code``. With an active campus in multi-campus mode,
+    Term.by_code ranks that campus's term ahead of a campus-less one sharing
+    the code, so the first match wins; otherwise a duplicate code is still
+    an error (Term.MultipleObjectsReturned), as before."""
+    from ..campus_context import current_campus_or_none, is_multi_campus
+
+    terms = Term.by_code(code)
+    if is_multi_campus() and current_campus_or_none() is not None:
+        term = terms.first()
+        if term is None:
+            raise Term.DoesNotExist(f"No term with code {code}")
+        return term
+    return terms.get()
+
 # ---------------------------------------------------------------------------
 # Field-mapping helpers
 # ---------------------------------------------------------------------------
@@ -216,7 +232,7 @@ class ClassSectionSerializer(serializers.ModelSerializer):
         # Term
         term = None
         try:
-            term = Term.by_code(validated_row.term_code).get()
+            term = _term_by_code(validated_row.term_code)
         except Term.DoesNotExist:
             errors['term_code'] = ['Term code does not exist.']
         except Term.MultipleObjectsReturned:
@@ -225,9 +241,9 @@ class ClassSectionSerializer(serializers.ModelSerializer):
         # Registration Term
         registration_term = None
         try:
-            registration_term = Term.by_code(
+            registration_term = _term_by_code(
                 validated_row.registration_term_code
-            ).get()
+            )
         except Term.DoesNotExist:
             errors['registration_term_code'] = [
                 'Registration term code does not exist.'
