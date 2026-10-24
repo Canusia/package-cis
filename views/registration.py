@@ -671,12 +671,9 @@ def send_to_sis(request):
     # campus context, so the tenant mirror service resolves that campus. A
     # record with no campus, or whose campus has no Ethos credentials, is
     # reported in the summary and skipped; the rest still go.
-    import importlib.util
     from cis.campus_context import campus_context, NoCampusContext
-    if importlib.util.find_spec('ethos.ethos'):
-        from ethos.ethos.credentials import EthosNotConfigured
-    else:
-        from ethos.credentials import EthosNotConfigured
+    from cis.integrations.ethos import ethos_not_configured_error
+    EthosNotConfigured = ethos_not_configured_error()
     summary = []
     for record in records.select_related(
             'class_section__course__campus', 'student__user').order_by('pk'):

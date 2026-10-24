@@ -67,6 +67,7 @@ build_student_recommendations_table_config = get_table_config('student_recommend
 build_support_docs_table_config            = get_table_config('support_docs_table').build_config
 build_student_notes_table_config           = get_table_config('student_notes_table').build_config
 build_student_dangling_table_config        = get_table_config('student_dangling_table').build_config
+from cis.integrations import ethos as ethos_integration
 from myce.component_registry.student import student_actions, student_tabs
 from myce.component_registry.support_docs import support_docs_actions
 from cis.settings.registrations import RegistrationForm
@@ -2437,7 +2438,9 @@ def mark_support_doc_status(request):
     }, request=request)
     return JsonResponse({'outcome': 'modal', 'html': html})
 
-@student_actions.action('verification', label='Look up SIS ID', icon='fa fa-id-card', btn_class='btn-info', scope=['detail'], method='form')
+@student_actions.action('verification', label='Look up SIS ID', icon='fa fa-id-card', btn_class='btn-info', scope=['detail'], method='form',
+                         permission=ethos_integration.ethos_action_permission)
+@ethos_integration.requires_ethos
 def lookup_sis_id(request):
     from cis.services.tenant_services import get_tenant_service
     ethos_identity = get_tenant_service('ethos_identity')
@@ -2513,7 +2516,9 @@ def lookup_sis_id(request):
     return JsonResponse({'outcome': 'modal', 'html': html})
 
 
-@student_actions.action('verification', label='Look up by Banner ID', icon='fa fa-search', btn_class='btn-info', scope=['detail'], method='form')
+@student_actions.action('verification', label='Look up by Banner ID', icon='fa fa-search', btn_class='btn-info', scope=['detail'], method='form',
+                         permission=ethos_integration.ethos_action_permission)
+@ethos_integration.requires_ethos
 def lookup_by_banner_id(request):
     from cis.services.tenant_services import get_tenant_service
     ethos_identity = get_tenant_service('ethos_identity')

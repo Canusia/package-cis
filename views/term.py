@@ -23,15 +23,10 @@ from cis.services.term_hierarchy import term_tree
 build_terms_table_config = get_table_config('terms_table').build_config
 from myce.component_registry.term import term_actions, term_tabs
 
-# Ensure ethos section handlers are registered via their decorators
-try:
-    import importlib.util as _util
-    if _util.find_spec('ethos.ethos'):
-        import ethos.ethos.views.sections  # noqa: F401
-    else:
-        import ethos.views.sections  # noqa: F401
-except ImportError:
-    pass
+# Ensure ethos section handlers are registered via their decorators (a no-op
+# without the ethos app, #85).
+from cis.integrations.ethos import ethos_module as _ethos_module
+_ethos_module('views.sections')
 
 import cis.actions.term  # noqa: F401  (registers term detail/index actions)
 

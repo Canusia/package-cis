@@ -11,6 +11,7 @@ from django.utils import timezone
 from rest_framework import viewsets
 
 from cis.campus_gate import scope_queryset_by_campus
+from cis.integrations import ethos as ethos_integration
 from cis.menu import draw_menu, cis_menu
 from cis.models.section import StudentRegistration
 from cis.utils import CIS_user_only, user_has_cis_role
@@ -41,7 +42,7 @@ def failed_mirror_queryset(user):
     records = scope_queryset_by_campus(
         StudentRegistration.objects.filter(last_mirror_status='failed'),
         user, campus_path='class_section__course__campus')
-    return (
+    records = (
         records
         .select_related(
             'student__user',
@@ -49,9 +50,12 @@ def failed_mirror_queryset(user):
             'class_section__term',
             'class_section__highschool',
         )
-        .prefetch_related('mirror_logs')
         .order_by('-last_mirror_at')
     )
+    # mirror_logs exists only with the ethos app (#85).
+    if ethos_integration.ethos_enabled():
+        records = records.prefetch_related('mirror_logs')
+    return records
 
 
 class FailedMirrorRegistrationViewSet(viewsets.ReadOnlyModelViewSet):

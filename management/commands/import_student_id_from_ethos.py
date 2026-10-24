@@ -19,6 +19,7 @@ from django.template import Context, Template
 
 from mailer import send_mail
 
+from cis.integrations.ethos import ETHOS_MISSING_MESSAGE, ethos_enabled
 from cis.models.student import Student
 from cis.services.tenant_services import get_tenant_service
 from cis.settings.student_id_importer import student_id_importer
@@ -49,7 +50,6 @@ class Command(BaseCommand):
 
     def handle(self, *args, **kwargs):
         configs = student_id_importer.from_db()
-        ethos_identity = get_tenant_service('ethos_identity')
         time = kwargs.get('time')
 
         if time:
@@ -63,6 +63,16 @@ class Command(BaseCommand):
             return
 
         rows = []
+
+        # The lookup goes through the tenant's ethos_identity service, which
+        # needs the ethos app (#85).
+        if not ethos_enabled():
+            summary = f'Skipped: {ETHOS_MISSING_MESSAGE}'
+            logger.warning('import_student_id_from_ethos: %s', summary)
+            if time:
+                _send_done(self.__class__, time, summary, rows)
+            return
+        ethos_identity = get_tenant_service('ethos_identity')
 
         type_id = ethos_identity.get_alt_credential_type_id()
         if not type_id:

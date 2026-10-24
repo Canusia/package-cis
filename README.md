@@ -76,7 +76,7 @@ Then search the pod logs for `CSRF failure: reason=`.
 
 This is a platform core, not a standalone library. A host must provide the `myce` Django
 project package (settings, `component_registry`), the per-tenant `myce_tenant_configs` app,
-and the sibling apps `future_sections`, `ethos`, `student_transactions`,
+and the sibling apps `future_sections`, `student_transactions`,
 `student_onboarding`, `setting`, `announcement`, `class_visit`, `highschool_admin`,
 `alerts`, `two_step`, `support_ticket`, `pd_event`, `instructor_app`, `drop_wd`,
 `instructor` and `degree_pathway`.
@@ -90,6 +90,19 @@ are delegations kept for host callers.
 
 Do not add `from grades …` anywhere else in `cis`; `cis/integrations/grades.py` is the only
 sanctioned seam.
+
+`ethos` (Banner/Ethos SIS) is **optional** too (#85). Every ethos import goes through
+`cis/integrations/ethos.py`, which detects the app once (`find_spec('ethos')` first, then the
+nested `ethos.ethos` layout) and reports `ethos_enabled()` only when the code is importable
+**and** an app labelled `ethos` is in `INSTALLED_APPS`. Without it the SIS actions (term
+sub-term pull and code lookup, student and registration SIS lookups) are hidden, the
+academic-year "Import from SIS" card is left out, and `import_class_sections` /
+`import_student_id_from_ethos` log a skip. `StudentRegistration.mirror_logs` (the M2M to
+`ethos.EthosLog`) and migration 0056's ethos dependency exist only when the app is
+installed; a tenant with ethos sees exactly the schema and migration state it always had.
+A tenant that ran 0056 without ethos and adds ethos later must create the
+`cis_studentregistration_mirror_logs` table once — see the comment in that migration.
+Do not add `from ethos …` anywhere else in `cis`.
 
 None of them are declared in `install_requires`. That matches Canusia convention and avoids
 a circular pin with `future_sections`, which imports `cis` 150 times.

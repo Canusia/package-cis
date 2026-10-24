@@ -6,6 +6,8 @@
 {% load crispy_forms_tags %}
 
 {% block body %}
+{# The SIS import needs the ethos app; without it the script and card are left out (#85). #}
+{% if ethos_installed %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const lookupBtn = document.getElementById('sis-lookup-btn');
@@ -163,6 +165,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 </script>
+{% endif %}
 {% if ajax != '1' %}
 <div class="">
     <div class="row">
@@ -216,6 +219,7 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
 
             <div class="col-md-7 col-sm-12 mb-4">
+                {% if ethos_installed %}
                 <div class="card mb-3">
                     <div class="card-body">
                         <h5 class="card-title">Import from SIS</h5>
@@ -251,6 +255,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         </div>
                     </div>
                 </div>
+                {% endif %}
 
                 <div class="card mb-3">
                     <div class="card-body">

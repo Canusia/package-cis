@@ -12,11 +12,6 @@ from cis.services.tenant_services import get_tenant_service
 
 from cis.signals.crontab import cron_task_done, cron_task_started
 
-import importlib.util
-if importlib.util.find_spec('ethos.ethos'):
-    from ethos.ethos.library.ethos import Ethos
-else:
-    from ethos.library.ethos import Ethos
 from cis.settings.registration_status_email import registration_status_email
 logger = logging.getLogger(__name__)
 

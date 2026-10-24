@@ -13,6 +13,7 @@ from django.http import JsonResponse, HttpResponse, HttpResponseBadRequest
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
+from cis.integrations import ethos as ethos_integration
 from cis.models.term import AcademicYear
 from cis.campus_context import is_multi_campus
 from cis.campus_gate import (
@@ -256,7 +257,9 @@ def add_new(request):
         'form': form,
         'ajax': ajax,
         'base_template': base_template,
-        'menu': draw_menu(cis_menu, 'classes', 'academic_years')
+        'menu': draw_menu(cis_menu, 'classes', 'academic_years'),
+        # Gates the "Import from SIS" card, which reverses ethos: URLs (#85).
+        'ethos_installed': ethos_integration.ethos_enabled(),
     }
 
     if not ajax:

@@ -3,6 +3,7 @@ from django.http import JsonResponse
 from django.template.loader import render_to_string
 from django.urls import reverse
 
+from cis.integrations import ethos as ethos_integration
 from cis.models.section import StudentRegistration
 from cis.services.tenant_services import get_tenant_service
 from myce.component_registry.registration import registration_actions
@@ -10,7 +11,9 @@ from myce.component_registry.registration import registration_actions
 
 @registration_actions.action(
     'sis', label='Look up Section Registration ID', icon='fa fa-id-card',
-    btn_class='btn-info', scope=['detail'], method='form')
+    btn_class='btn-info', scope=['detail'], method='form',
+    permission=ethos_integration.ethos_action_permission)
+@ethos_integration.requires_ethos
 def lookup_section_registration_id(request):
     """Resolve a registration's Ethos section-registration GUID and, on
     confirmation, save it to StudentRegistration.sis_id."""

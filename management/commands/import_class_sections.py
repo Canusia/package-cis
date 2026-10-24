@@ -7,7 +7,6 @@ signals so runs are tracked alongside other cron-driven imports.
 """
 import csv
 import datetime
-import importlib.util
 import io
 import json
 import logging
@@ -19,16 +18,12 @@ from django.template import Context, Template
 
 from mailer import send_mail
 
+from cis.integrations.ethos import ETHOS_MISSING_MESSAGE, import_sections_task
 from cis.models.term import Term
 from cis.settings.class_section_importer import class_section_importer
 from cis.signals.crontab import cron_task_done, cron_task_started
 from cis.storage_backend import PrivateMediaStorage
 from cis.utils import get_s3_url
-
-if importlib.util.find_spec('ethos.ethos'):
-    from ethos.ethos.tasks import import_sections_for_term
-else:
-    from ethos.tasks import import_sections_for_term
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +67,16 @@ class Command(BaseCommand):
         if configs.get('is_active') != 'Yes':
             if time:
                 _send_done(self.__class__, time, 'Skipped: importer is disabled.', [])
+            return
+
+        # The SIS pull is ethos's task; without the ethos app there is nothing
+        # to run (#85).
+        import_sections_for_term = import_sections_task()
+        if import_sections_for_term is None:
+            summary = f'Skipped: {ETHOS_MISSING_MESSAGE}'
+            logger.warning('import_class_sections: %s', summary)
+            if time:
+                _send_done(self.__class__, time, summary, [])
             return
 
         term_ids = configs.get('terms') or []

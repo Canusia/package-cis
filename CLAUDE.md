@@ -30,9 +30,11 @@
   `models`, `views`, `forms` as top-level packages.
 - **`migrations/0056_studentregistration_mirror_fields.py` depends on
   `('ethos', '0003_resource_preferred_representation')`** and adds an M2M to
-  `ethos.EthosLog`. This is an undeclared minimum-version coupling — it ships inside the
-  public wheel with no corresponding `install_requires` entry — so `cis` cannot be installed
-  against an `ethos` older than that migration.
+  `ethos.EthosLog` — **only when an app labelled `ethos` is installed** (#85; decided when
+  the migration module loads, matching the conditional `StudentRegistration.mirror_logs`).
+  With ethos this is an undeclared minimum-version coupling, so `cis` cannot be installed
+  against an `ethos` older than that migration. Without ethos, nothing in cis references it.
+  Keep the field and the migration gated on the same check.
 
 ## Shipping a change to `cis`
 
@@ -62,7 +64,8 @@ templates/ (294 files)  staticfiles/ (77)  fixtures/ (1)  tests/ (178, shipped a
 
 ## Coupling
 
-`cis` imports outward into 18 apps — `myce` (46), `future_sections` (32), `ethos` (18),
+`cis` imports outward into 18 apps — `myce` (46), `future_sections` (32), `ethos` (only via
+`cis/integrations/ethos.py`, optional since #85),
 `student_transactions` (12), `student_onboarding` (12), `setting` (10),
 `myce_tenant_configs` (9) and others — while `future_sections` imports `cis` 150 times in
 return. This is mutual coupling by design; it is documented as host requirements rather

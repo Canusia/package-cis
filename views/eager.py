@@ -294,13 +294,13 @@ def registration_select_related(prefix=''):
 
 
 def registration_prefetch_related(prefix=''):
-    from django.apps import apps
-
+    from cis.integrations.ethos import ethos_log_model
     from cis.models.sis import SIS_Log
 
     # ethos ships either flat (`ethos.models`) or nested under the editable
     # submodule (`ethos.ethos.models`); the app registry is right either way.
-    EthosLog = apps.get_model('ethos', 'EthosLog')
+    # None without the ethos app, and then there is no mirror_logs M2M (#85).
+    EthosLog = ethos_log_model()
 
     # `fields = '__all__'` renders these M2Ms as PrimaryKeyRelatedField(many=True),
     # so only the pk is used -- but the rows carry whole SIS request/response
@@ -312,12 +312,16 @@ def registration_prefetch_related(prefix=''):
     # is_a_co_req / has_visit_to_other_section flags are annotations. The trade
     # is one extra constant query for two per row; it pays from the second row
     # on, and these pages render fifty.
-    return (
+    prefetches = (
         Prefetch(
             prefix + 'class_section',
             queryset=with_class_section_related(ClassSection.objects.all()),
         ),
         Prefetch(prefix + 'sis_log', queryset=SIS_Log.objects.only('id')),
+    )
+    if EthosLog is None:
+        return prefetches
+    return prefetches + (
         Prefetch(prefix + 'mirror_logs', queryset=EthosLog.objects.only('id')),
     )
 

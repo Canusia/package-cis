@@ -1,6 +1,8 @@
 from django.urls import reverse, NoReverseMatch
 from rest_framework import serializers
 
+from cis.integrations import ethos as ethos_integration
+
 from ..models.section import StudentRegistration, StudentDropRequest
 from ..models.student import Student
 from .course import (
@@ -170,6 +172,9 @@ class FailedMirrorRegistrationSerializer(serializers.ModelSerializer):
             return ''
 
     def _last_log(self, obj):
+        # mirror_logs exists only with the ethos app (#85).
+        if not ethos_integration.ethos_enabled():
+            return None
         return obj.mirror_logs.order_by('-sent_on').first()
 
     def get_last_log_url(self, obj):

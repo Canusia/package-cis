@@ -1,6 +1,4 @@
 """Host-side term actions (registered on the shared term_actions registry)."""
-import importlib.util
-
 from django.db import IntegrityError
 from django.http import JsonResponse
 from django.template.loader import render_to_string
@@ -8,12 +6,12 @@ from django.urls import reverse
 
 from cis.forms.term import BulkAssignParentForm
 from cis.models.term import Term
+from cis.integrations import ethos as ethos_integration
 from myce.component_registry.term import term_actions
 
-if importlib.util.find_spec('ethos.ethos'):
-    from ethos.ethos.library.ethos import Ethos
-else:
-    from ethos.library.ethos import Ethos
+# None when the ethos app is unavailable (#85): the two SIS actions below are
+# then hidden, and answer with a clear message if called anyway.
+Ethos = ethos_integration.ethos_client_class()
 
 
 def _subterm_dates(period):
@@ -87,7 +85,9 @@ def _upsert_subterms(term, subterms):
 
 
 @term_actions.action('sis', label='Pull & Create Sub-Terms from SIS',
-                     icon='fa fa-sitemap', scope=['detail'])
+                     icon='fa fa-sitemap', scope=['detail'],
+                     permission=ethos_integration.ethos_action_permission)
+@ethos_integration.requires_ethos
 def pull_sub_terms(request):
     ids = request.POST.getlist('ids[]')
     term_id = ids[0] if ids else request.POST.get('record_id')
@@ -143,7 +143,9 @@ def pull_sub_terms(request):
 
 
 @term_actions.action('sis', label='Look up SIS ID by Code',
-                     icon='fa fa-search', scope=['detail'])
+                     icon='fa fa-search', scope=['detail'],
+                     permission=ethos_integration.ethos_action_permission)
+@ethos_integration.requires_ethos
 def lookup_sis_id(request):
     ids = request.POST.getlist('ids[]')
     term_id = ids[0] if ids else request.POST.get('record_id')

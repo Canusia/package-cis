@@ -30,6 +30,7 @@ from cis.utils import (
     upload_to_s3
 )
 
+from cis.integrations.ethos import ethos_app_installed
 from cis.services.pay_types import LazyChoices, registration_pay_type_choices
 from cis.services.registration_statuses import registration_status_choices
 from cis.storage_backend import PrivateMediaStorage
@@ -1784,11 +1785,19 @@ class StudentRegistration(models.Model):
     sis_log = models.ManyToManyField('cis.SIS_Log', blank=True)
 
     # Per-attempt EthosLog records for SIS registration mirror calls.
-    mirror_logs = models.ManyToManyField(
-        'ethos.EthosLog',
-        blank=True,
-        related_name='student_registrations',
-    )
+    #
+    # Declared only when the ethos app is installed (#85, #114 item 1). An M2M
+    # to a model that does not exist cannot even load, and migration 0056 adds
+    # this field under the same condition, so model and migration state agree
+    # on both kinds of tenant: with ethos, exactly as before; without it, no
+    # reference to ethos anywhere. Callers must not assume the attribute
+    # exists -- check cis.integrations.ethos.ethos_enabled() first.
+    if ethos_app_installed():
+        mirror_logs = models.ManyToManyField(
+            'ethos.EthosLog',
+            blank=True,
+            related_name='student_registrations',
+        )
 
     MIRROR_STATUS_CHOICES = [
         ('success', 'Success'),
