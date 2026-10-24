@@ -85,12 +85,14 @@ from cis.utils import CIS_user_only, active_term
 
 from cis.views.eager import (
     eager_queryset,
+    with_highschool_related,
     with_highschool_administrator_related,
     with_teacher_highschool_related,
 )
 
 from cis.serializers import tables
 
+@eager_queryset(with_highschool_related)
 class HighSchoolViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = HighSchoolCampusListSerializer
     permission_classes = [CIS_user_only]

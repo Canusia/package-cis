@@ -18,7 +18,6 @@ the prefetches, the campus gate -- and leaves only the per-row term, which is
 the N+1 coming back.
 """
 
-import unittest
 from unittest import mock
 
 from django.contrib.auth.models import Group
@@ -183,10 +182,8 @@ class UnboundFeedPlanTests(LiveFeedMixin, TestCase):
         with self._bound(HighSchoolViewSet, eager.with_highschool_related):
             self.assertFlat('highschool')
 
-    @unittest.expectedFailure
     def test_student_feed_is_flat(self):
         self.assertFlat('student')
 
-    @unittest.expectedFailure
     def test_highschool_feed_is_flat(self):
         self.assertFlat('highschool')

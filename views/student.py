@@ -105,6 +105,7 @@ from cis.models.customuser import CustomUser, no_login_password_q
 
 from cis.views.eager import (
     eager_queryset,
+    with_student_related,
     with_student_campus_id_related,
     with_student_note_related,
     with_student_recommendation_related,
@@ -400,6 +401,7 @@ class StudentSupportingDocumentViewSet(viewsets.ReadOnlyModelViewSet):
         return scope_records_by_student_campus(
             records, self.request.user, selected_campus=campus or None)
 
+@eager_queryset(with_student_related)
 class StudentViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = StudentSerializer
     permission_classes = [
