@@ -47,6 +47,11 @@ class EmailAuthBackend(ModelBackend):
             CustomUser().set_password(password)
             return None
 
+        if not CustomUser.lockout_enabled():
+            # Lockout switched off by the tenant (#114 item 4): check the
+            # password only -- no counting, and a lock does not refuse it.
+            return user if user.check_password(password) else None
+
         # PT-40: hold the row lock for the whole check so parallel attempts
         # are counted one at a time -- otherwise N concurrent guesses all read
         # the same counter and all get a password check before any locks.

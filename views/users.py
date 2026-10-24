@@ -269,7 +269,8 @@ def locked_index(request):
         {
             'page_title': 'Locked Accounts',
             'menu': menu,
-            'max_failed_logins': CustomUser.MAX_FAILED_LOGINS,
+            'max_failed_logins': CustomUser.lockout_threshold(),
+            'lockout_enabled': CustomUser.lockout_enabled(),
             'lockout_minutes': CustomUser.lockout_minutes(),
             'locked_users_table': build_locked_users_table_config(
                 variant='locked_users_index',

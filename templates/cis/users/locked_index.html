@@ -20,12 +20,18 @@
                 <div class="card-body">
 
                     <p class="text-muted">
+                        {% if not lockout_enabled %}
+                        Automatic lockout is turned off for this site: failed sign-ins are not
+                        counted and a locked account can still sign in. Accounts locked earlier
+                        are listed here and can be unlocked.
+                        {% else %}
                         An account locks itself after {{ max_failed_logins }} failed sign-in
                         attempts and cannot be used until it is unlocked{% if lockout_minutes %}
                         or {{ lockout_minutes }} minutes pass, when the lock releases itself{% endif %}. Locked accounts are
                         listed here whatever their role &mdash; students, instructors and staff
                         alike. Unlocking clears the failed-attempt counter; it does not change
                         the password.
+                        {% endif %}
                     </p>
 
                     <div class="row">

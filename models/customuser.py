@@ -117,6 +117,22 @@ class CustomUser(AbstractUser):
     }
 
     @staticmethod
+    def lockout_enabled():
+        """settings.ACCOUNT_LOCKOUT_ENABLED, default True (#114 item 4).
+
+        False: failed sign-ins are not counted and a lock does not refuse a
+        sign-in, for tenants that rely on CAPTCHA and rate limiting instead
+        (anyone who knows an address can otherwise lock that account).
+        """
+        return getattr(settings, 'ACCOUNT_LOCKOUT_ENABLED', True)
+
+    @classmethod
+    def lockout_threshold(cls):
+        """Failed sign-ins that lock an account: settings.ACCOUNT_LOCKOUT_THRESHOLD,
+        default MAX_FAILED_LOGINS, read at call time."""
+        return int(getattr(settings, 'ACCOUNT_LOCKOUT_THRESHOLD', cls.MAX_FAILED_LOGINS))
+
+    @staticmethod
     def lockout_minutes():
         """Minutes before a lock releases itself (settings.ACCOUNT_LOCKOUT_MINUTES).
 
@@ -148,9 +164,9 @@ class CustomUser(AbstractUser):
         return timezone.now() < self.account_locked_at + timedelta(minutes=minutes)
 
     def register_failed_login(self):
-        """Count a failed email/password attempt; lock at MAX_FAILED_LOGINS."""
+        """Count a failed email/password attempt; lock at lockout_threshold()."""
         self.failed_login_attempts = (self.failed_login_attempts or 0) + 1
-        if self.failed_login_attempts >= self.MAX_FAILED_LOGINS:
+        if self.failed_login_attempts >= self.lockout_threshold():
             self.account_locked = True
             self.account_locked_at = timezone.now()
         self.save(update_fields=[

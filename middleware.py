@@ -4,55 +4,87 @@ from django.contrib import messages
 
 from threading import current_thread
 
+# The policy CspReportOnlyMiddleware reports against. A tenant that pays
+# through another gateway (nnu: Authorize.net) sets CSP_REPORT_ONLY_POLICY to
+# its own string (#114 item 4).
+DEFAULT_CSP_REPORT_ONLY_POLICY = (
+    "default-src 'self'; "
+    "script-src 'self' https://js.stripe.com; "
+    "frame-src 'self' https://js.stripe.com https://checkout.stripe.com; "
+    "connect-src 'self' https://api.stripe.com; "
+    "img-src 'self' data: https://*.stripe.com; "
+    "style-src 'self' 'unsafe-inline' https://*.stripe.com; "
+    "font-src 'self' data: https://js.stripe.com"
+)
+
+
 class CspReportOnlyMiddleware:
     def __init__(self, get_response): self.get_response = get_response
     def __call__(self, request):
+        from django.conf import settings
         resp = self.get_response(request)
-        resp["Content-Security-Policy-Report-Only"] = (
-            "default-src 'self'; "
-            "script-src 'self' https://js.stripe.com; "
-            "frame-src 'self' https://js.stripe.com https://checkout.stripe.com; "
-            "connect-src 'self' https://api.stripe.com; "
-            "img-src 'self' data: https://*.stripe.com; "
-            "style-src 'self' 'unsafe-inline' https://*.stripe.com; "
-            "font-src 'self' data: https://js.stripe.com"
-        )
+        resp["Content-Security-Policy-Report-Only"] = getattr(
+            settings, 'CSP_REPORT_ONLY_POLICY', DEFAULT_CSP_REPORT_ONLY_POLICY)
         return resp
-    
+
+
+# View (function or class) names LoginRequiredMiddleware lets through without
+# a login. A tenant adds its own with settings.LOGIN_EXEMPT_VIEWS (#92), or
+# marks a view with @login_exempt.
+DEFAULT_LOGIN_EXEMPT_VIEWS = (
+    'index',
+    '<lambda>',
+    'login',
+    '',
+    'view',
+    'metadata',
+    'acs',
+    'slo',
+    'logout',
+    'TokenCreateView',
+    'StudentSISAPI',
+    'StudentIDViewSet',
+    'create_checkout_session',
+    'ClassSectionViewSet',
+    'ClassRegistrationSISViewSet',
+    'RegistrationViewSet',
+    'TermViewSet',
+    'StudentTransactionViewSet',
+    'FacultySectionRequestViewSet',
+    'CETicketViewSet',
+    'StudentTicketViewSet',
+    'InstructorTicketViewSet',
+    'HSAdminTicketViewSet',
+    'TicketSummaryViewSet',
+)
+
+
+def login_exempt(view):
+    """Let ``view`` (a function, or a class-based view / viewset class)
+    through LoginRequiredMiddleware. The view does its own authentication."""
+    view.login_required = False
+    return view
+
+
+def login_exempt_view_names():
+    from django.conf import settings
+    return set(DEFAULT_LOGIN_EXEMPT_VIEWS) | set(
+        getattr(settings, 'LOGIN_EXEMPT_VIEWS', ()))
+
+
 class LoginRequiredMiddleware(MiddlewareMixin):
 
     def process_view(self, request, view_func, view_args, view_kwargs):
 
-        if view_func.__name__ in [
-            'index',
-            '<lambda>',
-            'login',
-            '',
-            'view',
-            'metadata',
-            'acs',
-            'slo',
-            'logout',
-            'TokenCreateView',
-            'StudentSISAPI',
-            'StudentIDViewSet',
-            'create_checkout_session',
-            'ClassSectionViewSet',
-            'ClassRegistrationSISViewSet',
-            'RegistrationViewSet',
-            'TermViewSet',
-            'StudentTransactionViewSet',
-            'FacultySectionRequestViewSet',
-            'CETicketViewSet',
-            'StudentTicketViewSet',
-            'InstructorTicketViewSet',
-            'HSAdminTicketViewSet',
-            'TicketSummaryViewSet',
-        ]:
+        if view_func.__name__ in login_exempt_view_names():
             return None
 
 
         if not getattr(view_func, 'login_required', True):
+            return None
+        # as_view() functions don't carry class attributes; check the class.
+        view_class = getattr(view_func, 'cls', None) or getattr(view_func, 'view_class', None)
+        if not getattr(view_class, 'login_required', True):
             return None
 
         if not request.user.is_authenticated:
