@@ -241,7 +241,11 @@ class CourseUploadViewSet(viewsets.ReadOnlyModelViewSet):
 
 @eager_queryset(with_course_related)
 class CourseViewSet(viewsets.ReadOnlyModelViewSet):
-    permission_classes = [CIS_user_only]
+    # Faculty are admitted for in-tree / legacy faculty Course Resources pages
+    # (package-cis#114 item 10, nnu 391a397), always scoped to the courses
+    # they administer at the end of get_queryset() -- PT-43 is why they do
+    # not get every course. Other roles stay 403.
+    permission_classes = [CIS_user_only | FACULTY_user_only]
     serializer_class = CourseSerializer
 
     def get_serializer_class(self):
@@ -303,6 +307,14 @@ class CourseViewSet(viewsets.ReadOnlyModelViewSet):
                 records = records.filter(campus__id__in=valid_campus)
 
         records = scope_queryset_by_campus(records, self.request.user)
+        # CE first: user_has_faculty_role() is also True for CE users.
+        user = self.request.user
+        if not user_has_cis_role(user):
+            if user_has_faculty_role(user):
+                from cis.services.faculty_scope import visible_course_ids
+                records = records.filter(id__in=visible_course_ids(user))
+            else:
+                records = records.none()
         records = records.order_by('cohort__designator', 'catalog_number')
         return records
 

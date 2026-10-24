@@ -326,10 +326,10 @@ class ClassSectionFacultyTeacherScopingTests(
     it with a teacher_id. A teacher_id outside the faculty's visible set must
     yield nothing.
 
-    Only the teacher_id path is scoped: the same endpoint backs the faculty
-    portal's Class Sections / Offered Classes pages, which pass no teacher_id,
-    and narrowing those would change what faculty see before any assignment row
-    exists -- which the spec's rollout section forbids.
+    Listings without a teacher_id are narrowed too once the faculty member is
+    set up for the active year (package-cis#114 item 8); this fixture has
+    assignment rows, so it is. Before setup the listing is unchanged -- see
+    test_faculty_api_scope.
     """
 
     def setUp(self):
@@ -363,9 +363,11 @@ class ClassSectionFacultyTeacherScopingTests(
                           teacher_id='PLACEHOLDER')),
             [])
 
-    def test_faculty_listing_without_a_teacher_id_is_unchanged(self):
+    def test_faculty_listing_without_a_teacher_id_shows_assigned_pairs(self):
+        # Set up for the year, so narrowed to the (course, instructor) pairs:
+        # `theirs` is not assigned on assigned_course (package-cis#114 item 8).
         ids = {r.id for r in self._qs(self.faculty_user, term='-1')}
-        self.assertEqual(ids, {self.section_mine.id, self.section_theirs.id})
+        self.assertEqual(ids, {self.section_mine.id})
 
     def test_ce_may_still_list_sections_for_any_teacher(self):
         ids = {r.id for r in self._qs(

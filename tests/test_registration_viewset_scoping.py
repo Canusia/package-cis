@@ -1,6 +1,6 @@
 """PT-14 (revised): /ce/api/registration/ is restricted to CIS (ce), faculty,
 and instructor users. An instructor sees only registrations for their own
-class sections; CE/faculty see all; highschool_admin is denied (403).
+class sections; CE sees all; faculty the sections they oversee; highschool_admin is denied (403).
 
 Built end-to-end over the real endpoint with APIClient, mirroring
 cis/tests/test_teacher_course_viewset_filters.py (session login, the cis
@@ -179,11 +179,13 @@ class RegistrationViewSetScopingTests(TestCase):
         self.assertIn(str(self.reg_a.id), ids)
         self.assertIn(str(self.reg_b.id), ids)
 
-    def test_faculty_see_all_registrations(self):
+    def test_faculty_without_courses_see_no_registrations(self):
+        # package-cis#114 item 8: faculty see only the sections they oversee;
+        # this one administers no course. Positive cases: test_faculty_api_scope.
         self.client.force_login(self.faculty_user)
         ids = self._registration_ids()
-        self.assertIn(str(self.reg_a.id), ids)
-        self.assertIn(str(self.reg_b.id), ids)
+        self.assertNotIn(str(self.reg_a.id), ids)
+        self.assertNotIn(str(self.reg_b.id), ids)
 
     def test_instructor_sees_only_their_section_registrations(self):
         self.client.force_login(self.instructor_user)

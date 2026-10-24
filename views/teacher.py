@@ -245,6 +245,24 @@ class TeacherViewSet(viewsets.ReadOnlyModelViewSet):
         return tables.datatables_serializer(
             self, tables.SlimTeacherRowSerializer)
 
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        # A faculty caller's course and high-school columns list only the
+        # (course, instructor) pairs they mentor (package-cis#114 item 9,
+        # package-faculty#2); the rows were scoped but the columns were the
+        # instructor's full certificates and schools. One query for the whole
+        # page. CE first: user_has_faculty_role() is also True for CE users.
+        user = self.request.user
+        if not user_has_cis_role(user) and user_has_faculty_role(user):
+            from collections import defaultdict
+            from cis.services.faculty_scope import visible_course_teachers
+            # {teacher_id: {course_id, ...}}, so each row is a dict lookup.
+            visible = defaultdict(set)
+            for course_id, teacher_id in visible_course_teachers(user):
+                visible[teacher_id].add(course_id)
+            context['visible_courses_by_teacher'] = visible
+        return context
+
     def get_queryset(self):
 
         status = self.request.GET.get('status')

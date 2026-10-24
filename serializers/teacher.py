@@ -51,6 +51,30 @@ class TeacherSerializer(serializers.ModelSerializer):
             'faculty_url',
         ]
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        # TeacherViewSet sets `visible_courses_by_teacher` for faculty callers
+        # only: their columns list just the (course, instructor) pairs they
+        # mentor (package-cis#114 item 9). Everyone else is unchanged. The
+        # trimmed table serializers drop both fields, hence the guards.
+        by_teacher = self.context.get('visible_courses_by_teacher')
+        if by_teacher is not None:
+            visible = {str(c) for c in by_teacher.get(instance.id, ())}
+            if 'active_courses' in data:
+                data['active_courses'] = [
+                    cert for cert in data['active_courses']
+                    if str(cert['course']['id']) in visible
+                ]
+            if 'active_highschools' in data:
+                # "In the program" is Teacher's rule, not restated here.
+                data['active_highschools'] = [
+                    ths.highschool.name
+                    for ths in instance.in_program_teacher_highschools()
+                    if any(str(cert.course_id) in visible
+                           for cert in ths.teachercoursecertificate_set.all())
+                ]
+        return data
+
 class DanglingInstructorSerializer(serializers.ModelSerializer):
     """Accounts in the instructor group with no Teacher record.
 

@@ -41,7 +41,9 @@ from cis.forms.faculty import (
 from cis.services.importers import FacultyRow
 from cis.utils import (
     CIS_user_only,
-    FACULTY_user_only
+    FACULTY_user_only,
+    user_has_cis_role,
+    user_has_faculty_role,
 )
 from cis.campus_gate import scope_queryset_by_campus, processable_ids, can_process_campus
 from cis.models.note import TeacherNote
@@ -82,6 +84,14 @@ class CourseAdministratorViewSet(viewsets.ReadOnlyModelViewSet):
         faculty_coordinator_user_id = self.request.GET.get('faculty_coordinator_user_id')
         campus = self.request.GET.get('campus', '').strip()
 
+        # Faculty may only ask about themselves (package-cis#114 item 8):
+        # another user's id is ignored in favour of their own.
+        user = self.request.user
+        # Superusers keep the unscoped view scope_queryset_by_campus gives them.
+        is_ce = user_has_cis_role(user) or getattr(user, 'is_superuser', False)
+        if faculty_coordinator_user_id and not is_ce:
+            faculty_coordinator_user_id = user.id
+
         if course_id:
             records = CourseAdministrator.objects.filter(
                 course__id=course_id, status__iexact='active')
@@ -97,13 +107,28 @@ class CourseAdministratorViewSet(viewsets.ReadOnlyModelViewSet):
             records, self.request.user, campus_path='course__campus')
         if campus:
             records = records.filter(course__campus__id=campus)
-        return records
+
+        # CE first: user_has_faculty_role() is also True for CE users. Faculty
+        # see the administrator rows of the courses they administer -- their
+        # own and their co-administrators' -- and nothing else; they used to
+        # get every row.
+        if is_ce:
+            return records
+        if user_has_faculty_role(user):
+            from cis.services.faculty_scope import visible_course_ids
+            return records.filter(course_id__in=visible_course_ids(user))
+        return records.none()
 
 class FacultyViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = FacultySerializer
     permission_classes = [CIS_user_only|FACULTY_user_only]
 
     def get_queryset(self):
+        # Left unscoped for faculty callers as a staff directory
+        # (package-cis#114 item 8). Note the nested user (CustomUserSerializer)
+        # also carries address, date of birth and psid; if that matters, give
+        # non-CE callers a slimmer serializer rather than narrowing the rows.
+        #
         # One row per person. Deliberately not campus-gated: FacultyCoordinator
         # has no campus, and gating through course assignments would hide
         # faculty who administer no courses. Ordered so server-side pagination

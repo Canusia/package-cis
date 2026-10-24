@@ -278,6 +278,13 @@ class StudentCampusIDViewSet(viewsets.ReadOnlyModelViewSet):
 
         return records
 
+def _faculty_student_ids(user):
+    """Ids of students registered in a section `user` oversees as faculty."""
+    from cis.services.faculty_scope import visible_class_sections
+    return StudentRegistration.objects.filter(
+        class_section__in=visible_class_sections(user)).values('student_id')
+
+
 @eager_queryset(with_student_term_related)
 class ParentConsentViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ParentConsentSerializer
@@ -294,7 +301,20 @@ class ParentConsentViewSet(viewsets.ReadOnlyModelViewSet):
                 student__id=student
             )
 
-        return records
+        # Role scoping (package-cis#114 item 8): CE sees every consent; faculty
+        # only those of students registered in a section they oversee; an
+        # instructor only those of students in the sections they teach (the
+        # StudentViewSet rule). Both used to get every consent. CE first:
+        # user_has_faculty_role() is also True for CE users.
+        user = self.request.user
+        if user_has_cis_role(user):
+            return records
+        if user_has_faculty_role(user):
+            return records.filter(student__id__in=_faculty_student_ids(user))
+        if user_has_instructor_role(user):
+            return records.filter(student__id__in=StudentRegistration.objects.filter(
+                class_section__teacher__user=user).values('student_id'))
+        return records.none()
 
 @eager_queryset(with_student_term_related)
 class StudentAgreementViewSet(viewsets.ReadOnlyModelViewSet):
@@ -548,7 +568,8 @@ class StudentViewSet(viewsets.ReadOnlyModelViewSet):
             )
 
         # PT-4: object-level scoping (applied last, after all other filters).
-        # CE/faculty staff see all students (multi-tenant); a highschool_admin
+        # CE staff see all students (campus-gated); faculty see students in the
+        # sections they oversee; a highschool_admin
         # sees only students in the high schools they administer; an instructor
         # sees only students in their own class sections. DRF retrieve() runs
         # through this queryset, so out-of-scope detail lookups return 404.
@@ -559,8 +580,12 @@ class StudentViewSet(viewsets.ReadOnlyModelViewSet):
             from highschool_admin.views.utils import get_user_highschools
 
         user = self.request.user
-        if user_has_cis_role(user) or user_has_faculty_role(user):
+        if user_has_cis_role(user):
             return scope_students_by_campus(records, user, selected_campus=campus)
+        if user_has_faculty_role(user):
+            # Faculty: students registered in a section they oversee
+            # (package-cis#114 item 8). Before that faculty got every student.
+            return records.filter(id__in=_faculty_student_ids(user))
         if user_has_highschool_admin_role(user):
             return records.filter(
                 highschool__in=get_user_highschools(self.request)

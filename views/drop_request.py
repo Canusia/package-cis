@@ -23,7 +23,10 @@ from cis.utils import (
     can_edit_campus_registration,
     CIS_user_only,
     FACULTY_user_only,
-    HSADMIN_user_only
+    HSADMIN_user_only,
+    user_has_cis_role,
+    user_has_faculty_role,
+    user_has_highschool_admin_role,
 )
 from cis.menu import cis_menu, draw_menu
 from cis.settings.registrations import RegistrationForm
@@ -88,7 +91,27 @@ class StudentDropViewSet(viewsets.ReadOnlyModelViewSet):
         # if campus:
         #     records = records.filter(registration__class_section__campus__id=campus)
 
-        return records
+        # Role scoping (package-cis#114 item 8). CE first: user_has_faculty_role()
+        # is also True for CE users. Faculty see requests for sections they
+        # oversee; a highschool admin those of students in the high schools
+        # they administer (the StudentViewSet rule). Both used to get every
+        # request. retrieve() runs through here, so out of scope is a 404.
+        user = self.request.user
+        if user_has_cis_role(user):
+            return records
+        if user_has_faculty_role(user):
+            from cis.services.faculty_scope import visible_class_sections
+            return records.filter(
+                registration__class_section__in=visible_class_sections(user))
+        if user_has_highschool_admin_role(user):
+            import importlib.util
+            if importlib.util.find_spec('highschool_admin.highschool_admin'):
+                from highschool_admin.highschool_admin.views.utils import get_user_highschools
+            else:
+                from highschool_admin.views.utils import get_user_highschools
+            return records.filter(
+                student__highschool__in=get_user_highschools(self.request))
+        return records.none()
 
 def delete(request, record_id):
     record = get_object_or_404(StudentDropRequest, pk=record_id)

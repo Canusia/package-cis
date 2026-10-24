@@ -238,7 +238,8 @@ class RegistrationViewSet(viewsets.ReadOnlyModelViewSet):
         # Object-level scoping (PT-14, revised): /ce/api/registration is limited
         # by permission_classes to CE (ce), faculty, and instructor callers.
         # CE staff are additionally campus-scoped (campus resolved via
-        # class_section -> course -> campus); faculty see all; an instructor
+        # class_section -> course -> campus); faculty see the sections they
+        # oversee (faculty_scope.visible_class_sections); an instructor
         # sees only registrations for sections they teach. Because this is a
         # ReadOnlyModelViewSet, scoping get_queryset also governs retrieve(),
         # so an out-of-scope detail lookup returns 404. highschool admins are
@@ -258,8 +259,19 @@ class RegistrationViewSet(viewsets.ReadOnlyModelViewSet):
 
         records = scope_queryset_by_campus(
             records, user, campus_path='class_section__course__campus')
-        if user_has_cis_role(user) or user_has_faculty_role(user):
+        # CE first: user_has_faculty_role() is also True for CE users.
+        # Faculty see only registrations in the sections they oversee
+        # (package-cis#114 item 8); before that every registration in every
+        # term was returned to them.
+        if user_has_cis_role(user):
             return records
+        if user_has_faculty_role(user):
+            from cis.services.faculty_scope import visible_class_sections
+            scope = Q(class_section__in=visible_class_sections(user))
+            if user_has_instructor_role(user):
+                # A mentor who also teaches keeps their own sections.
+                scope |= Q(class_section__teacher__user=user)
+            return records.filter(scope)
         if user_has_instructor_role(user):
             return records.filter(class_section__teacher__user=user)
         return records.none()

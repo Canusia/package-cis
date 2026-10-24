@@ -23,6 +23,7 @@ from cis.models.course import CourseAdministrator
 from cis.models.faculty import (
     FacultyCourseAssignment, FacultyTeacherAssignment, FacultyYearSetup,
 )
+from cis.models.section import ClassSection
 from cis.models.teacher import Teacher, TeacherCourseCertificate
 from cis.utils import active_academic_year
 
@@ -210,6 +211,52 @@ def default_visible_pairs_q(user, *, course_field, teacher_field, year_field=Non
             course_id=course, teacher_highschool__teacher_id=teacher))
 
     return overseen & visible
+
+
+def visible_class_sections(user, academic_year=None):
+    """Class sections `user` may see as a faculty member (package-cis#114 item 8).
+
+    Sections of the courses they actively oversee, narrowed to their
+    (course, instructor) pairs by ``visible_pairs_q`` -- ported from nnu's
+    ``faculty.views.utils.overseen_class_sections``. Every section, whatever
+    its term, is judged against one year's setup (`academic_year`, else the
+    active year), the same year My Instructors uses. `require_certificate` is
+    off: a course not configured for the year keeps every section, staffed
+    or not.
+
+    Returns a ClassSection queryset; callers filter with
+    ``class_section__in=`` or ``id__in=...values('id')``.
+    """
+    return ClassSection.objects.filter(visible_pairs_q(
+        user, course_field='course_id', teacher_field='teacher_id',
+        academic_year=academic_year, require_certificate=False))
+
+
+def visible_course_ids(user):
+    """Ids of the courses `user` actively administers (values queryset).
+
+    The course scope for faculty on endpoints whose rows carry a course but
+    no instructor -- courses, course administrators, teacher applications.
+    """
+    return CourseAdministrator.objects.filter(
+        user=user, status__iexact='active',
+    ).exclude(course__isnull=True).values('course_id')
+
+
+def section_scope_applies(user):
+    """True when ClassSectionViewSet narrows `user`'s sections.
+
+    Rollout gate (package-cis#114 item 8): before the faculty scope existed a
+    faculty caller with no teacher_id got every section, and nothing told CE
+    to set mentors up first. So the narrowing starts once CE has set this
+    user up for the active academic year (``is_set_up``: a FacultyYearSetup
+    marker or assignment rows); until then the section feed keeps its old
+    behaviour. Every other faculty-scoped endpoint narrows unconditionally.
+    """
+    year = active_academic_year()
+    if year is None:
+        return False
+    return is_set_up(user, year)
 
 
 def active_certificate_q(prefix=''):

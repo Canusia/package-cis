@@ -107,7 +107,7 @@ class CourseAppRequirementViewSetScopeTests(TestCase):
 
 
 class CourseAdministratorViewSetScopeTests(TestCase):
-    """ce user is campus-scoped; faculty user sees all rows."""
+    """ce user is campus-scoped; faculty user sees the rows of their courses."""
 
     @classmethod
     def setUpClass(cls):
@@ -168,11 +168,19 @@ class CourseAdministratorViewSetScopeTests(TestCase):
         self.assertNotIn(self.ca_b, qs)
 
     def test_faculty_user_not_campus_filtered(self):
-        """faculty role bypasses campus scoping — sees all rows."""
+        """faculty bypass campus scoping but see only the rows of courses they
+        administer (package-cis#114 item 8) -- on every campus."""
+        for course in (self.course_a, self.course_b, self.course_none):
+            CourseAdministrator.objects.create(
+                course=course, user=self.faculty_user, role='Faculty',
+                status='Active')
         qs = self._queryset(self.faculty_user)
         self.assertIn(self.ca_a, qs)
         self.assertIn(self.ca_b, qs)
         self.assertIn(self.ca_none, qs)
+
+    def test_faculty_user_without_courses_sees_nothing(self):
+        self.assertFalse(self._queryset(self.faculty_user).exists())
 
 
 class UpdateAppRequirementsBulkGateTests(TestCase):

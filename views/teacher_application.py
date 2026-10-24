@@ -39,7 +39,9 @@ from cis.forms.teacher_applicant import (
 from cis.utils import (
     CIS_user_only,
     FACULTY_user_only,
-    HSADMIN_user_only
+    HSADMIN_user_only,
+    user_has_cis_role,
+    user_has_faculty_role,
 )
 
 from rest_framework import viewsets
@@ -96,6 +98,18 @@ class TeacherApplicationReviewerViewSet(viewsets.ReadOnlyModelViewSet):
             records = records.filter(
                 application_course__teacherapplication__id__in=cohort_apps
             )
+
+        # Faculty scoping (package-cis#114 item 8): CE first, since
+        # user_has_faculty_role() is also True for CE users. A faculty member
+        # sees the review rows of the courses they administer, plus any
+        # assigned to them; `course=` can only narrow that. HS admins are
+        # unchanged here.
+        user = self.request.user
+        if not user_has_cis_role(user) and user_has_faculty_role(user):
+            from cis.services.faculty_scope import visible_course_ids
+            records = records.filter(
+                Q(application_course__course_id__in=visible_course_ids(user))
+                | Q(reviewer=user))
         return records
 
 class TeacherApplicationViewSet(viewsets.ReadOnlyModelViewSet):
@@ -128,6 +142,13 @@ class TeacherApplicationViewSet(viewsets.ReadOnlyModelViewSet):
                 Q(misc_info__participating_acad_year=academic_year_id) |
                 Q(misc_info__participating_acad_year__isnull=True)
             )
+
+        user = self.request.user
+        faculty_only = (not user_has_cis_role(user)
+                        and user_has_faculty_role(user))
+        if reviewer and faculty_only:
+            # A faculty member may only filter by their own assignments.
+            reviewer = user.id
 
         if reviewer:
             assigned_to = ApplicantCourseReviewer.objects.filter(
@@ -180,6 +201,19 @@ class TeacherApplicationViewSet(viewsets.ReadOnlyModelViewSet):
             records = records.filter(
                 id__in=cohort_apps
             )
+
+        # Faculty scoping (package-cis#114 item 8): applications for a course
+        # the faculty member administers, or one they are assigned to review.
+        # `course=` / `cohort=` can only narrow that. HS admins are unchanged.
+        if faculty_only:
+            from cis.services.faculty_scope import visible_course_ids
+            records = records.filter(
+                Q(id__in=ApplicantSchoolCourse.objects.filter(
+                    course_id__in=visible_course_ids(user),
+                ).values('teacherapplication_id'))
+                | Q(id__in=ApplicantCourseReviewer.objects.filter(
+                    reviewer=user,
+                ).values('application_course__teacherapplication_id')))
         return records
 
 def delete_course(request, record_id):

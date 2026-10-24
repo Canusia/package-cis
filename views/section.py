@@ -23,6 +23,7 @@ from crispy_forms.utils import render_crispy_form
 from paramiko import SSHClient, AutoAddPolicy, RSAKey
 
 from rest_framework import viewsets
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import ValidationError
 
 from rest_framework.decorators import api_view 
@@ -316,6 +317,11 @@ class ClassesRegisteredByCampusViewSet(viewsets.ReadOnlyModelViewSet):
 @eager_queryset(with_class_section_related)
 class ClassSectionViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ClassSectionSerializer
+    # Declared rather than inherited (package-cis#114 item 8). Every role
+    # reads this feed -- students' class search, instructors, HS admins,
+    # faculty, CE -- so the gate is authentication and the per-role scoping
+    # lives at the end of get_queryset().
+    permission_classes = [IsAuthenticated]
 
     def get_serializer_class(self):
         # Narrow serializer for the datatables feed only; format=json callers
@@ -542,6 +548,12 @@ class ClassSectionViewSet(viewsets.ReadOnlyModelViewSet):
                     course_admin_user_id = int(course_admin_user_id)
                 except (ValueError, TypeError):
                     return ClassSection.objects.none()
+                # Only CE may ask about another user's courses
+                # (package-cis#114 item 8): anyone else naming a colleague's
+                # id gets nothing rather than that colleague's sections.
+                if (not user_has_cis_role(self.request.user)
+                        and course_admin_user_id != self.request.user.id):
+                    return ClassSection.objects.none()
                 administered_course_ids = CourseAdministrator.objects.filter(
                     user__id=course_admin_user_id,
                     status__iexact='active',
@@ -560,7 +572,9 @@ class ClassSectionViewSet(viewsets.ReadOnlyModelViewSet):
             #  - CIS ('ce') staff: unrestricted (multi-tenant listing).
             #  - highschool_admin: may only pass a highschool_id they administer.
             #  - instructor: scoped to the sections they teach.
-            #  - faculty: a teacher_id must be one of their visible instructors.
+            #  - faculty: the sections they oversee (once set up for the
+            #    year), and a teacher_id must be one of their visible
+            #    instructors.
             user = self.request.user
             if not user_has_cis_role(user):
                 from cis.utils import (
@@ -586,18 +600,31 @@ class ClassSectionViewSet(viewsets.ReadOnlyModelViewSet):
                 elif user_has_instructor_role(user):
                     records = records.filter(teacher__user=user)
                 elif user_has_faculty_role(user):
+                    # Faculty see only the sections they oversee
+                    # (package-cis#114 item 8): their courses, narrowed to
+                    # their (course, instructor) pairs. Before this the Class
+                    # Sections, Offered Classes and Syllabi Review feeds
+                    # returned every section in the program.
+                    #
+                    # Rollout gate: narrowing changes what a mentor sees, so
+                    # it starts once CE has set them up for the active
+                    # academic year (FacultyYearSetup or assignment rows,
+                    # package-faculty#3). Until then this feed keeps its old
+                    # behaviour -- see faculty_scope.section_scope_applies.
+                    from cis.services.faculty_scope import (
+                        section_scope_applies, visible_class_sections,
+                    )
+                    if section_scope_applies(user):
+                        records = records.filter(
+                            id__in=visible_class_sections(user).values('id'))
+
                     # Faculty -> teacher assignment (spec 2026-08-11): the
                     # faculty teacher-detail page loads this endpoint with a
                     # teacher_id, so a teacher_id outside the caller's visible
                     # set must yield nothing.
                     #
-                    # Only the teacher_id path is scoped. The same endpoint
-                    # backs the faculty portal's Class Sections and Offered
-                    # Classes pages, which pass no teacher_id; narrowing those
-                    # by visible_teachers() would change what faculty see
-                    # before any assignment row exists, which the spec's
-                    # rollout ("purely additive") rules out. Sections with no
-                    # instructor yet would disappear from Offered Classes too.
+                    # Predates the section narrowing above and applies
+                    # whether or not the year is set up.
                     if teacher_id:
                         try:
                             uuid.UUID(str(teacher_id))
