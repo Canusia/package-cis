@@ -31,6 +31,7 @@ from cis.utils import (
 )
 
 from cis.services.pay_types import LazyChoices, registration_pay_type_choices
+from cis.services.registration_statuses import registration_status_choices
 from cis.storage_backend import PrivateMediaStorage
 
 from cis.models.note import ClassSectionNote
@@ -1720,38 +1721,9 @@ class StudentRegistration(models.Model):
     student = models.ForeignKey('cis.Student', on_delete=models.PROTECT)
     class_section = models.ForeignKey('cis.ClassSection', on_delete=models.PROTECT)
 
-    STATUS_OPTIONS = (
-        ('applied', 'Requested'),
-
-        # ('approved_by_instructor', 'Approved by Instructor'),
-        # ('not_approved_by_instructor', 'Not Approved by Instructor'),
-        
-        ('approved', 'Ready for Review'),
-        ('not_approved', 'Not Approved by HS'),
-        ('missing_prereq', 'Missing PreReq'),
-
-        # A registration the student entered twice. Distinct from a denial on
-        # purpose: closing duplicates out as 'not_approved' misreports the
-        # school's approval rate. Carried in HVCC's own tree before the
-        # extraction (ewu#47).
-        ('duplicate', 'Duplicate Section'),
-
-        # ('knowledge_assessment', 'Pending Knowledge Assessment'),
-
-        # ('cancelled', 'Cancelled'),
-        # ('section_is_full', 'Section is Full'),
-        # ('waitlist', 'Waitlist'),
-        # ('late_application', 'Late Application'),
-
-        ('pending_registration', 'Approved for Registration'),
-        ('denied_registration', 'Not Approved for Registration'),
-        ('registered', 'Registered'),
-        ('enrolled', 'Enrolled'),
-
-        ('dropped', 'Dropped'),
-        ('withdrawn', 'Withdrawn'),
-        ('app not processed', 'Application Not Processed-See Notes'),
-    )
+    # Values are the package's; labels are tenant-overridable (#90). See
+    # cis.services.registration_statuses for the list and its history.
+    STATUS_OPTIONS = LazyChoices(registration_status_choices)
 
     highschool = models.ForeignKey('cis.HighSchool', on_delete=models.PROTECT, blank=True, null=True)
 
@@ -1782,7 +1754,7 @@ class StudentRegistration(models.Model):
 
     status = models.CharField(
         max_length=100,
-        choices=STATUS_OPTIONS,
+        choices=registration_status_choices,
         default='applied'
     )
     status_changed_on = JSONField()
