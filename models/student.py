@@ -134,6 +134,9 @@ class Student(models.Model):
 
     current_student_balance = models.FloatField(default=0.0)
     current_school_balance = models.FloatField(default=0.0)
+    # State-funds balance for tenants with a state payer (#88). Same field as
+    # nnu's 0058, so nnu can --fake 0114; the package never writes it.
+    current_state_balance = models.FloatField(default=0.0)
 
     verification_id = models.UUIDField(blank=True, null=True, primary_key=False, editable=False)
     account_verified = models.BooleanField(default=False)
@@ -380,69 +383,13 @@ class Student(models.Model):
     def allow_late_billpay_sexy(self):
         return 'Yes' if self.allow_late_billpay else 'No'
     
-    def debits(self, term=None, label='class_charge', sequence_only=False):
-        from student_transactions.models import StudentTransaction
+    def debits(self, term=None, *args, **filters):
+        from cis.services.student_balances import resolve
+        return resolve('debits')(self, term, *args, **filters)
 
-        records = StudentTransaction.objects.filter(
-            student=self,
-            t_type='debit'
-        )
-
-        if sequence_only & False:
-            sequence_sections = StudentRegistration.objects.filter(
-                student=self,
-                class_section__is_sequence='1'
-            )
-
-            if term:
-                sequence_sections = sequence_sections.filter(
-                    class_section__term=term
-                )
-            
-            sequence_section_ids = []
-            for seq_section in sequence_sections:
-                sequence_section_ids.append(str(seq_section.id))
-            
-            records = records.filter(
-                meta__registration__in=sequence_section_ids
-            )
-
-        if label != 'school_charge':
-            records = records.exclude(label='school_charge')
-        else:
-            records = records.filter(label=label)
-
-        if term:
-            records = records.filter(term=term)
-
-        records = records.order_by('-created_on')
-        return records
-        
-    def credits(self, term=None, label=None):
-        from student_transactions.models import StudentTransaction
-
-        records = StudentTransaction.objects.filter(
-            student=self,
-            t_type='credit'
-        )
-
-        if label:
-            if label == 'school_pay':
-                label = [
-                    'school_pay',
-                    '2'
-                ]
-            records = records.filter(label__in=label)
-        else:
-            records = records.exclude(
-                label__in=['school_pay', '2']
-            )
-
-        if term:
-            records = records.filter(term=term)
-
-        records = records.order_by('-created_on')
-        return records
+    def credits(self, term=None, *args, **filters):
+        from cis.services.student_balances import resolve
+        return resolve('credits')(self, term, *args, **filters)
 
     def student_payment_amounts(self, term):
         amounts = []
@@ -542,48 +489,18 @@ class Student(models.Model):
             term=active_term()
         ).exists()
     
-    def student_balance(self, term=None, sequence=False):
+    def student_balance(self, term=None, *args, **opts):
+        from cis.services.student_balances import resolve
+        return resolve('student_balance')(self, term, *args, **opts)
 
-        charges = self.debits(term, 'class_charge', sequence_only=sequence)
-        
-        total_charges = charges.aggregate(models.Sum('amount'))
-                
-        if total_charges['amount__sum'] == None:
-            total_charges = 0
-        else:
-            total_charges = total_charges['amount__sum']
+    def school_balance(self, term=None, *args, **opts):
+        from cis.services.student_balances import resolve
+        return resolve('school_balance')(self, term, *args, **opts)
 
-        payments = self.credits(term, label=None)
-        # charges = charges.exclude(label='2')
-
-        total_payments = payments.aggregate(models.Sum('amount'))
-
-        if total_payments['amount__sum'] == None:
-            total_payments = 0
-        else:
-            total_payments = total_payments['amount__sum']
-
-        return float(total_charges) - float(total_payments)
-
-    def school_balance(self, term=None):
-
-        charges = self.debits(term, 'school_charge')
-        total_charges = charges.aggregate(models.Sum('amount'))
-
-        if total_charges['amount__sum'] == None:
-            total_charges = 0
-        else:
-            total_charges = total_charges['amount__sum']
-        
-        payments = self.credits(term, label='school_pay')
-        total_payments = payments.aggregate(models.Sum('amount'))
-
-        if total_payments['amount__sum'] == None:
-            total_payments = 0
-        else:
-            total_payments = total_payments['amount__sum']
-
-        return float(total_charges) - float(total_payments)
+    def balances(self, term=None):
+        """{payer: balance}; see cis.services.student_balances."""
+        from cis.services.student_balances import resolve
+        return resolve('balances')(self, term)
 
     def format_balance(self, term):
         balance = self.balance(term)
