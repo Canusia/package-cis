@@ -179,16 +179,17 @@ class HeadingSkipTests(TestCase):
 
 class StudentRegistrationRegressionTests(TestCase):
     """student_registration renders the de550f6 labels minus the two escaped heading rows
-    (<h3> Parent/Student Notification(s) pseudo-fields), which are skipped everywhere."""
+    (<h3> Parent/Student Notification(s) pseudo-fields), which are skipped everywhere --
+    plus the Get a New Link and Continue Application fields 134c9f4 added on purpose."""
     EXPECTED = [
         ['Active Academic Year', 'Home School', 'Active Term', 'Registration Term(s)', 'Scholarship App Open Until', 'Tuition Pay Open Until', 'Message when Registration is Closed', 'Opens On', 'Open Until', 'Instructor Review Open Until', 'Starting Birth Date', 'Ending Birth Date'],
-        ['Student Verify Email Form Field Labels', 'Pre-Email Verify Page Intro.', 'Awaiting Verification Page Intro.', 'Confirm Verification Page Intro.', 'Post Email Verify Page Intro.', 'Agreement Terms', 'Alert/Error Messages'],
+        ['Student Verify Email Form Field Labels', 'Pre-Email Verify Page Intro.', 'Awaiting Verification Page Intro.', 'Get a New Link Page Intro.', 'Start Page: Get a New Link Prompt', 'Confirm Verification Page Intro.', 'Post Email Verify Page Intro.', 'Agreement Terms', 'Alert/Error Messages'],
         ['Profile Fields — Order, Editability, Label & Help Text', 'Profile Not Editable Message', 'Profile Editable Message', 'Profile Review Intro.', 'Profile Review Display Template', 'Student Detail Layout (advanced)'],
         ['Intro.'],
         ['Intro.', 'Parent Consent Term(s)'],
         ['Intro.', 'Tab # Search for Class(es)', 'Tab # EC Classes', 'Tab # My Class Application(s)', 'Footer # My Class'],
         ['Enabled', 'hs_pay_type', 'Registration Charge Addition Trigger(s)', 'Registration Charge Removal Trigger(s)', 'TA Request Updated Subject', 'TA Request Updated Email', 'Mode', 'Cron Expression for Sending Missing Payment Reminder', 'Bill Pay Subject', 'Bill Pay Email', 'Payment Received Subject', 'Payment Received Email', 'Invoice Template Header', 'Invoice Template Footer'],
-        ['Enabled', 'Verification Email Subject', 'Verification Email', 'Send an email when ID is assigned?', 'Python Regex Pattern to Verify Valid ID', 'Student ID Assigned Email Subject', 'ID Assigned Email Message'],
+        ['Enabled', 'Verification Email Subject', 'Verification Email', 'Continue Application Email Subject', 'Continue Application Email', 'Send an email when ID is assigned?', 'Python Regex Pattern to Verify Valid ID', 'Student ID Assigned Email Subject', 'ID Assigned Email Message'],
         ['SIS Mirror Trigger(s)', 'SIS Mirror Term(s)', 'Stop mirroring when these errors happen again', 'Cron Expression for Mirroring with SIS', 'SIS Mirror Notification Email(s)', 'All Emails Enabled', 'Parent/Counselor Status Trigger(s)', 'Parent/Counselor Email Subject', 'Parent/Counselor Email', 'Student Email - Status Trigger(s)'],
     ]
 
