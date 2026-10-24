@@ -1,6 +1,6 @@
 """Generic engine that renders a settings-overview profile.
 
-Resolves the profile from the tenant config app (settings.TABLE_CONFIGS_APP),
+Resolves the profile from the tenant config app (TABLE_CONFIGS_APP),
 then for each configurator reads labels from the form class's base_fields and
 current values from its from_db(), mirroring how setting.record_details loads a
 setting. Purely read-only; editing is handled separately via the setting app's
@@ -11,10 +11,11 @@ import json
 import logging
 
 from django import forms
-from django.conf import settings
 from django.forms import HiddenInput
 from django.utils.html import format_html
 from django.utils.module_loading import import_string
+
+from cis.services.table_configs import table_configs_app
 
 import importlib.util
 if importlib.util.find_spec('setting.setting'):
@@ -36,7 +37,7 @@ DEFAULT_INTRO = ('Current configuration for each step a student moves through. '
 
 def _get_profile(name):
     mod = importlib.import_module(
-        f'{settings.TABLE_CONFIGS_APP}.services.settings_overview')
+        f'{table_configs_app()}.services.settings_overview')
     return mod.get_profile(name)
 
 

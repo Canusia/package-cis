@@ -10,7 +10,9 @@ when the host does not ship that module. A host module always wins.
 
 Registries that carry tenant content (course and academic_year wire SIS
 actions) have no default; a host missing one is named by system check
-cis.W012.
+cis.W012. So is a host module that lacks a name cis imports from it, and a
+host without the base classes (`tabs.TabRegistry`, `ActionRegistry`) the
+stand-ins are built from: those stand-ins are then skipped, not fatal.
 """
 import importlib
 import importlib.util
@@ -26,6 +28,27 @@ REQUIRED_REGISTRIES = (
     'course', 'faculty_coordinator', 'highschool', 'hs_administrator',
     'registration', 'student', 'support_docs', 'teacher', 'term',
 )
+
+# module -> names cis imports from it ('' is the package itself). Mirrors the
+# `from myce.component_registry... import` lines in cis; a guard test keeps
+# the two in step.
+REQUIRED_NAMES = {
+    '': ('ActionRegistry',),
+    'tabs': ('TabRegistry',),
+    'academic_year': ('academic_year_actions', 'academic_year_tabs'),
+    'access_request': ('access_request_tabs',),
+    'class_section': ('class_section_tabs',),
+    'class_section_index': ('class_section_index_tabs',),
+    'course': ('course_actions', 'course_tabs'),
+    'faculty_coordinator': ('faculty_coordinator_tabs',),
+    'highschool': ('highschool_actions', 'highschool_tabs'),
+    'hs_administrator': ('hs_administrator_tabs',),
+    'registration': ('registration_actions', 'registration_tabs'),
+    'student': ('student_actions', 'student_tabs'),
+    'support_docs': ('support_docs_actions',),
+    'teacher': ('teacher_tabs',),
+    'term': ('term_actions', 'term_tabs'),
+}
 
 
 def _registry(name, actions=True, tabs=True, action_groups=()):
@@ -100,9 +123,16 @@ def install_defaults():
         dotted = f'{PACKAGE}.{name}'
         if host_has(name) or dotted in sys.modules:
             continue
+        try:
+            attrs = factory()
+        except ImportError:
+            # The host lacks tabs.TabRegistry or ActionRegistry to build the
+            # stand-in from: skip it, and let W012 name what is missing
+            # rather than failing django.setup().
+            continue
         module = types.ModuleType(dotted, f'cis default for {dotted} (#97).')
         module.__cis_default__ = True
-        module.__dict__.update(factory())
+        module.__dict__.update(attrs)
         sys.modules[dotted] = module
         setattr(parent, name, module)
         installed.append(name)
@@ -116,9 +146,33 @@ def load_defaults(names):
             importlib.import_module(path)
 
 
+def _default_installed(name):
+    module = sys.modules.get(f'{PACKAGE}.{name}')
+    return getattr(module, '__cis_default__', False)
+
+
 def missing_registries():
-    """Host registry modules cis needs that neither the host nor cis supplies."""
+    """Host registry modules cis needs that neither the host nor cis supplies
+    (including `tabs`, which no stand-in replaces, and a DEFAULTS module whose
+    stand-in could not be built)."""
     return [
-        name for name in REQUIRED_REGISTRIES
-        if name not in DEFAULTS and not host_has(name)
+        name for name in ('tabs',) + REQUIRED_REGISTRIES
+        if not host_has(name) and not _default_installed(name)
     ]
+
+
+def missing_names():
+    """(module, name) for each name cis imports that a module the host ships
+    does not define, e.g. a student.py with student_actions but no
+    student_tabs. A host module that fails to import is left to that error."""
+    missing = []
+    for name, attrs in REQUIRED_NAMES.items():
+        dotted = f'{PACKAGE}.{name}' if name else PACKAGE
+        if name and not host_has(name):
+            continue  # missing_registries() names it
+        try:
+            module = importlib.import_module(dotted)
+        except Exception:
+            continue
+        missing += [(dotted, attr) for attr in attrs if not hasattr(module, attr)]
+    return missing

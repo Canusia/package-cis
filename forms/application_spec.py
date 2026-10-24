@@ -1,6 +1,6 @@
 """Resolve the per-tenant student-application field spec.
 
-The spec lives in the tenant config app (settings.TABLE_CONFIGS_APP) as
+The spec lives in the tenant config app (TABLE_CONFIGS_APP) as
 `services/application_form.py`, which may export:
 
     APPLICATION_FIELDS   ordered list of field-definition dicts
@@ -20,13 +20,13 @@ Keeps cis field-agnostic.
 """
 import importlib
 
-from django.conf import settings
+from cis.services.table_configs import table_configs_app
 
 
 def _spec_module():
     try:
         return importlib.import_module(
-            f'{settings.TABLE_CONFIGS_APP}.services.application_form')
+            f'{table_configs_app()}.services.application_form')
     except ModuleNotFoundError:
         return None
 

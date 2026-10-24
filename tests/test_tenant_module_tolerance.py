@@ -244,6 +244,44 @@ class TenantModulesCheckTests(SimpleTestCase):
         self.assertEqual(
             found, [('cis.W012', 'myce.component_registry.course is missing.')])
 
+    def test_names_a_name_a_host_module_lacks(self):
+        """westmoreland's student.py has student_actions but no student_tabs:
+        cis.views.student cannot import, and the check says why."""
+        import types
+        from myce.component_registry import ActionRegistry
+        host = types.ModuleType('myce.component_registry.student')
+        host.student_actions = ActionRegistry()
+        with mock.patch.dict(sys.modules, {'myce.component_registry.student': host}):
+            found = self._ids(tenant_modules_check(None))
+        self.assertEqual(found, [(
+            'cis.W012', 'myce.component_registry.student has no student_tabs.')])
+
+
+class TableConfigsAppDefaultTests(SimpleTestCase):
+
+    def test_optional_users_tab_absent_without_the_setting(self):
+        """A host relying on the TABLE_CONFIGS_APP default: an absent opt-in
+        users tab is still "not adopted", not an AttributeError."""
+        from cis.views import users
+        missing = ModuleNotFoundError(name='myce_tenant_configs.services.login_log_table')
+        with self.settings(), mock.patch.object(users, 'get_table_config',
+                                                side_effect=missing):
+            del settings.TABLE_CONFIGS_APP
+            self.assertIsNone(users._login_log_table_config())
+
+    def test_no_module_reads_the_tenant_app_settings_directly(self):
+        """Both settings have defaults; only table_configs_app() and
+        tenant_services_app() know them."""
+        names = {'TABLE_CONFIGS_APP', 'TENANT_SERVICES_APP'}
+        offenders = []
+        for rel, tree in _package_sources():
+            for node in ast.walk(tree):
+                if (isinstance(node, ast.Attribute) and node.attr in names
+                        and isinstance(node.value, ast.Name)
+                        and node.value.id == 'settings'):
+                    offenders.append(f'{rel}:{node.lineno}')
+        self.assertEqual(offenders, [])
+
 
 class OnboardingStepsFallbackTests(SimpleTestCase):
 
@@ -296,6 +334,44 @@ class ComponentRegistryDefaultTests(SimpleTestCase):
         finally:
             if saved is not None:
                 parent.access_request = saved
+
+    def test_host_without_tabs_skips_the_stand_ins(self):
+        """csn ships only component_registry/__init__.py: without
+        tabs.TabRegistry a stand-in cannot be built, and django.setup() must
+        not fail over it. W012 names tabs and the registry left uninstalled."""
+        dotted = 'myce.component_registry.access_request'
+        real = component_registries.host_has
+        with mock.patch.dict(sys.modules, {'myce.component_registry.tabs': None}), \
+                mock.patch.object(component_registries, 'host_has',
+                                  lambda name: name != 'access_request' and real(name)):
+            sys.modules.pop(dotted, None)
+            self.assertEqual(component_registries.install_defaults(), [])
+            self.assertNotIn(dotted, sys.modules)
+            missing = component_registries.missing_registries()
+            found = [m.msg for m in tenant_modules_check(None) if m.id == 'cis.W012']
+        self.assertEqual(missing, ['tabs', 'access_request'])
+        self.assertIn('myce.component_registry.tabs is missing.', found)
+        self.assertIn('myce.component_registry.access_request is missing.', found)
+
+    def test_required_names_match_the_cis_imports(self):
+        """REQUIRED_NAMES drives W012; it must list exactly what cis imports
+        from the host registries, and every stand-in must supply its share."""
+        package = component_registries.PACKAGE
+        imported = {}
+        for _, tree in _package_sources():
+            for node in ast.walk(tree):
+                if (isinstance(node, ast.ImportFrom) and node.module
+                        and (node.module == package
+                             or node.module.startswith(package + '.'))):
+                    name = node.module[len(package) + 1:]
+                    imported.setdefault(name, set()).update(a.name for a in node.names)
+        self.assertEqual(
+            imported,
+            {k: set(v) for k, v in component_registries.REQUIRED_NAMES.items()})
+        for name, (factory, _) in component_registries.DEFAULTS.items():
+            self.assertLessEqual(
+                set(component_registries.REQUIRED_NAMES.get(name, ())), set(factory()),
+                name)
 
     def test_ready_installs_defaults_before_it_loads_them(self):
         from django.apps import apps

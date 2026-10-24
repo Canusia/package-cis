@@ -19,8 +19,12 @@ optional one whose features are skipped without it.
 
 W010 / W011 / W012 (package-cis#97): tenant modules cis expects -- table
 configs, required tenant service modules and host component registries
-cis has no default for. Each names one missing module; only the page or
-feature that needs it fails.
+cis has no default for (or names missing from a host registry module). Each
+names one missing module or name; only the page or feature that needs it
+fails.
+
+W013 (package-cis#85): ethos is installed but the mirror_logs M2M table is
+missing, because migration 0056 ran before ethos was.
 
 W002 (v0.0.42+): the tenant's table-config app should ship
 `services/document_types_table.py` for the CE Document Types page. The page
@@ -31,6 +35,7 @@ import importlib.util
 from django.conf import settings
 from django.core.checks import Error as CheckError, Warning as CheckWarning, register
 
+from cis.services.table_configs import table_configs_app
 from cis.services.tenant_services import get_tenant_service
 
 
@@ -75,7 +80,7 @@ def lockout_bypass_backend_check(app_configs, **kwargs):
 
 @register()
 def document_types_table_check(app_configs, **kwargs):
-    app = getattr(settings, 'TABLE_CONFIGS_APP', 'myce_tenant_configs')
+    app = table_configs_app()
     module = f'{app}.services.document_types_table'
     try:
         found = importlib.util.find_spec(module) is not None
@@ -100,7 +105,7 @@ def document_types_table_check(app_configs, **kwargs):
 @register()
 def hs_uploads_table_check(app_configs, **kwargs):
     """W003 (v0.0.43+): the High School Uploads tab's table config (#56)."""
-    app = getattr(settings, 'TABLE_CONFIGS_APP', 'myce_tenant_configs')
+    app = table_configs_app()
     module = f'{app}.services.hs_uploads_table'
     try:
         found = importlib.util.find_spec(module) is not None
@@ -126,7 +131,7 @@ def hs_uploads_table_check(app_configs, **kwargs):
 @register()
 def roleless_users_table_check(app_configs, **kwargs):
     """W005 (package-cis #71): the No Role tab's table config on /ce/users/."""
-    app = getattr(settings, 'TABLE_CONFIGS_APP', 'myce_tenant_configs')
+    app = table_configs_app()
     module = f'{app}.services.roleless_users_table'
     try:
         found = importlib.util.find_spec(module) is not None
@@ -152,7 +157,7 @@ def roleless_users_table_check(app_configs, **kwargs):
 def _optional_users_tab_check(module_name, tab, files, check_id):
     """Warn when the tenant has not shipped the table config for an opt-in
     /ce/users/ tab. Same contract as W005: without it the tab is not shown."""
-    app = getattr(settings, 'TABLE_CONFIGS_APP', 'myce_tenant_configs')
+    app = table_configs_app()
     module = f'{app}.services.{module_name}'
     try:
         found = importlib.util.find_spec(module) is not None
@@ -300,7 +305,7 @@ def tenant_modules_check(app_configs, **kwargs):
     tenant does not ship. Each is a Warning, not an Error: cis starts and
     only the page or feature that needs the module fails, with an
     ImproperlyConfigured naming it."""
-    from cis.component_registries import missing_registries
+    from cis.component_registries import missing_names, missing_registries
     from cis.services.table_configs import REQUIRED_TABLE_CONFIGS, table_configs_app
     from cis.services.tenant_services import tenant_services_app
 
@@ -334,4 +339,56 @@ def tenant_modules_check(app_configs, **kwargs):
                   f'Canusia/ewu). cis has no default for it, and the cis views '
                   f'that import it cannot load.'),
             id='cis.W012'))
+    for dotted, attr in missing_names():
+        messages.append(CheckWarning(
+            f'{dotted} has no {attr}.',
+            hint=(f'Define {attr} in {dotted} (see the Canusia/ewu module). '
+                  f'The cis views that import it cannot load.'),
+            id='cis.W012'))
     return messages
+
+
+# The one-off fix migration 0056's comment documents (#85).
+MIRROR_LOGS_FIX = (
+    '    from django.db import connection\n'
+    '    from cis.models.section import StudentRegistration\n'
+    '    with connection.schema_editor() as editor:\n'
+    '        editor.create_model(StudentRegistration.mirror_logs.through)')
+MIGRATION_0056 = ('cis', '0056_studentregistration_mirror_fields')
+
+
+@register()
+def mirror_logs_table_check(app_configs, **kwargs):
+    """W013 (#85): migration 0056 adds the StudentRegistration.mirror_logs
+    M2M only when ethos is installed. A tenant that ran 0056 without ethos and
+    installed ethos later has the field in its migration state but no table,
+    and every mirror attempt fails. Silent when the database is unreachable
+    or 0056 has not run yet (migrate creates the table then)."""
+    from cis.integrations.ethos import ethos_enabled
+    if not ethos_enabled():
+        return []
+    from django.apps import apps
+    from django.core.exceptions import FieldDoesNotExist
+    from django.db import connection
+    from django.db.migrations.recorder import MigrationRecorder
+
+    model = apps.get_model('cis', 'StudentRegistration')
+    try:
+        through = model._meta.get_field('mirror_logs').remote_field.through
+    except FieldDoesNotExist:
+        return []
+    table = through._meta.db_table
+    try:
+        if MIGRATION_0056 not in MigrationRecorder(connection).applied_migrations():
+            return []
+        if table in connection.introspection.table_names():
+            return []
+    except Exception:  # database unreachable or not configured: not ours to report
+        return []
+    return [CheckWarning(
+        f'The ethos app is installed but the {table} table is missing.',
+        hint=('Migration 0056 ran before ethos was installed, so it did not '
+              'create the StudentRegistration.mirror_logs table. After ethos\'s '
+              'own migrations have run, create it once from '
+              '`python manage.py shell`:\n' + MIRROR_LOGS_FIX),
+        id='cis.W013')]

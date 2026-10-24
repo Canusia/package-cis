@@ -5,7 +5,6 @@ import inspect
 import logging
 
 from django.apps import apps
-from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.contrib import messages
 from django.shortcuts import get_object_or_404, redirect, render
@@ -27,7 +26,7 @@ from cis.serializers.user import (
 )
 from cis.services import user_deletion
 from cis.services.role_access import is_roleless, roleless_users
-from cis.services.table_configs import get_table_config, lazy_table_config
+from cis.services.table_configs import get_table_config, lazy_table_config, table_configs_app
 from cis.utils import CIS_user_only
 
 from cis.forms.user import UserForm
@@ -202,7 +201,7 @@ def _optional_table_config(module_name, **kwargs):
     try:
         module = get_table_config(module_name)
     except ModuleNotFoundError as exc:
-        if exc.name == f'{settings.TABLE_CONFIGS_APP}.services.{module_name}':
+        if exc.name == f'{table_configs_app()}.services.{module_name}':
             return None
         raise
     return module.build_config(**kwargs)
@@ -236,7 +235,7 @@ def _roleless_users_table_config():
     try:
         module = get_table_config('roleless_users_table')
     except ModuleNotFoundError as exc:
-        if exc.name == f'{settings.TABLE_CONFIGS_APP}.services.roleless_users_table':
+        if exc.name == f'{table_configs_app()}.services.roleless_users_table':
             return None
         raise
     return module.build_config(
