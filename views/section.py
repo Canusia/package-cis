@@ -3,6 +3,8 @@ Class Sections
 """
 
 import csv, io, logging, uuid
+from datetime import timedelta
+from django.utils import timezone
 from django.utils.http import content_disposition_header
 
 from django.db.models.functions import TruncDate
@@ -60,6 +62,7 @@ from cis.forms.section import AddNewHighSchoolClassOfferingForm
 from cis.menu import cis_menu, draw_menu
 from cis.services.importers.class_section_schema import ClassSectionRow
 from cis.services.term_hierarchy import filter_by_term, expand_term_ids
+from cis.services.tenant_services import get_tenant_override
 from cis.services.table_configs import get_table_config
 build_registrations_table_config = get_table_config('registrations_table').build_config
 build_sections_table_config = get_table_config('sections_table').build_config
@@ -314,6 +317,16 @@ class ClassesRegisteredByCampusViewSet(viewsets.ReadOnlyModelViewSet):
         )
         return records
 
+
+def _query_date(value):
+    """A YYYY-MM-DD query parameter as a date; None when absent or bad."""
+    from django.utils.dateparse import parse_date
+    try:
+        return parse_date(value or '')
+    except ValueError:
+        return None
+
+
 @eager_queryset(with_class_section_related)
 class ClassSectionViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ClassSectionSerializer
@@ -439,7 +452,15 @@ class ClassSectionViewSet(viewsets.ReadOnlyModelViewSet):
                     )
 
                 if highschool_id:
-                    if cte_id:
+                    # A tenant may widen which sections a school's students see
+                    # (nnu: consortium siblings), #87.
+                    visibility = get_tenant_override(
+                        'section_visibility', 'sections_for_highschool')
+                    if visibility is not None:
+                        records = visibility(
+                            records, highschool_id=highschool_id,
+                            cte_id=cte_id, request=self.request)
+                    elif cte_id:
                         records = records.filter(
                             Q(highschool__id=highschool_id) | Q(highschool__id=cte_id)
                         )
@@ -452,6 +473,25 @@ class ClassSectionViewSet(viewsets.ReadOnlyModelViewSet):
                     records = records.filter(
                         term__academic_year__id=academic_year_id
                     )
+
+                # Section due dates (#86): sections whose registration window
+                # overlaps [registration_open_start, registration_open_end],
+                # and sections with grades due within a week or a month.
+                reg_open_start = _query_date(
+                    self.request.GET.get('registration_open_start'))
+                reg_open_end = _query_date(
+                    self.request.GET.get('registration_open_end'))
+                if reg_open_start:
+                    records = records.filter(registration_end_date__gte=reg_open_start)
+                if reg_open_end:
+                    records = records.filter(registration_start_date__lte=reg_open_end)
+                grade_due_within = self.request.GET.get('grade_due_within')
+                if grade_due_within in ('1w', '1m'):
+                    today = timezone.localdate()
+                    window = 7 if grade_due_within == '1w' else 30
+                    records = records.filter(
+                        grade_due_date__gte=today,
+                        grade_due_date__lte=today + timedelta(days=window))
                     
                 if teacher_id:
                     # Same PT-1 idiom as the `term` guard above: teacher__id is
