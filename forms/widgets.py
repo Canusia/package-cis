@@ -198,3 +198,45 @@ class DualListSelectMultiple(forms.SelectMultiple):
             'disabled': bool(context['widget']['attrs'].get('disabled')),
         })
         return context
+
+
+class HighSchoolStateSelect(forms.Select):
+    """A High School select whose options carry ``data-state`` (#114 item 11).
+
+    student_application.js filters the options by a ``highschool_state``
+    picker when the form has one; give a tenant's ``highschool`` field this
+    widget and add the picker (see ``highschool_state_choices`` /
+    ``highschool_state_initial``). Forms without the picker are unaffected.
+    """
+
+    def create_option(self, name, value, label, selected, index, subindex=None, attrs=None):
+        option = super().create_option(name, value, label, selected, index, subindex, attrs)
+        # value is a ModelChoiceIteratorValue, or '' for the placeholder.
+        instance = getattr(value, 'instance', None)
+        if instance is not None and getattr(instance, 'state', None):
+            option['attrs']['data-state'] = instance.state
+        return option
+
+
+def highschool_state_choices(include=None):
+    """Choices for a High School State picker: the distinct states of active
+    high schools, plus ``include`` (a stored state no active school reports
+    any more) so it stays selectable."""
+    from cis.models.highschool import HighSchool
+
+    states = list(
+        HighSchool.objects.filter(status__iexact='Active')
+        .exclude(state='').exclude(state__isnull=True)
+        .values_list('state', flat=True).distinct().order_by('state'))
+    if include and include not in states:
+        states.append(include)
+    return [('', 'Select a State')] + [(s, s) for s in states]
+
+
+def highschool_state_initial(student, stored=None):
+    """The picker's initial value: the stored one (e.g. from student.meta),
+    else the state of the student's current high school, else ''."""
+    if stored:
+        return stored
+    highschool = getattr(student, 'highschool', None) if student else None
+    return (getattr(highschool, 'state', '') or '') if highschool else ''

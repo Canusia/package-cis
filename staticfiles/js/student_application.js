@@ -108,6 +108,50 @@ $(function () {
     .find('input, select, textarea')
     .prop('required', false);
 
+  // High School State picker (#114 item 11): only on forms that have one.
+  // Options carry data-state (cis.forms.widgets.HighSchoolStateSelect); the
+  // list is rebuilt from a copy so the multipleSelect plugin sees the change.
+  var $allHighschoolOptions = $('#id_highschool option').clone();
+
+  function filter_highschool_options() {
+    if ($('#id_highschool_state').length === 0) return;
+    var selectedState = $('#id_highschool_state').val();
+    var $hsSelect = $('#id_highschool');
+    var current = $hsSelect.val();
+    var visibleCount = 0;
+
+    $hsSelect.empty();
+    $allHighschoolOptions.each(function () {
+      var $opt = $(this);
+      if (!$opt.val()) {
+        $hsSelect.append($opt.clone());
+      } else if (!selectedState || $opt.data('state') === selectedState) {
+        $hsSelect.append($opt.clone());
+        visibleCount += 1;
+      }
+    });
+    var stillThere = current && $hsSelect.find('option').filter(function () {
+      return $(this).val() === current;
+    }).length;
+    $hsSelect.val(stillThere ? current : '');
+    if ($.fn.multipleSelect && $hsSelect.data('multipleSelect')) {
+      $hsSelect.multipleSelect('refresh');
+    }
+
+    var $hint = $('#highschool_filter_hint');
+    if ($hint.length === 0) {
+      $hint = $('<small id="highschool_filter_hint" class="form-text text-muted"></small>');
+      $('#div_id_highschool').append($hint);
+    }
+    var noun = visibleCount === 1 ? 'school' : 'schools';
+    $hint.text(selectedState
+      ? 'Showing ' + visibleCount + ' ' + noun + ' in ' + selectedState
+      : 'Showing all ' + visibleCount + ' ' + noun);
+  }
+
+  $(document).on('change', '#id_highschool_state', filter_highschool_options);
+  filter_highschool_options();
+
   if ($.fn.multipleSelect) {
     $('#id_highschool').multipleSelect({
       filter: true,
