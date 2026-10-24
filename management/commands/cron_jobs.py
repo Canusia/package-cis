@@ -39,12 +39,18 @@ def due_runs(now, interval):
             log = CronLog.objects.filter(
                 cron=job, run_scheduled_for=scheduled_for).first()
             if log is None:
-                log = CronLog(cron=job, run_scheduled_for=scheduled_for)
-            elif log.run_started_on or (log.meta or {}).get('dispatched_on'):
+                log = CronLog.objects.create(
+                    cron=job, run_scheduled_for=scheduled_for, meta={})
+            # Claim the run with a conditional UPDATE, so of two overlapping
+            # ticks only one dispatches it. A run is claimed before it
+            # executes: one that crashes mid-way is not retried.
+            claimed = CronLog.objects.filter(
+                pk=log.pk, run_started_on__isnull=True,
+            ).exclude(meta__has_key='dispatched_on').update(
+                meta={**(log.meta or {}),
+                      'dispatched_on': timezone.now().isoformat()})
+            if not claimed:
                 continue
-            log.meta = {**(log.meta or {}),
-                        'dispatched_on': timezone.now().isoformat()}
-            log.save()
             job_queue[job.command] = str(executor)
 
     return job_queue

@@ -88,3 +88,11 @@ class DueRunsTests(TestCase):
         self.assertEqual(
             due_runs(datetime(2026, 10, 23, 14, 0), 10),
             {'notify_missing_syllabi': '2026-10-23 13:55:00'})
+
+    def test_a_claimed_run_is_not_dispatched_again(self):
+        # Another tick already claimed 13:55 (meta.dispatched_on set).
+        CronLog.objects.create(
+            cron=self.job,
+            run_scheduled_for=timezone.make_aware(datetime(2026, 10, 23, 13, 55)),
+            meta={'dispatched_on': '2026-10-23T14:00:00'})
+        self.assertEqual(due_runs(datetime(2026, 10, 23, 14, 0), 10), {})
