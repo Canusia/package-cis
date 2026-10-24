@@ -7,6 +7,8 @@ class charges and payments are the student's, ``school_charge`` /
 its TENANT_SERVICES_APP defining any of ``debits``, ``credits``,
 ``student_balance``, ``school_balance`` and ``balances``, with the same
 ``(student, term=None, ...)`` shape; the ones it leaves out fall back to these.
+Override the balance functions together with ``debits`` / ``credits``: the
+default balances read the package's label-based ledger, not the tenant's.
 The ``Student`` methods of the same names delegate here, so the package's call
 sites stay unchanged.
 """
@@ -15,9 +17,11 @@ from django.db import models
 from cis.services.tenant_services import get_tenant_override
 
 
-# The defaults call each other directly, not through resolve(): a tenant that
-# overrides debits() with its own keywords (nnu: payer=) overrides the
-# balances built on it too.
+# The defaults call each other directly, not through resolve(), because a
+# tenant's debits()/credits() may take other keywords (nnu: payer=) than the
+# defaults pass. So the balances do NOT follow an overridden debits/credits:
+# a tenant that changes how the ledger is partitioned overrides
+# student_balance / school_balance (and balances) as well.
 def resolve(name):
     """The tenant's override of balance function ``name``, else the default."""
     return get_tenant_override('student_balances', name) or globals()[name]

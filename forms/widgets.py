@@ -234,9 +234,13 @@ def highschool_state_choices(include=None):
 
 
 def highschool_state_initial(student, stored=None):
-    """The picker's initial value: the stored one (e.g. from student.meta),
-    else the state of the student's current high school, else ''."""
-    if stored:
-        return stored
+    """The picker's initial value: the state of the student's current high
+    school, else the stored one (e.g. from student.meta), else ''.
+
+    The school wins: if staff changed the school after the state was stored,
+    the stored state would hide the selected school and the form would
+    silently drop it on save.
+    """
     highschool = getattr(student, 'highschool', None) if student else None
-    return (getattr(highschool, 'state', '') or '') if highschool else ''
+    state = (getattr(highschool, 'state', '') or '') if highschool else ''
+    return state or stored or ''

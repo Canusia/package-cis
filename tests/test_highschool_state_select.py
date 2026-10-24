@@ -37,8 +37,11 @@ class HighSchoolStateSelectTests(TestCase):
     def test_stored_state_stays_selectable(self):
         self.assertIn('ZX', [v for v, _ in highschool_state_choices(include='ZX')])
 
-    def test_initial_prefers_the_stored_value(self):
+    def test_initial_prefers_the_current_school(self):
+        # A stored state from before the school changed must not hide it.
         student = type('S', (), {'highschool': self.oregon})()
-        self.assertEqual(highschool_state_initial(student, stored='ZI'), 'ZI')
+        self.assertEqual(highschool_state_initial(student, stored='ZI'), 'ZO')
         self.assertEqual(highschool_state_initial(student), 'ZO')
+        no_school = type('S', (), {'highschool': None})()
+        self.assertEqual(highschool_state_initial(no_school, stored='ZI'), 'ZI')
         self.assertEqual(highschool_state_initial(None), '')

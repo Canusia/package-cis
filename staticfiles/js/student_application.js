@@ -125,7 +125,7 @@ $(function () {
       var $opt = $(this);
       if (!$opt.val()) {
         $hsSelect.append($opt.clone());
-      } else if (!selectedState || $opt.data('state') === selectedState) {
+      } else if (!selectedState || $opt.attr('data-state') === selectedState) {
         $hsSelect.append($opt.clone());
         visibleCount += 1;
       }
@@ -134,6 +134,7 @@ $(function () {
       return $(this).val() === current;
     }).length;
     $hsSelect.val(stillThere ? current : '');
+    if (current && !stillThere) $hsSelect.trigger('change');
     if ($.fn.multipleSelect && $hsSelect.data('multipleSelect')) {
       $hsSelect.multipleSelect('refresh');
     }
