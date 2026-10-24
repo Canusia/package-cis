@@ -1200,6 +1200,14 @@ def do_dangling_bulk_action(request):
             'message': 'This action requires POST.',
         }, status=405)
 
+    # Same gate as the No Role tab's do_roleless_bulk_action: both actions
+    # change or delete user accounts.
+    if not request.user.can_edit_users:
+        return JsonResponse({
+            'status': 'error',
+            'message': 'You do not have permission to change user accounts.',
+        }, status=403)
+
     valid_ids = []
     for record_id in ids:
         try:

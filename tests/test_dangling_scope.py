@@ -26,6 +26,9 @@ class DanglingScopeTests(TestCase):
         self.ce_user = CustomUser.objects.create_user(
             username='scope_ce', email='scope_ce@example.com', password='x')
         self.ce_user.groups.add(ce_group)
+        # Both actions need can_edit_users (cis#114 item 7).
+        self.ce_user.campus = {'manage_staff_accounts': 'Yes'}
+        self.ce_user.save()
         self.client.force_login(self.ce_user)
 
     def tearDown(self):

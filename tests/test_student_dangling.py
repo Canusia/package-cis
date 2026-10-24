@@ -262,3 +262,42 @@ class DanglingTabTests(DanglingStudentFixtureMixin, TestCase):
         self.assertEqual(resp.status_code, 200)
         body = resp.content.decode()
         self.assertNotIn('function do_bulk_action(', body)
+
+
+class DanglingStudentPermissionTests(DanglingStudentFixtureMixin, TestCase):
+    """Same gate as the No Role tab's do_roleless_bulk_action: CE staff
+    without manage_staff_accounts can't change or delete accounts."""
+    def setUp(self):
+        self.build_fixture()
+        self.build_dangling()
+        self.url = reverse('cis:student_do_dangling_bulk_action')
+
+    def tearDown(self):
+        self.tear_down_fixture()
+
+    def _login_staff_without_user_rights(self):
+        staff = CustomUser.objects.create_user(
+            username='dangle_perm_staff', email='dangle_perm_staff@example.com',
+            password='x')
+        staff.groups.add(Group.objects.get_or_create(name='ce')[0])
+        self.assertFalse(staff.can_edit_users)
+        self.client.force_login(staff)
+
+    def test_delete_account_requires_permission_to_edit_users(self):
+        self._login_staff_without_user_rights()
+        resp = self.client.post(self.url, {
+            'action': 'delete_account',
+            'ids[]': [str(self.dangling_plain.id)],
+        })
+        self.assertEqual(resp.status_code, 403)
+        self.assertTrue(CustomUser.objects.filter(pk=self.dangling_plain.pk).exists())
+
+    def test_revoke_access_requires_permission_to_edit_users(self):
+        self._login_staff_without_user_rights()
+        resp = self.client.post(self.url, {
+            'action': 'revoke_access',
+            'ids[]': [str(self.dangling_plain.id)],
+        })
+        self.assertEqual(resp.status_code, 403)
+        self.dangling_plain.refresh_from_db()
+        self.assertIn('student', self.dangling_plain.get_roles())
