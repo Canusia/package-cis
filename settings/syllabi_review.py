@@ -44,11 +44,20 @@ class syllabi_review(forms.Form):
     )
 
     starting_date = forms.DateField(label="Email Start Date")
-    ending_date = forms.DateField(label="Email End Date (until)")
+    ending_date = forms.DateField(
+        label="Email End Date (until)",
+        help_text='Emails go out on the start and end dates too.'
+    )
 
     cron = forms.CharField(
         max_length=20,
-        help_text='Min Hr Day Month WeekDay',
+        # the site's own zone and check interval, not a fixed one (#117)
+        help_text=(
+            f'Min Hr Day Month WeekDay, in the site\'s time zone '
+            f'({settings.TIME_ZONE}). Scheduled jobs are checked every '
+            f'{getattr(settings, "MYCE_CRON_INTERVAL", 10)} minutes, so a run '
+            'goes out at the first check at or after the scheduled time.'
+        ),
         label="Cron Expression for emails to instructors pending syllabus, marked as needs update and faculty reminders",
         validators=[validate_cron]
     )

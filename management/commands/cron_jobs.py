@@ -5,10 +5,45 @@ from django.conf import settings
 
 from cron_validator import CronValidator
 
+from django.utils import timezone
+
 from cis.management.campus_command import run_for_each_campus
-from cis.models.crontab import CronTab
+from cis.models.crontab import CronLog, CronTab
 
 logger = logging.getLogger(__name__)
+
+
+def due_runs(now, interval):
+    """{command: scheduled time} for jobs due in the tick at `now`.
+
+    A tick covers the `interval` minutes up to and including `now`
+    ([now - (interval - 1), now], to the minute), so a job runs at the first
+    tick at or after its scheduled time -- never early -- and back-to-back
+    ticks don't overlap. Runs whose CronLog is already marked as started are
+    skipped, so a run is never repeated (#117)."""
+    end = now.replace(microsecond=0, second=0)
+    start = end - datetime.timedelta(minutes=int(interval) - 1)
+
+    job_queue = {}
+    for job in CronTab.objects.all():
+        executors = CronValidator.get_execution_time(
+            job.cron, from_dt=start, to_dt=end
+        )
+
+        for executor in executors or []:
+            scheduled_for = executor
+            if timezone.is_naive(scheduled_for):
+                scheduled_for = timezone.make_aware(scheduled_for)
+            if CronLog.objects.filter(
+                cron=job,
+                run_scheduled_for=scheduled_for,
+                run_started_on__isnull=False,
+            ).exists():
+                continue
+            job_queue[job.command] = str(executor)
+
+    return job_queue
+
 
 class Command(BaseCommand):
     '''
@@ -20,34 +55,15 @@ class Command(BaseCommand):
 
         CronTab.schedule_upcoming_tasks(hours=24)
         
-        # this needs to mirror crontab/models.py
-        cron_scheduler_start_time = datetime.datetime.now().replace(
-            microsecond=0,
-            second=0
-        )
-
-        cron_scheduler_end_time = cron_scheduler_start_time + datetime.timedelta(
-            minutes=getattr(settings, 'MYCE_CRON_INTERVAL')
-        )
-        
         try:
             call_command('send_bulk_mail')
         except Exception as e:
             logger.error(e)
         
-        jobs = CronTab.objects.all()
-        job_queue = {}
-
-        for job in jobs:
-            executors = CronValidator.get_execution_time(
-                job.cron,
-                from_dt=cron_scheduler_start_time,
-                to_dt=cron_scheduler_end_time
-            )
-            
-            if executors:
-                for executor in executors:
-                    job_queue[job.command] = str(executor)
+        job_queue = due_runs(
+            datetime.datetime.now(),
+            getattr(settings, 'MYCE_CRON_INTERVAL')
+        )
 
         # Scheduled commands run once per campus, each in its own campus
         # context, error handling and lock (MC-04); a single-campus deployment

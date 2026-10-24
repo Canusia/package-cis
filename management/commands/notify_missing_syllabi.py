@@ -20,6 +20,22 @@ from cis.models.section import ClassSection, ClassSectionSyllabi
 from cis.models.term import Term
 from cis.models.course import CourseAdministrator
 
+# ClassSection.status codes for a cancelled section (CLASS_STATUS 'C').
+CANCELLED_STATUSES = ('C',)
+
+
+def sections_missing_syllabi(term_ids):
+    """Sections in term_ids with no syllabus uploaded. Cancelled sections
+    are skipped, so their instructors are not asked for a syllabus (#117)."""
+    return ClassSection.objects.filter(
+        term__id__in=term_ids
+    ).exclude(
+        id__in=ClassSectionSyllabi.objects.filter(
+            class_sections__term__id__in=term_ids
+        ).values_list('class_sections__id')
+    ).exclude(status__in=CANCELLED_STATUSES)
+
+
 class Command(CampusCommand):
     help = 'Syllabus Review Emails'
 
@@ -56,10 +72,11 @@ class Command(CampusCommand):
         
         email_settings = syllabi_review.from_db()
 
-        starting_date = datetime.strptime(email_settings.get('starting_date'), "%m/%d/%Y")
-        ending_date = datetime.strptime(email_settings.get('ending_date'), "%m/%d/%Y")
+        starting_date = datetime.strptime(email_settings.get('starting_date'), "%m/%d/%Y").date()
+        ending_date = datetime.strptime(email_settings.get('ending_date'), "%m/%d/%Y").date()
 
-        today = datetime.now()
+        # compare dates so the start and end dates are both included (#117)
+        today = date.today()
        
         test_mode = True if email_settings.get('mode').lower() == 'test' else False
         testers = email_settings.get('testers', 'kadaji@gmail.com').split(',')
@@ -77,19 +94,18 @@ class Command(CampusCommand):
             return
 
         # get all teachers who have not uploaded syllabus
-        classes_with_missing_syllabi = ClassSection.objects.filter(
-            term__id__in=email_settings.get('term')
-        ).exclude(
-            id__in=ClassSectionSyllabi.objects.filter(
-                class_sections__term__id__in=email_settings.get('term')
-            ).values_list('class_sections__id')
+        classes_with_missing_syllabi = sections_missing_syllabi(
+            email_settings.get('term')
         )
 
+        # one email per instructor per term, so {{term}} matches the
+        # sections listed (#117)
         email_summary = {}
         for section in classes_with_missing_syllabi:
             if section.teacher:
-                if not email_summary.get(section.teacher.user.id):
-                    email_summary[section.teacher.user.id] = {
+                key = (section.teacher.user.id, section.term_id)
+                if not email_summary.get(key):
+                    email_summary[key] = {
                         'first_name': section.teacher.user.first_name,
                         'last_name': section.teacher.user.last_name,
                         'secondary_email': section.teacher.user.secondary_email,
@@ -98,12 +114,12 @@ class Command(CampusCommand):
                         'sections': []
                     }
 
-                email_summary[section.teacher.user.id]['sections'].append(
+                email_summary[key]['sections'].append(
                     section
                 )
 
         emails_sent = 0
-        for user_id, recipient in email_summary.items():
+        for key, recipient in email_summary.items():
         
             subject, source = syllabi_review.email_template(
                 'missing_syllabus', email_settings)
@@ -154,7 +170,7 @@ class Command(CampusCommand):
             )
             emails_sent += 1
 
-        summary += f'Sent missing syllabus notification to {emails_sent} instructors.\r\n'
+        summary += f'Sent {emails_sent} missing syllabus notification(s) (one per instructor per term).\r\n'
 
         # notify teachers will no syllabus marked as needs update
         classes_with_syl_needs_update = ClassSection.objects.filter(
@@ -233,7 +249,7 @@ class Command(CampusCommand):
             term__id__in=email_settings.get('term'),
             syllabi_status__iexact='pending review'
         ).exclude(
-            status='cancelled'
+            status__in=CANCELLED_STATUSES
         ).values(
             'course__name', 'teacher__user__first_name', 'teacher__user__last_name'
         ).annotate(
