@@ -14,7 +14,10 @@ from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from cis.models.term import AcademicYear
-from cis.campus_gate import scope_queryset_by_campus, deny_other_campus
+from cis.campus_context import is_multi_campus
+from cis.campus_gate import (
+    can_process_campus, deny_other_campus, processable_ids, scope_queryset_by_campus,
+)
 from cis.forms.term import AcademicYearForm, MigrateAcademicYearForm, AcademicYearUploadForm
 from cis.menu import cis_menu, draw_menu
 from cis.services.table_configs import get_table_config
@@ -53,6 +56,11 @@ from django.views.decorators.clickjacking import xframe_options_exempt
 
 def delete_record(request, record_id):
     record = get_object_or_404(AcademicYear, pk=record_id)
+    if is_multi_campus() and not can_process_campus(request.user, record.campus):
+        return JsonResponse({
+            'message': 'You are not authorized to access this campus.',
+            'status': 'error'
+        }, status=403)
 
     try:
         record.delete()
@@ -87,7 +95,7 @@ def detail(request, record_id):
         return denied
 
     migration_form = MigrateAcademicYearForm(record=record, user=request.user)
-    form = AcademicYearForm(instance=record)
+    form = AcademicYearForm(instance=record, user=request.user)
 
     if request.method == 'POST':
 
@@ -118,7 +126,7 @@ def detail(request, record_id):
                     'Please correct the errors and try again',
                     'list-group-item-danger')
         else:
-            form = AcademicYearForm(request.POST, instance=record)
+            form = AcademicYearForm(request.POST, instance=record, user=request.user)
 
             if form.is_valid():
                 record = form.save(commit=False)
@@ -209,7 +217,7 @@ def add_new(request):
         if request.POST.get('upload_file') == "Import Academic Years":
             return import_academic_years_from_file(request)
 
-        form = AcademicYearForm(request.POST)
+        form = AcademicYearForm(request.POST, user=request.user)
         ajax = request.POST.get('ajax', None)
 
         if form.is_valid():
@@ -239,7 +247,7 @@ def add_new(request):
                 }
                 return JsonResponse(data)
     else:
-        form = AcademicYearForm()
+        form = AcademicYearForm(user=request.user)
 
     if ajax == '1':
         base_template = 'cis/ajax-base.html'
@@ -274,16 +282,21 @@ def delete_academic_years(request):
     referenced by a Term are protected (Term.academic_year is on_delete=PROTECT)
     and reported as failures rather than deleted."""
     ids = request.POST.getlist('ids[]')
+    if is_multi_campus():
+        # Years on campuses this user doesn't process count as failures (#116).
+        allowed = set(processable_ids(AcademicYear, ids, request.user))
     deleted, failed = 0, 0
     for pk in ids:
         try:
+            if is_multi_campus() and pk not in allowed:
+                raise PermissionError(pk)
             AcademicYear.objects.get(pk=pk).delete()
             deleted += 1
         except Exception:
             failed += 1
     msg = f'Deleted {deleted} academic year(s).'
     if failed:
-        msg += f' {failed} could not be deleted (in use by term(s)).'
+        msg += f' {failed} could not be deleted (in use by term(s), or on a campus you do not process).'
     return JsonResponse({
         'action': 'display',
         'status': 'success' if not failed else 'warning',

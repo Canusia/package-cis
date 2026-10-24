@@ -13,7 +13,8 @@ from django.urls import reverse
 from django.views.decorators.clickjacking import xframe_options_exempt
 
 from cis.models.term import Term
-from cis.campus_gate import scope_queryset_by_campus, deny_other_campus
+from cis.campus_context import is_multi_campus
+from cis.campus_gate import can_process_campus, deny_other_campus, scope_queryset_by_campus
 from cis.forms.term import AcademicYearForm, TermForm, MigrateTermForm, TermUploadForm
 from cis.menu import cis_menu, draw_menu
 from cis.services.table_configs import get_table_config
@@ -195,6 +196,11 @@ def do_bulk_action(request):
 
 def delete_record(request, record_id):
     record = get_object_or_404(Term, pk=record_id)
+    if is_multi_campus() and not can_process_campus(request.user, record.academic_year.campus):
+        return JsonResponse({
+            'message': 'You are not authorized to access this campus.',
+            'status': 'error'
+        }, status=403)
 
     try:
         record.delete()

@@ -5,7 +5,7 @@ from django.forms import ValidationError
 
 from cis.utils import get_movable_reference_choices, move_references
 from cis.campus_context import is_multi_campus
-from cis.campus_gate import scope_queryset_by_campus
+from cis.campus_gate import get_process_campus_ids, scope_queryset_by_campus
 from cis.services.term_hierarchy import apply_term_tree, term_with_descendant_ids
 from cis.models.term import (
     Term, AcademicYear
@@ -204,11 +204,19 @@ class AcademicYearForm(forms.ModelForm):
             'meta'
         ]
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.fields['hs_start_date'].required = True
         self.fields['hs_end_date'].required = True
+
+        # Multi-campus (#116): a CE user may only put a year on a campus they
+        # process, or the year -- and its terms -- would move out of reach.
+        campus_field = self.fields.get('campus')
+        if (campus_field is not None and user is not None and is_multi_campus()
+                and not getattr(user, 'is_superuser', False)):
+            campus_field.queryset = campus_field.queryset.filter(
+                id__in=get_process_campus_ids(user))
         
     def clean_hs_start_date(self):
         data = self.cleaned_data['hs_start_date']
