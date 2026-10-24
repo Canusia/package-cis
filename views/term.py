@@ -47,12 +47,14 @@ class TermViewSet(viewsets.ReadOnlyModelViewSet):
         # Per-term counts over the term's ClassSections (default `term` FK,
         # reverse query name `classsection`). All four aggregates traverse the
         # same single join, so distinct=True yields correct, non-inflated counts.
+        # Cancelled sections don't count as offered (#114 item 9).
+        offered = ~Q(classsection__status='C')
         result = Term.objects.select_related(
             'academic_year__campus', 'parent').annotate(
-            num_sections=Count('classsection', distinct=True),
-            num_highschools=Count('classsection__highschool', distinct=True),
-            num_teachers=Count('classsection__teacher', distinct=True),
-            num_courses=Count('classsection__course', distinct=True),
+            num_sections=Count('classsection', distinct=True, filter=offered),
+            num_highschools=Count('classsection__highschool', distinct=True, filter=offered),
+            num_teachers=Count('classsection__teacher', distinct=True, filter=offered),
+            num_courses=Count('classsection__course', distinct=True, filter=offered),
         )
 
         if academic_year_id:

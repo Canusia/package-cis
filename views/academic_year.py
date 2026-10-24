@@ -42,11 +42,13 @@ class AcademicYearViewSet(viewsets.ReadOnlyModelViewSet):
         # (AcademicYear <- Term.academic_year <- ClassSection.term). distinct=True
         # keeps the shared multi-hop join from inflating the counts. Real
         # annotations (not method fields) so server-side sorting works.
+        # Cancelled sections don't count as offered (#114 item 9).
+        offered = ~Q(term__classsection__status='C')
         records = AcademicYear.objects.select_related('campus').annotate(
-            num_sections=Count('term__classsection', distinct=True),
-            num_highschools=Count('term__classsection__highschool', distinct=True),
-            num_teachers=Count('term__classsection__teacher', distinct=True),
-            num_courses=Count('term__classsection__course', distinct=True),
+            num_sections=Count('term__classsection', distinct=True, filter=offered),
+            num_highschools=Count('term__classsection__highschool', distinct=True, filter=offered),
+            num_teachers=Count('term__classsection__teacher', distinct=True, filter=offered),
+            num_courses=Count('term__classsection__course', distinct=True, filter=offered),
         )
         # Campus gate: ce staff see only academic years for their processable
         # campuses (+ null-campus). Superusers/non-ce unchanged.
