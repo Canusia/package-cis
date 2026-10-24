@@ -707,6 +707,20 @@ SLIMMED_FEEDS = {
 # there is nothing to compare it against.
 
 
+def _unsigned(value):
+    """A pre-signed storage URL minus its signing query string.
+
+    The S3 backend signs each `media` URL with Expires = now + the querystring
+    lifetime, in whole seconds, so the slim and full serializations of the
+    same row differ in Expires and Signature whenever they straddle a second
+    boundary. The object URL is what the serializer is responsible for.
+    """
+    if isinstance(value, str) and ('Signature=' in value
+                                   or 'X-Amz-Signature=' in value):
+        return value.split('?', 1)[0]
+    return value
+
+
 class SlimSerializerMatchesTheOriginalTests(TestCase):
     """A narrowed serializer must return the same *values*, not just the same
     keys.
@@ -784,7 +798,7 @@ class SlimSerializerMatchesTheOriginalTests(TestCase):
                         # narrowed serializer answering it is an improvement,
                         # not a mismatch.
                         continue
-                    if slim_value != full_value:
+                    if _unsigned(slim_value) != _unsigned(full_value):
                         mismatches.append(
                             f'{path}: {slim_value!r} != {full_value!r}')
                 self.assertEqual(
