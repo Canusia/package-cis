@@ -68,10 +68,10 @@ def drop_wd_tab(request, record):
 def details_tab(request, record):
     from cis.forms.term import AcademicYearForm
     if request.method == 'POST' and request.POST.get('action') != 'migrate_academic_year':
-        form = AcademicYearForm(request.POST, instance=record)
+        form = AcademicYearForm(request.POST, instance=record, user=request.user)
         form.is_valid()
     else:
-        form = AcademicYearForm(instance=record)
+        form = AcademicYearForm(instance=record, user=request.user)
     return {'form': form, 'record': record}
 
 

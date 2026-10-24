@@ -14,7 +14,9 @@ from django.views.decorators.clickjacking import xframe_options_exempt
 
 from cis.models.term import Term
 from cis.campus_context import is_multi_campus
-from cis.campus_gate import can_process_campus, deny_other_campus, scope_queryset_by_campus
+from cis.campus_gate import (
+    can_process_campus, deny_other_campus, processable_ids, scope_queryset_by_campus,
+)
 from cis.forms.term import AcademicYearForm, TermForm, MigrateTermForm, TermUploadForm
 from cis.menu import cis_menu, draw_menu
 from cis.services.table_configs import lazy_table_config
@@ -168,9 +170,15 @@ def do_bulk_action(request):
 
     if action == 'delete_terms':
         ids = request.POST.getlist('ids[]')
+        if is_multi_campus():
+            # Terms on campuses this user doesn't process count as failures (#116).
+            allowed = set(processable_ids(
+                Term, ids, request.user, campus_path='academic_year__campus'))
         deleted, failed = 0, []
         for pk in ids:
             try:
+                if is_multi_campus() and pk not in allowed:
+                    raise PermissionError('not on a campus you process')
                 Term.objects.get(pk=pk).delete()
                 deleted += 1
             except Exception as e:

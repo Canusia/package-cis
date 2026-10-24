@@ -129,3 +129,25 @@ class AcademicYearCampusScopeTests(TestCase):
         self.assertIn(b'1 could not be deleted', resp.content)
         self.assertFalse(AcademicYear.objects.filter(pk=self.ay_a.pk).exists())
         self.assertTrue(AcademicYear.objects.filter(pk=self.ay_b.pk).exists())
+
+    @multi
+    def test_bulk_term_delete_skips_terms_on_another_campus(self):
+        from django.test import RequestFactory
+        from cis.views.term import do_bulk_action
+        term_a = Term.objects.create(academic_year=self.ay_a, code=f'A{_sfx()}', label='Spring')
+        request = RequestFactory().post('/', {
+            'action': 'delete_terms', 'ids[]': [str(term_a.id), str(self.term_b.id)]})
+        request.user = self.ce
+        resp = do_bulk_action(request)
+        self.assertIn(b'1 could not be deleted', resp.content)
+        self.assertFalse(Term.objects.filter(pk=term_a.pk).exists())
+        self.assertTrue(Term.objects.filter(pk=self.term_b.pk).exists())
+
+    @multi
+    def test_details_tab_dropdown_is_scoped(self):
+        from django.test import RequestFactory
+        from cis.tabs.academic_year import details_tab
+        request = RequestFactory().get('/')
+        request.user = self.ce
+        campuses = list(details_tab(request, self.ay_a)['form'].fields['campus'].queryset)
+        self.assertNotIn(self.campus_b, campuses)
