@@ -103,6 +103,16 @@ class Migration0056Tests(SimpleTestCase):
             spec.loader.exec_module(module)
         return module.Migration
 
+    def test_import_before_apps_ready_raises(self):
+        # An early import must not silently take the no-ethos branch.
+        from django.core.exceptions import AppRegistryNotReady
+        spec = importlib.util.find_spec(self.PATH)
+        with mock.patch.object(apps, 'apps_ready', False), \
+                mock.patch.object(apps, 'app_configs', {}):
+            module = importlib.util.module_from_spec(spec)
+            with self.assertRaises(AppRegistryNotReady):
+                spec.loader.exec_module(module)
+
     def test_without_ethos_no_reference_to_ethos(self):
         migration = self._load(with_ethos=False)
         self.assertEqual([d[0] for d in migration.dependencies], ['cis'])

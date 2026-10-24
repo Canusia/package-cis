@@ -24,6 +24,10 @@ from django.db import migrations, models
 #   with connection.schema_editor() as editor:
 #       editor.create_model(StudentRegistration.mirror_logs.through)
 # after ethos's own migrations have run.
+#
+# app_configs is empty before apps.populate(); importing this module that early
+# must raise rather than silently pick the no-ethos branch.
+global_apps.check_apps_ready()
 HAS_ETHOS = 'ethos' in global_apps.app_configs
 
 

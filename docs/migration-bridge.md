@@ -27,8 +27,8 @@ It changes nothing. It prints:
 | `present` | Every table and column it adds already exists | `migrate cis <name> --fake`, after checking types and nullability match |
 | `missing` | Nothing it adds exists | Leave it for `migrate` |
 | `partial` | Some of it exists | Write a one-off SQL bridge, then `--fake` |
-| `review` | It alters, removes or renames something, or runs code | Read the migration and decide |
-| `no-op` | Choices or help text only | Nothing to check; `migrate` records it |
+| `review` | Anything other than `CreateModel`, `AddField` or a no-op `AlterField`: it alters, removes or renames something, adds an index or constraint (`AddIndex`, `AddConstraint`, `AlterUniqueTogether`, `AlterIndexTogether`, …), or runs code (`RunPython`, `RunSQL`) | Read the migration and decide |
+| `no-op` | Choices or help text only, or a proxy / unmanaged model (no table) | Nothing to check; `migrate` records it |
 
 Run the command with the **package** installed, so the package's migration files are on
 disk, against a **restored copy** of the tenant database.

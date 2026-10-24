@@ -13,8 +13,11 @@ nothing, and prints
                 ``migrate cis <name> --fake`` (only after checking the types);
     missing  -- nothing it adds exists yet: let ``migrate`` run it;
     partial  -- some of it exists: needs a hand-written bridge;
-    review   -- it alters, removes, renames or runs code: read it first;
-    no-op    -- choices / help text only: nothing in the database changes.
+    review   -- anything else (it alters, removes or renames something, adds
+                an index or constraint, changes unique_together, runs code):
+                read it first;
+    no-op    -- choices / help text only, or proxy / unmanaged models:
+                nothing in the database changes.
 
 The runbook is docs/migration-bridge.md.
 """
@@ -45,33 +48,55 @@ def _table_columns():
 
 def schema_verdict(migration, state, tables, cols):
     """'present' / 'missing' / 'partial' / 'review' / 'no-op' for one migration, judged
-    against the live schema. ``state`` is the project state just before it."""
+    against the live schema. ``state`` is the project state just before it.
+
+    Table and column names come from the models rendered *after* each operation,
+    so ``db_table``, ``through`` and Django's 63-character truncation are honoured."""
     found, absent = 0, 0
     for op in migration.operations:
         if isinstance(op, migrations.CreateModel):
-            table = op.options.get('db_table') or f'{APP}_{op.name.lower()}'
-            found, absent = (found + 1, absent) if table in tables else (found, absent + 1)
+            check = not (op.options.get('proxy') or op.options.get('managed') is False)
         elif isinstance(op, migrations.AddField):
-            model = state.apps.get_model(APP, op.model_name)
-            field = op.field.clone()
-            field.set_attributes_from_name(op.name)
-            if field.many_to_many:
-                through = f'{model._meta.db_table}_{op.name}'
-                present = through in tables
-            else:
-                present = field.column in cols(model._meta.db_table)
-            found, absent = (found + 1, absent) if present else (found, absent + 1)
+            check = True
         elif isinstance(op, migrations.AlterField) and not _schema_change(op, state):
-            continue  # choices / help_text only: no schema to check
+            check = False  # choices / help_text only: no schema to check
         else:
             return 'review'
         state = state.clone()
         op.state_forwards(APP, state)
+        if not check:
+            continue
+        model = state.apps.get_model(APP, op.model_name if isinstance(
+            op, migrations.AddField) else op.name)
+        if isinstance(op, migrations.CreateModel):
+            present = model._meta.db_table in tables
+        else:
+            field = model._meta.get_field(op.name)
+            if field.many_to_many:
+                if not field.remote_field.through._meta.auto_created:
+                    continue  # explicit through: its own CreateModel has the table
+                present = field.m2m_db_table() in tables
+            else:
+                present = field.column in cols(model._meta.db_table)
+        found, absent = (found + 1, absent) if present else (found, absent + 1)
     if found and absent:
         return 'partial'
     if found:
         return 'present'
     return 'missing' if absent else 'no-op'
+
+
+def pending_plan(graph, applied):
+    """Unapplied cis migrations in apply order, planned to every cis leaf, and the
+    leaves themselves (more than one means the package needs a merge migration)."""
+    leaves = graph.leaf_nodes(APP)
+    plan, seen = [], set()
+    for leaf in leaves:
+        for key in graph.forwards_plan(leaf):
+            if key[0] == APP and key[1] not in applied and key not in seen:
+                seen.add(key)
+                plan.append(key)
+    return plan, leaves
 
 
 # Field attributes PostgreSQL never sees: an AlterField changing only these
@@ -109,9 +134,11 @@ class Command(BaseCommand):
             self.stdout.write(f'  {name}')
 
         tables, cols = _table_columns()
-        pending = [key for key in loader.graph.leaf_nodes(APP)]
-        plan = [key for key in loader.graph.forwards_plan(pending[0])
-                if key[0] == APP and key[1] not in applied] if pending else []
+        plan, leaves = pending_plan(loader.graph, applied)
+        if len(leaves) > 1:
+            self.stdout.write(self.style.WARNING(
+                f'\nWarning: cis has {len(leaves)} leaf migrations '
+                f'({", ".join(name for _, name in leaves)}); planning to all of them.'))
         self.stdout.write(f'\nPackage cis migrations not applied ({len(plan)}):')
         for key in plan:
             migration = loader.graph.nodes[key]
