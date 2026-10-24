@@ -19,7 +19,7 @@ from model_utils import FieldTracker
 
 from mailer import send_mail, send_html_mail
 
-from alerts.models import Alert
+from cis.integrations.alerts import create_alert
 
 from cis.models.term import AcademicYear
 from cis.models.course import CourseAppRequirement, Course
@@ -522,12 +522,10 @@ class TeacherApplication(models.Model):
             course_admins = Course.get_administrators(course_ids)
 
             for course_admin in course_admins:
-                alert = Alert()
-                alert.alert_type = 'new_si_application_submitted'
-                alert.recipient = course_admin.user
                 link = teacher_application.ce_url
-                alert.message = f'<a href="{link}">SI application by {teacher_application.user.first_name} for {teacher_application.courses} has been marked \'{new_status}\'</a>'
-                alert.save()
+                create_alert(
+                    'new_si_application_submitted', course_admin.user,
+                    f'<a href="{link}">SI application by {teacher_application.user.first_name} for {teacher_application.courses} has been marked \'{new_status}\'</a>')
 
                 recipient += [course_admin.user.email]
 
@@ -907,12 +905,10 @@ class ApplicantCourseReviewer(models.Model):
             course_admins = Course.get_administrators(course_ids)
 
             for course_admin in course_admins:
-                alert = Alert()
-                alert.alert_type = 'si_application_reviewed'
-                alert.recipient = course_admin.user
                 link = teacher_application.ce_url
-                alert.message = f'<a href="{link}">{self.reviewer.first_name} has reviewed application submitted by {teacher_application.user.first_name} for {teacher_application.courses}</a>'
-                alert.save()
+                create_alert(
+                    'si_application_reviewed', course_admin.user,
+                    f'<a href="{link}">{self.reviewer.first_name} has reviewed application submitted by {teacher_application.user.first_name} for {teacher_application.courses}</a>')
 
                 recipient += [course_admin.user.email]
         else:

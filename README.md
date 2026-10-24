@@ -78,8 +78,19 @@ This is a platform core, not a standalone library. A host must provide the `myce
 project package (settings, `component_registry`), the per-tenant `myce_tenant_configs` app,
 and the sibling apps `future_sections`, `student_transactions`,
 `student_onboarding`, `setting`, `announcement`, `class_visit`, `highschool_admin`,
-`alerts`, `two_step`, `support_ticket`, `pd_event`, `instructor_app`, `drop_wd`,
+`two_step`, `support_ticket`, `pd_event`, `instructor_app`, `drop_wd`,
 `instructor` and `degree_pathway`.
+
+`pd_event` and `student_transactions` are checked (#100): `manage.py check` reports
+`cis.E004` naming either one when it is not installed. `pd_event` backs migration 0002 and
+`EventNote.event`; `student_transactions` holds every charge, payment and balance cis
+computes. A tenant with its own copy of `student_transactions` (nnu) satisfies the check as
+long as the app label is `student_transactions` and it exports `models.StudentTransaction`.
+
+`alerts` is **optional** (#100). cis writes its in-app alerts (note replies, instructor
+application status changes) only through `cis/integrations/alerts.py`, which does nothing
+without the app; `cis.W009` warns that the alerts are skipped. Do not add `from alerts …`
+anywhere else in `cis`.
 
 `grades` is **optional** as of v0.0.4. `cis` no longer imports it; the three places that
 need a grade fact — the sections-list grade stats, the class-export grade columns and

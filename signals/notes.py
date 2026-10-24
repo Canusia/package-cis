@@ -17,7 +17,7 @@ from cis.models.note import (
 )
 from cis.settings.notes_email import notes_email
 
-from alerts.models import Alert
+from cis.integrations.alerts import create_alert
 
 import logging
 
@@ -34,13 +34,10 @@ def student_note_added(sender, instance, created, **kwargs):
     if created and note_type == 'response':
         parent_note = StudentNote.objects.get(pk=instance.parent)
 
-        alert = Alert()
-        alert.alert_type = 'student_note_response'
-        alert.recipient = parent_note.createdby
-
         link = str(parent_note.student.ce_url) + '#notes'
-        alert.message = f'<a class="display_in_modal" href="{link}">New note added to {instance.student} by {instance.createdby}'
-        alert.save()
+        create_alert(
+            'student_note_response', parent_note.createdby,
+            f'<a class="display_in_modal" href="{link}">New note added to {instance.student} by {instance.createdby}')
 
     if created and 'to_parent' in note_type:
         instance.send_to_parent()
@@ -64,13 +61,10 @@ def teacher_note_added(sender, instance, created, **kwargs):
     if created and note_type == 'response':
         parent_note = TeacherNote.objects.get(pk=instance.parent)
 
-        alert = Alert()
-        alert.alert_type = 'teacher_note_response'
-        alert.recipient = parent_note.createdby
-
         link = str(parent_note.student.ce_url) + '#notes'
-        alert.message = f'<a class="display_in_modal" href="{link}">New note added to {instance.teacher} by {instance.createdby}'
-        alert.save()
+        create_alert(
+            'teacher_note_response', parent_note.createdby,
+            f'<a class="display_in_modal" href="{link}">New note added to {instance.teacher} by {instance.createdby}')
 
     if created and 'to_instructor' in note_type:
         instance.send_as_email()
@@ -89,13 +83,10 @@ def created_new_class_section_note(sender, instance, created, **kwargs):
                     pk=parent_id
                 )
 
-                alert = Alert()
-                alert.alert_type = 'si_app_note_response'
-                alert.recipient = parent_note.createdby
-
                 link = str(parent_note.teacher_application.ce_url) + '#notes'
-                alert.message = f'<a class="display_in_modal" href="{link}">New note added by {instance.createdby}'
-                alert.save()
+                create_alert(
+                    'si_app_note_response', parent_note.createdby,
+                    f'<a class="display_in_modal" href="{link}">New note added by {instance.createdby}')
             except:
                 pass
                 

@@ -13,6 +13,10 @@ lockout, so a locked account refused by EmailAuthBackend would sign in through
 it. EmailAuthBackend covers username logins itself. A Warning, so a tenant that
 pins this cis before editing its settings still builds and migrates.
 
+E004 / W009 (package-cis#100): sibling apps cis imports. E004 names a
+required one that is missing (cis cannot run without it); W009 names an
+optional one whose features are skipped without it.
+
 W002 (v0.0.42+): the tenant's table-config app should ship
 `services/document_types_table.py` for the CE Document Types page. The page
 falls back to a plain list without it, so this warns rather than errors.
@@ -222,4 +226,41 @@ def branding_check(app_configs, **kwargs):
     for code in sorted(set(brands) - known):
         messages.append(CheckWarning(
             f'Branding for {code}: no campus has this code.', id='cis.W004'))
+    return messages
+
+
+# Sibling apps cis imports (#100). The required ones cannot be routed around:
+# pd_event backs migration 0002 and EventNote.event, and every charge, payment
+# and balance cis computes is a StudentTransaction row. alerts is optional --
+# its alerts are fire-and-forget and go through cis/integrations/alerts.py.
+# ethos and grades are optional through cis/integrations/ too, and stay
+# silent: most tenants run without them on purpose.
+REQUIRED_SIBLING_APPS = {
+    'pd_event': 'cis migration 0002 and EventNote.event reference pd_event.Event',
+    'student_transactions': ('student charges, payments, balances and the '
+                             'transactions report are StudentTransaction rows'),
+}
+OPTIONAL_SIBLING_APPS = {
+    'alerts': ('in-app alerts for note replies and instructor-application '
+               'status changes are not created'),
+}
+
+
+@register()
+def sibling_apps_check(app_configs, **kwargs):
+    """E004 / W009 (#100): a sibling app cis imports is not installed."""
+    from django.apps import apps
+    messages = []
+    for label, why in REQUIRED_SIBLING_APPS.items():
+        if label not in apps.app_configs:
+            messages.append(CheckError(
+                f"cis requires the '{label}' app, which is not in INSTALLED_APPS.",
+                hint=f'Install and add it: {why}.',
+                id='cis.E004'))
+    for label, effect in OPTIONAL_SIBLING_APPS.items():
+        if label not in apps.app_configs:
+            messages.append(CheckWarning(
+                f"The '{label}' app is not in INSTALLED_APPS.",
+                hint=f'cis runs without it, but {effect}.',
+                id='cis.W009'))
     return messages

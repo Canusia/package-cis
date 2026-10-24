@@ -12,7 +12,6 @@ from django.template.loader import get_template, render_to_string
 
 from mailer import send_mail, send_html_mail
 
-from alerts.models import Alert
 
 from ..models.customuser import CustomUser
 from ..models.section import StudentDropRequest

@@ -46,7 +46,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-from student_transactions.models import StudentTransaction
 class BulkPaymentForm(forms.Form):
     
     action = forms.CharField(
@@ -136,6 +135,7 @@ class BulkPaymentForm(forms.Form):
                         student = Student.objects.get(pk=student_id)
                         term = cleaned_data.get('term')
 
+                        from student_transactions.models import StudentTransaction
                         transaction = StudentTransaction(
                             student=student,
                             term=term,
@@ -1385,6 +1385,7 @@ class ManageFAAForm(forms.Form):
         if amount > 0:
             message += ', adding $' + str(amount)
 
+            from student_transactions.models import StudentTransaction
             scholarship = StudentTransaction(
                 student=record.student,
                 term=record.term,

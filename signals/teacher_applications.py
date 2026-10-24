@@ -44,7 +44,7 @@ from cis.settings.inst_app_language import (
     inst_app_language as inst_app_page_settings
 )
 
-from alerts.models import Alert
+from cis.integrations.alerts import mark_alerts_read
 
 logger = logging.getLogger(__name__)
 
@@ -137,23 +137,19 @@ def teacher_app_status_updated(sender, instance, **kwargs):
         if previous_status == 'Submitted':
             # course admin changes this
             # get all alerts where type = new_si_application_submitted
-            Alert.objects.filter(
+            mark_alerts_read(
+                datetime.now(),
                 alert_type='new_si_application_submitted',
-                read_on__isnull=True,
-                message__contains=str(instance.id)
-            ).update(
-                read_on=datetime.now()
+                message__contains=str(instance.id),
             )
 
         if previous_status == 'Approved for FC review':
             # course admin changes this
             # get all alerts where type = new_si_application_submitted
-            Alert.objects.filter(
+            mark_alerts_read(
+                datetime.now(),
                 alert_type='si_application_reviewed',
-                read_on__isnull=True,
-                message__contains=str(instance.id)
-            ).update(
-                read_on=datetime.now()
+                message__contains=str(instance.id),
             )
 
 @receiver(post_save, sender=TeacherApplication)
