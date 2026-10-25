@@ -149,7 +149,7 @@ class syllabi_review(forms.Form):
         widget=forms.Textarea,
         label='Needs Review/Update - Message',
         validators=[validate_html_short_code],
-        help_text='Email template sent to instructor when syllabi is marked as needs update, and as the needs update reminder. Short codes supported {{instructor_first_name}}, {{instructor_last_name}}, {{term}}, {{course}}, {{course_name}}, {{note}}. <a href="#" class="float-right" onClick="do_bulk_action(\'syllabi_review\', \'email_message\')" >See Preview</a>'
+        help_text='Email template sent to instructor when syllabi is marked as needs update, and as the needs update reminder (one email per instructor per term). Short codes supported {{instructor_first_name}}, {{instructor_last_name}}, {{term}}, {{course}}, {{course_name}}, {{note}}, {{section_list}} (reminder: each section with its note). <a href="#" class="float-right" onClick="do_bulk_action(\'syllabi_review\', \'email_message\')" >See Preview</a>'
     )
 
     reviewed_email_subject = forms.CharField(
@@ -234,30 +234,21 @@ class syllabi_review(forms.Form):
 
     def clean_term(self):
         data = self.cleaned_data.get('term')
-
-        print(data)
         return [str(d.id) for d in data]
 
-    def clean_starting_date(self):
-        data = self.cleaned_data['starting_date']
-        return data.strftime('%m/%d/%Y')
-
-    def clean_ending_date(self):
-        starting_date = datetime.datetime.strptime(
-            self.data.get('starting_date'), '%m/%d/%Y'
-        )
-
-        ending_date = datetime.datetime.strptime(
-            self.data.get('ending_date'), '%m/%d/%Y'
-        )
-
-        if starting_date > ending_date:
-            raise ValidationError(
-                _(f'End Date has to be after start date.')
-            )
-
-        data = self.cleaned_data['ending_date']
-        return data.strftime('%m/%d/%Y')
+    def clean(self):
+        cleaned = super().clean()
+        starting_date = cleaned.get('starting_date')
+        ending_date = cleaned.get('ending_date')
+        # Compare the parsed dates: re-parsing the raw input with one format
+        # broke on ISO dates and an empty start date (#128).
+        if starting_date and ending_date and starting_date > ending_date:
+            self.add_error('ending_date', 'End Date has to be after start date.')
+        # Stored as m/d/Y, which notify_missing_syllabi parses.
+        for key in ('starting_date', 'ending_date'):
+            if isinstance(self.cleaned_data.get(key), datetime.date):
+                self.cleaned_data[key] = self.cleaned_data[key].strftime('%m/%d/%Y')
+        return self.cleaned_data
 
     # See Preview link field -> (email kind, or None, body key for a page message)
     PREVIEWS = {

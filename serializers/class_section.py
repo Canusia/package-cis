@@ -134,6 +134,9 @@ class ClassSectionSerializer(serializers.ModelSerializer):
         read_only=True
     )
     schedule = serializers.CharField(read_only=True)
+    # The label ('Needs Update') for tables; syllabi_status stays the code.
+    syllabi_status_display = serializers.CharField(
+        source='get_syllabi_status_display', read_only=True)
     has_visit_to_other_section = serializers.CharField(read_only=True)
     
     num_students = serializers.IntegerField(

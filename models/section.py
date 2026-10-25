@@ -501,46 +501,61 @@ class ClassSection(MyCEBaseModel):
 
         return template.render(context)
     
-    def mark_syllabi_as_reviewed(self, note='', updated_by=None):
-        self.syllabi_status = 'reviewed'
-        
-        class_note = ClassSectionNote(
-            class_section=self,
-            note='Marked syllabi as reviewed.',
-            createdby=updated_by,
-            meta={
-                'type': 'public'
-            }
-        )
+    def _record_syllabi_review(self, status, note='', updated_by=None):
+        """Set ``syllabi_status`` and replace the review record with this one.
 
-        class_note.save()
+        The record is replaced, not merged, so a Reviewed never keeps an older
+        Needs Update note (#124). ``save()`` (not ``.update()``) keeps the
+        previous record in history.
+        """
+        from django.utils import timezone
+        self.syllabi_status = status
+        self.syllabi_status_changed_on = {
+            'note': note or '',
+            'reviewed_on': timezone.localdate().strftime('%m/%d/%Y'),
+            'reviewed_by': str(updated_by.pk) if getattr(updated_by, 'pk', None) else '',
+        }
         self.save()
+
+    def _add_syllabi_note(self, text, updated_by):
+        # ClassSectionNote.createdby is required: no reviewer, no note.
+        if updated_by is None:
+            return
+        ClassSectionNote.objects.create(
+            class_section=self, note=text, createdby=updated_by,
+            meta={'type': 'public'})
+
+    def _send_syllabi_review_email(self, kind, note=''):
+        """Email the instructor the ``kind`` ('reviewed' / 'needs_update')
+        template. A section without an instructor is logged and skipped, so
+        the review itself still stands."""
+        teacher = self.teacher
+        user = getattr(teacher, 'user', None) if teacher else None
+        if user is None:
+            logger.warning('syllabi %s email skipped: section %s has no instructor',
+                           kind, self.pk)
+            return
 
         from cis.settings.syllabi_review import syllabi_review as syl_settings
         notif_settings = syl_settings.from_db()
+        email_subject, email_text = syl_settings.email_template(kind, notif_settings)
 
-        email_subject, email_text = syl_settings.email_template(
-            'reviewed', notif_settings)
-
-        message = Template(email_text)
         context = Context({
-            'instructor_first_name': self.teacher.user.first_name,
-            'instructor_last_name': self.teacher.user.last_name,
+            'instructor_first_name': user.first_name,
+            'instructor_last_name': user.last_name,
             'course': self.course,
             'course_name': self.course,
-            'term': self.term
+            'term': self.term,
+            'note': note,
+            'section_list': f'{self.course.name}/{self.class_number}/{self.section_number}',
         })
 
-        send_to = [self.teacher.user.secondary_email, self.teacher.user.email]
+        send_to = [e for e in (user.secondary_email, user.email) if e]
         if notif_settings.get('mode') == 'test':
-            send_to = notif_settings.get('testers').split(',')
+            send_to = (notif_settings.get('testers') or '').split(',')
 
-        text_body = message.render(context)
-
-        template = get_template('cis/email.html')
-        html_body = template.render({
-            'message': text_body
-        })
+        text_body = Template(email_text).render(context)
+        html_body = get_template('cis/email.html').render({'message': text_body})
 
         send_html_mail(
             email_subject,
@@ -550,62 +565,12 @@ class ClassSection(MyCEBaseModel):
             send_to
         )
 
-
-    # def mark_syllabi_as_needs_update(self, note='', updated_by=None):
-    #     self.syllabi_status = 'needs update'
-    #     self.syllabi_status_changed_on['note'] = note
-
-    #     class_note = ClassSectionNote(
-    #         class_section=self,
-    #         note='Marked syllabi as needs update.<br><br>' + note,
-    #         createdby=updated_by,
-    #         meta={
-    #             'type': 'public'
-    #         }
-    #     )
-
-    #     class_note.save()
-    #     self.save()
-
-    #     from cis.settings.syllabi_review import syllabi_review as syl_settings
-    #     notif_settings = syl_settings.from_db()
-
-    #     email_subject = notif_settings.get('email_subject')
-    #     email_text = notif_settings.get('email_message')
-
-    #     message = Template(email_text)
-    #     context = Context({
-    #         'instructor_first_name': self.teacher.user.first_name,
-    #         'instructor_last_name': self.teacher.user.last_name,
-    #         'course_name': self.course,
-    #         'term': self.term,
-    #         'note': note
-    #     })
-
-    #     send_to = [self.teacher.user.secondary_email]
-    #     if notif_settings.get('mode') == 'test':
-    #         send_to = notif_settings.get('testers').split(',')
-
-    #     text_body = message.render(context)
-
-    #     template = get_template('cis/email.html')
-    #     html_body = template.render({
-    #         'message': text_body
-    #     })
-
-    #     send_html_mail(
-    #         email_subject,
-    #         text_body,
-    #         html_body,
-    #         settings.DEFAULT_FROM_EMAIL,
-    #         send_to
-    #     )
+    def mark_syllabi_as_reviewed(self, note='', updated_by=None):
+        self._record_syllabi_review('reviewed', note, updated_by)
+        self._add_syllabi_note('Marked syllabi as reviewed.', updated_by)
+        self._send_syllabi_review_email('reviewed', note)
 
     def mark_syllabi_as_needs_update(self, note='', updated_by=None):
-        self.syllabi_status = 'needs update'
-        self.syllabi_status_changed_on['note'] = note
-        self.syllabi_status_changed_on['reviewed_on'] = datetime.datetime.now().strftime('%m/%d/%Y')
-
         try:
             # update all sections for which syllabi is associated with
             class_section_syllabi = ClassSectionSyllabi.objects.filter(
@@ -618,52 +583,9 @@ class ClassSection(MyCEBaseModel):
         except:
             ...
 
-        class_note = ClassSectionNote(
-            class_section=self,
-            note='Marked syllabi as needs update.<br><br>' + note,
-            createdby=updated_by,
-            meta={
-                'type': 'public'
-            }
-        )
-
-        class_note.save()
-        self.save()
-
-        from cis.settings.syllabi_review import syllabi_review as syl_settings
-        notif_settings = syl_settings.from_db()
-
-        email_subject, email_text = syl_settings.email_template(
-            'needs_update', notif_settings)
-
-        message = Template(email_text)
-        context = Context({
-            'instructor_first_name': self.teacher.user.first_name,
-            'instructor_last_name': self.teacher.user.last_name,
-            'course': self.course,
-            'course_name': self.course,
-            'term': self.term,
-            'note': note
-        })
-
-        send_to = [self.teacher.user.secondary_email, self.teacher.user.email]
-        if notif_settings.get('mode') == 'test':
-            send_to = notif_settings.get('testers').split(',')
-
-        text_body = message.render(context)
-
-        template = get_template('cis/email.html')
-        html_body = template.render({
-            'message': text_body
-        })
-
-        send_html_mail(
-            email_subject,
-            text_body,
-            html_body,
-            settings.DEFAULT_FROM_EMAIL,
-            send_to
-        )
+        self._record_syllabi_review('needs update', note, updated_by)
+        self._add_syllabi_note('Marked syllabi as needs update.<br><br>' + note, updated_by)
+        self._send_syllabi_review_email('needs_update', note)
 
     @property
     def syllabi(self):

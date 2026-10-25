@@ -27,13 +27,27 @@ def syllabi_deleted(sender, instance, **kwargs):
     class_sections = instance.class_sections.all()
 
 @receiver(m2m_changed, sender=ClassSectionSyllabi.class_sections.through)
-def syllabi_added(sender, instance, **kwargs):
-    action = kwargs['action']
+def syllabi_added(sender, instance, action, reverse=False, pk_set=None, **kwargs):
+    """A file added to a section puts that section back to pending review.
 
-    if action == 'post_add':
-        instance.class_sections.all().update(
-            syllabi_status='pending review'
-        )
+    Only the sections just added (``pk_set``), not every section the file
+    already covers. Each is saved, not ``.update()``-d, so history keeps the
+    previous review, and the old reviewer note is cleared (#127).
+    """
+    if action != 'post_add' or not pk_set:
+        return
+    if reverse:
+        # section.classsectionsyllabi_set.add(file): instance is the section.
+        sections = [instance]
+    else:
+        sections = ClassSection.objects.filter(pk__in=pk_set)
+    for section in sections:
+        changed_on = section.syllabi_status_changed_on or {}
+        if section.syllabi_status == 'pending review' and not changed_on.get('note'):
+            continue
+        section.syllabi_status = 'pending review'
+        section.syllabi_status_changed_on = {}
+        section.save()
 
 
 @receiver(pre_delete, sender=ClassSectionSyllabi)

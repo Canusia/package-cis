@@ -27,31 +27,36 @@ STATUS_CHOICES = (
 )
 
 
-def derive_status(section):
+def latest_syllabus(section):
+    """The section's most recently uploaded file, from the prefetched set
+    (one query for the whole report, not two per section)."""
+    files = [f for f in section.classsectionsyllabi_set.all()]
+    if not files:
+        return None
+    return max(files, key=lambda f: (f.uploaded_on is not None, f.uploaded_on))
+
+
+def derive_status(section, latest=None):
     """Return one of: 'submitted', 'needs_update', 'approved', 'not_submitted'.
 
-    Status priority:
-      1. If ClassSection.syllabi_status == 'needs update' -> 'needs_update'
-         (set on the section when faculty sends the syllabus back; see
-         cis/models/section.py:418-431).
-      2. Otherwise look at the latest linked ClassSectionSyllabi
-         (by -uploaded_on):
-           - 'Reviewed'        -> 'approved'
-           - 'pending review'  -> 'submitted'
-      3. No syllabi linked -> 'not_submitted'.
+    Reads ClassSection.syllabi_status, which every review writes (#124);
+    ClassSectionSyllabi.status is legacy and never updated:
+      - 'needs update'   -> 'needs_update'
+      - 'reviewed'       -> 'approved'
+      - 'pending review' -> 'submitted'
+      - anything else with a file on the section (uploads from before the
+        upload signal) -> 'submitted'; no file -> 'not_submitted'.
     """
-    if (section.syllabi_status or '').lower() == 'needs update':
+    status = (section.syllabi_status or '').lower()
+    if status == 'needs update':
         return 'needs_update'
-
-    latest = section.classsectionsyllabi_set.order_by('-uploaded_on').first()
-    if latest is None:
-        return 'not_submitted'
-
-    if latest.status == 'Reviewed':
+    if status == 'reviewed':
         return 'approved'
-    if latest.status == 'pending review':
+    if status == 'pending review':
         return 'submitted'
-    return 'not_submitted'
+    if latest is None:
+        latest = latest_syllabus(section)
+    return 'submitted' if latest is not None else 'not_submitted'
 
 
 class teacher_syllabi_status(forms.Form):
@@ -112,7 +117,7 @@ class teacher_syllabi_status(forms.Form):
                 if section.highschool and section.highschool.district else '',
             getattr(section.course, 'name', '') if section.course else '',
             section.class_number or '',
-            getattr(section, 'section', '') or '',
+            section.section_number or '',
             getattr(section.teacher.user, 'psid', '') if section.teacher else '',
             section.teacher.user.first_name if section.teacher else '',
             section.teacher.user.last_name if section.teacher else '',
@@ -159,11 +164,11 @@ class teacher_syllabi_status(forms.Form):
         used_names = set()
 
         for section in sections:
-            status_key = derive_status(section)
+            latest = latest_syllabus(section)
+            status_key = derive_status(section, latest)
             if wanted and status_key not in wanted:
                 continue
 
-            latest = section.classsectionsyllabi_set.order_by('-uploaded_on').first()
             row = self._build_row(section, status_key, latest)
             writer.writerow([force_str(c) for c in row])
 

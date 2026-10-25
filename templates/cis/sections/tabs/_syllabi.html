@@ -2,9 +2,13 @@
 
 <div class="card mb-4 border-top-0">
     <div class="card-body">
-        {% if record.syllabi_status != 'pending review' %}
-        <p class="alert alert-info">
-            Marked as {{ record.syllabi_status }} {{ record.syllabi_note|safe }}
+        {% if record.syllabi_status == 'needs update' %}
+        <p class="alert alert-warning">
+            Marked as {{ record.get_syllabi_status_display }}{% if record.syllabi_status_changed_on.reviewed_on %} on {{ record.syllabi_status_changed_on.reviewed_on }}{% endif %}. {{ record.syllabi_note|safe }}
+        </p>
+        {% elif record.syllabi_status == 'reviewed' %}
+        <p class="alert alert-success">
+            Marked as {{ record.get_syllabi_status_display }}{% if record.syllabi_status_changed_on.reviewed_on %} on {{ record.syllabi_status_changed_on.reviewed_on }}{% endif %}.
         </p>
         {% endif %}
         <div class="table-responsive">

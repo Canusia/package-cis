@@ -789,9 +789,6 @@ def do_bulk_action(request):
     if action == 'change_registration_term':
         return change_registration_term(request)
 
-    if action == 'mark_syllabi_as_reviewed':
-        return mark_syllabi_as_reviewed(request)
-
     data = {
         'status': 'success',
         'message': 'invalid action passed'
@@ -852,21 +849,6 @@ def change_registration_term(request):
     }, request=request)
     return JsonResponse({'outcome': 'modal', 'html': html})
     
-def mark_syllabi_as_reviewed(request):
-    class_section_id = request.GET.get('id')
-
-    class_section = get_object_or_404(ClassSection, pk=class_section_id)
-    class_section.syllabi_status = 'reviewed'
-
-    class_section.save()
-
-    data = {
-        'status':'success',
-        'message':'Successfully saved review',
-        'action': 'reload_table'
-    }
-    return JsonResponse(data)
-
 def delete_syllabi(request, record_id):
     record = get_object_or_404(ClassSectionSyllabi, pk=record_id)
     try:

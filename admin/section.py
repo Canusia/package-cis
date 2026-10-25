@@ -25,7 +25,7 @@ class ClassSectionSyllabiAdmin(admin.ModelAdmin):
     search_fields = ['class_sections__term__code', 'class_sections__class_number']
 
     def class_sections(self, obj):
-        return ''.join(', ', [class_section.class_number for class_section in obj.class_sections.all()])
+        return ', '.join(str(class_section.class_number) for class_section in obj.class_sections.all())
 
 class StudentRegistrationAdmin(admin.ModelAdmin):
     model = StudentRegistration

@@ -394,7 +394,8 @@
                                     }, 
                                     {
                                         'render': function (data, type, row, meta) {
-                                            return row.class_sections[0].syllabi_status
+                                            var cs = row.class_sections[0] || {};
+                                            return $('<span>').text(cs.syllabi_status_display || cs.syllabi_status || '').html();
                                             
                                         }
                                     },

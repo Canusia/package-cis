@@ -684,7 +684,10 @@ class ClassSectionForm(forms.ModelForm):
             'roster_status_changed_on',
             'grade_status_changed_on',
             # 'teacher'
-            'syllabi_status_changed_on'
+            'syllabi_status_changed_on',
+            # Changed only by a review, which records the note and emails
+            # the instructor (#124).
+            'syllabi_status',
             ]
 
         labels = {

@@ -36,6 +36,56 @@ def sections_missing_syllabi(term_ids):
     ).exclude(status__in=CANCELLED_STATUSES)
 
 
+def sections_needing_update(term_ids):
+    """Sections in term_ids marked needs update. Cancelled sections and
+    sections with no instructor are skipped (#127)."""
+    return ClassSection.objects.filter(
+        term__id__in=term_ids,
+        syllabi_status__iexact='needs update',
+        teacher__user__isnull=False,
+    ).exclude(
+        status__in=CANCELLED_STATUSES
+    ).select_related('teacher__user', 'course', 'term').order_by(
+        'course__name', 'class_number')
+
+
+def _section_label(section):
+    return f'{section.course.name}/{section.class_number}/{section.section_number}'
+
+
+def needs_update_context(recipient):
+    """Template context for one instructor's needs-update reminder.
+
+    {{section_list}} has one line per section with its note. {{course}} and
+    {{note}} are the section's own for a single section; for several they
+    name every course and fall back to the list, so a saved template that
+    predates {{section_list}} still shows every section.
+    """
+    from django.utils.html import format_html, format_html_join
+    sections = recipient['sections']
+
+    def note(section):
+        return (section.syllabi_status_changed_on or {}).get('note') or ''
+
+    section_list = format_html_join(
+        format_html('<br>'), '{}{}',
+        ((_section_label(s), f' - {note(s)}' if note(s) else '') for s in sections))
+    if len(sections) == 1:
+        course, note_text = str(sections[0].course), note(sections[0])
+    else:
+        course = ', '.join(dict.fromkeys(str(s.course) for s in sections))
+        note_text = section_list
+    return {
+        'instructor_first_name': recipient.get('first_name'),
+        'instructor_last_name': recipient.get('last_name'),
+        'term': str(recipient.get('term')),
+        'course': course,
+        'course_name': course,
+        'note': note_text,
+        'section_list': section_list,
+    }
+
+
 class Command(CampusCommand):
     help = 'Syllabus Review Emails'
 
@@ -172,16 +222,14 @@ class Command(CampusCommand):
 
         summary += f'Sent {emails_sent} missing syllabus notification(s) (one per instructor per term).\r\n'
 
-        # notify teachers will no syllabus marked as needs update
-        classes_with_syl_needs_update = ClassSection.objects.filter(
-            term__id__in=email_settings.get('term'),
-            syllabi_status__iexact='needs update'
-        )
-
+        # Needs-update reminder: one email per instructor per term, like the
+        # missing-syllabus email (#127). {{section_list}} lists each section
+        # with its reviewer note.
         email_summary = {}
-        for section in classes_with_syl_needs_update:
-            if not email_summary.get(section.id):
-                email_summary[section.id] = {
+        for section in sections_needing_update(email_settings.get('term')):
+            key = (section.teacher.user.id, section.term_id)
+            if not email_summary.get(key):
+                email_summary[key] = {
                     'first_name': section.teacher.user.first_name,
                     'last_name': section.teacher.user.last_name,
                     'email': section.teacher.user.email,
@@ -189,26 +237,16 @@ class Command(CampusCommand):
                     'secondary_email': section.teacher.user.secondary_email,
                     'sections': []
                 }
-            email_summary[section.id]['sections'].append(
-                section
-            )
+            email_summary[key]['sections'].append(section)
 
         emails_sent = 0
-        for user_id, recipient in email_summary.items():
-        
+        for key, recipient in email_summary.items():
+
             subject, source = syllabi_review.email_template(
                 'needs_update', email_settings)
             message = Template(source)
 
-            section = recipient['sections'][0]
-            context = Context({
-                'instructor_first_name': recipient.get('first_name'),
-                'instructor_last_name': recipient.get('last_name'),
-                'term': str(recipient.get('term')),
-                'course': str(section.course),
-                'course_name': str(section.course),
-                'note': (section.syllabi_status_changed_on or {}).get('note') or '',
-            })
+            context = Context(needs_update_context(recipient))
             text_body = message.render(context)
 
             template = get_template('cis/email.html')
@@ -243,7 +281,7 @@ class Command(CampusCommand):
             )
             emails_sent += 1
 
-        summary += f'Sent needs update reminders to {emails_sent} class sections.\r\n'
+        summary += f'Sent {emails_sent} needs update reminder(s) (one per instructor per term).\r\n'
 
         pending_review = ClassSection.objects.filter(
             term__id__in=email_settings.get('term'),
