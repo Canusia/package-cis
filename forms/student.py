@@ -579,11 +579,23 @@ class MigrateStudentForm(forms.Form):
 
         if 'student_recommendation' in data.get('move_items'):
             try:
-                StudentRecommendation.objects.filter(
-                    student=student
-                ).update(
-                    student=destination_student
-                )
+                # All or nothing, as the single UPDATE was. A record filed for
+                # the destination's own school becomes its own-school record
+                # (no school); one clashing with a record the destination
+                # already has for that term and school stops the move.
+                from django.db import IntegrityError, transaction
+                with transaction.atomic():
+                    for rec in StudentRecommendation.objects.filter(student=student):
+                        school = rec.highschool_id
+                        if school == destination_student.highschool_id:
+                            school = None
+                        if StudentRecommendation.for_school(
+                                destination_student, rec.term_id, school):
+                            raise IntegrityError(
+                                f'{destination_student} already has a recommendation for '
+                                f'{rec.term} from that school')
+                        rec.student, rec.highschool_id = destination_student, school
+                        rec.save(update_fields=['student', 'highschool'])
                 message.append('Successfully moved recommendations.')
             except Exception as e:
                 destination_student.add_note(

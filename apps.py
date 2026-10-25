@@ -703,6 +703,8 @@ class CisConfig(AppConfig):
         import cis.signals.support_docs
 
         import cis.signals.crontab
+        # Connects the per-request cache of the recommending-school rule.
+        import cis.services.recommender_scope  # noqa: F401
 
         from cis.signals import onboarding as onboarding_signals
         onboarding_signals.register_handlers()

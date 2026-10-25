@@ -60,6 +60,7 @@ class recommendation_export(forms.Form):
         records = StudentRecommendation.objects.select_related(
             'student__user',
             'student__highschool',
+            'highschool',
             'term'
         ).filter(
             term__id__in=expand_term_ids(data.get('term'))
@@ -79,6 +80,9 @@ class recommendation_export(forms.Form):
         'student.user.last_name': 'Student Legal Last Name',
         'student.user.middle_name': 'Middle Name or Initial',
         'student.highschool.name': 'High School',
+        # Who filed: the student's school, or the class's host school when
+        # the Counselor Rec. Form setting lets it recommend.
+        'recommending_school.name': 'Recommending School',
     }
 
     SUBMISSION_COLUMNS = {

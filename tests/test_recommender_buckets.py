@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 from django.contrib.auth.models import Group
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 from django.test import TestCase
 
 from cis.models.course import Cohort, Course
@@ -400,12 +401,104 @@ class StudentRecommendationPerSchoolTests(RecommenderBucketTestBase):
         self.assertEqual(self.stu.get_recommendation(self.term.id), own)
         self.assertEqual(self.stu.get_recommendation(self.term.id, self.other_hs.id), hosted)
 
-    def test_filing_school(self):
+    def test_filing_groups(self):
         regs = StudentRegistration.objects.filter(pk__in=[self.reg_home.pk, self.reg_host.pk])
-        self.assertIsNone(rs.filing_school(self.host, regs, self.stu))       # student mode
         self.set_mode('class')
-        self.assertEqual(rs.filing_school(self.host, regs, self.stu), self.other_hs)
-        self.assertIsNone(rs.filing_school(self.home, regs, self.stu))
+        self.assertEqual(rs.filing_groups(self.host, regs, self.stu),
+                         [(self.other_hs, [self.reg_host])])
+        self.assertEqual(rs.filing_groups(self.home, regs, self.stu), [(None, [self.reg_home])])
+
+    def test_one_filing_per_school_for_an_admin_at_both(self):
+        """A counselor at the student's school and the host files once for
+        each, so the host-hosted registration is covered in class mode."""
+        _, extra = self.admin('Spare', highschool=self.other_hs)
+        extra.hsadmin = self.home
+        extra.save()
+        regs = StudentRegistration.objects.filter(pk__in=[self.reg_home.pk, self.reg_host.pk])
+        self.set_mode('class')
+        groups = dict(rs.filing_groups(self.home, regs, self.stu))
+        self.assertEqual(groups, {None: [self.reg_home], self.other_hs: [self.reg_host]})
+        self.set_mode('both')                   # the student's own school covers both
+        self.assertEqual(dict(rs.filing_groups(self.home, regs, self.stu)),
+                         {None: [self.reg_home, self.reg_host]})
+
+    def test_term_filed_ignores_registrations_not_awaiting_one(self):
+        self.set_mode('class')
+        self.rec()
+        self.reg_host.status = 'dropped'
+        self.reg_host.save()
+        self.assertTrue(self.stu.has_recommendation(self.term.id))
+
+    def test_both_mode_either_school_files_for_shared_registrations(self):
+        self.set_mode('both')
+        self.rec()
+        self.assertTrue(self.stu.has_recommendation(self.term.id))
+        self.assertTrue(self.reg_host.has_recommendation())
+
+    def test_explicit_own_school_row_counts_as_own(self):
+        own = self.rec(self.hs)
+        self.assertEqual(rs.registration_school_ids(self.reg_home), {self.hs.id})
+        from cis.models.student import StudentRecommendation
+        self.assertEqual(StudentRecommendation.for_school(self.stu, self.term.id), own)
+
+    def test_python_and_sql_coverage_agree_on_edge_cases(self):
+        from cis.views.eager import annotate_registration_flags
+        lone = self.student('Lone')
+        lone.highschool = None
+        lone.save()
+        cases = [self.register(lone, host=None), self.register(lone, host=self.other_hs),
+                 self.reg_home, self.reg_host]
+        from cis.models.student import StudentRecommendation
+        StudentRecommendation.objects.create(student=lone, term=self.term, recommendation={})
+        self.rec(self.hs)                                   # explicit own-school row
+        regs = StudentRegistration.objects.filter(pk__in=[r.pk for r in cases])
+        for mode in ('student', 'class', 'both'):
+            self.set_mode(mode)
+            with patch('cis.models.section._tenant_registration_override', return_value=None):
+                annotated = {r.pk: r._has_recommendation for r in annotate_registration_flags(regs)}
+                plain = {r.pk: StudentRecommendation.covering(r, [self.term.id]).exists()
+                         for r in regs}
+            self.assertEqual(annotated, plain, mode)
+
+    def test_tenant_override_disables_the_setting(self):
+        self.set_mode('class')
+        with patch('cis.services.tenant_services.get_tenant_override',
+                   side_effect=lambda module, attr: (lambda *a, **k: True)
+                   if attr == 'hsadmin_can_manage_recommendation' else None):
+            self.assertEqual(rs.recommending_school_mode(), 'student')
+            self.assertEqual(rs.school_rule(), 'student')
+
+    def test_export_names_the_recommending_school(self):
+        from cis.reports.recommendation_export import recommendation_export
+        from cis.utils import get_field
+        hosted = self.rec(self.other_hs)
+        own = self.rec()
+        self.assertIn('recommending_school.name', recommendation_export.IDENTITY_COLUMNS)
+        self.assertEqual(get_field(hosted, 'recommending_school.name'), self.other_hs.name)
+        self.assertEqual(get_field(own, 'recommending_school.name'), self.hs.name)
+
+    def test_move_turns_the_destinations_school_into_its_own_record(self):
+        from types import SimpleNamespace
+        from cis.forms.student import MigrateStudentForm
+        from cis.models.student import StudentRecommendation
+        hosted = self.rec(self.other_hs)
+        dest = self.student('Dest', highschool=self.other_hs)
+
+        def move():
+            form = MigrateStudentForm(data={
+                'action': 'migrate_student', 'destination_student_id': str(dest.id),
+                'move_items': ['student_recommendation']})
+            self.assertTrue(form.is_valid(), form.errors)
+            return form.save(SimpleNamespace(user=CustomUser.objects.get(username='cron')),
+                             self.stu)
+
+        move()
+        hosted.refresh_from_db()
+        self.assertEqual((hosted.student, hosted.highschool), (dest, None))
+        clash = self.rec()                                  # dest already has one: stops
+        move()
+        clash.refresh_from_db()
+        self.assertEqual(clash.student, self.stu)
 
 
 class SchoolRuleCacheTests(RecommenderBucketTestBase):
@@ -464,6 +557,22 @@ class MultiCampusRuleTests(RecommenderBucketTestBase):
                 rs.recommending_school_q([self.hs.id], mode=rule)))
         self.assertEqual(at_host, {regs[north]})
         self.assertEqual(at_home, {regs[south]})
+
+        # The #67 annotation follows each campus's mode, as the per-row check does.
+        from cis.models.student import StudentRecommendation
+        from cis.views.eager import annotate_registration_flags
+        StudentRecommendation.objects.create(student=stu, term=self.term, recommendation={})
+        qs = StudentRegistration.objects.filter(pk__in=[r.pk for r in regs.values()])
+        with patch('cis.campus_context.is_multi_campus', return_value=True), \
+                patch('cis.models.section._tenant_registration_override', return_value=None):
+            annotated = {r.pk: r._has_recommendation for r in annotate_registration_flags(qs)}
+            plain = {r.pk: StudentRecommendation.covering(r, [self.term.id]).exists() for r in qs}
+        self.assertEqual(annotated, plain)
+        self.assertEqual(annotated, {regs[north].pk: False, regs[south].pk: True})
+
+    def test_all_student_campuses_keep_the_plain_annotation(self):
+        with patch('cis.campus_context.is_multi_campus', return_value=True):
+            self.assertEqual(rs.covering_outer_q(rs.school_rule()), Q())
 
 
 class CoverageAndValidationTests(RecommenderBucketTestBase):

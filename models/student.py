@@ -2756,47 +2756,54 @@ class StudentRecommendation(models.Model):
                 condition=models.Q(highschool__isnull=False),
                 name='cis_studentrec_student_term_school'),
         ]
+        # The partial unique indexes cannot serve (student, term) lookups
+        # that do not filter on the school.
+        indexes = [models.Index(fields=['student', 'term'], name='cis_studentrec_student_term')]
+
+    @property
+    def recommending_school(self):
+        """The school this was filed for: its own, else the student's."""
+        return self.highschool or self.student.highschool
 
     @classmethod
     def for_school(cls, student, term_id, highschool_id=None):
-        """The record filed for `highschool_id` in `term_id` (None, or the
-        student's own school, is the row with no school), or None."""
+        """The record filed for `highschool_id` in `term_id`, or None. None
+        and the student's own school both mean the student's own record (a
+        row with no school, or one naming it)."""
         qs = cls.objects.filter(student=student, term__id=term_id)
         if highschool_id is None or highschool_id == student.highschool_id:
-            return qs.filter(highschool__isnull=True).first()
+            own = models.Q(highschool__isnull=True)
+            if student.highschool_id:
+                own |= models.Q(highschool_id=student.highschool_id)
+            return qs.filter(own).order_by(
+                models.F('highschool').asc(nulls_first=True)).first()
         return qs.filter(highschool_id=highschool_id).first()
 
     @classmethod
     def covering(cls, registration, term_ids, rule=None):
-        """Records in `term_ids` that cover `registration`: any of the
-        student's, when the student's school recommends; otherwise those filed
-        for one of the registration's recommending schools."""
-        from cis.services.recommender_scope import (
-            is_student_rule, recommending_school_ids_of, school_rule)
-        rule = school_rule() if rule is None else rule
-        qs = cls.objects.filter(student_id=registration.student_id, term__id__in=term_ids)
-        if is_student_rule(rule):
-            return qs
-        schools = recommending_school_ids_of(
-            StudentRegistration.objects.filter(pk=registration.pk), rule)
-        q = models.Q(highschool_id__in=schools)
-        if registration.student.highschool_id in schools:
-            q |= models.Q(highschool__isnull=True)
-        return qs.filter(q)
+        """Records in `term_ids` that cover `registration`
+        (cis.services.recommender_scope.covering_q)."""
+        from cis.services.recommender_scope import covering_q
+        return cls.objects.filter(
+            student_id=registration.student_id, term__id__in=term_ids
+        ).filter(covering_q(registration, rule))
 
     @classmethod
     def _filed_for_term(cls, student, term_id, rule):
-        """Filed for `term_id` — by every recommending school of the student's
-        registrations that term, when the class's high school recommends."""
-        from cis.services.recommender_scope import is_student_rule, recommending_school_ids_of
+        """Filed for `term_id`. When the class's high school recommends: every
+        registration that term still awaiting one (applied, grade-eligible) is
+        covered by its recommending school's record."""
+        from cis.services.recommender_scope import is_student_rule
         records = cls.objects.filter(term__id=term_id, student=student)
         if is_student_rule(rule):
             return records.exists()
-        filed = {hs or student.highschool_id
-                 for hs in records.values_list('highschool_id', flat=True)}
-        required = recommending_school_ids_of(StudentRegistration.objects.filter(
-            student=student, class_section__term__id=term_id), rule)
-        return required <= filed if required else bool(filed)
+        awaiting = list(StudentRegistration.objects.filter(
+            student=student, class_section__term__id=term_id, status='applied',
+        ).filter(recommendation_required_q()).select_related(
+            'student', 'class_section__course'))
+        if not awaiting:
+            return records.exists()
+        return all(cls.covering(r, [term_id], rule).exists() for r in awaiting)
 
     @classmethod
     def has_recommendation(cls, student, term_id=None, campus=None, highschool_id=_ANY_SCHOOL):

@@ -99,16 +99,37 @@ def _mode_of(config):
     return mode if mode in (CLASS_SCHOOL, BOTH_SCHOOLS) else STUDENT_SCHOOL
 
 
+def _setting_disabled():
+    """A tenant hsadmin_can_manage_recommendation override decides who
+    recommends; the setting then does not apply anywhere."""
+    from cis.services.tenant_services import get_tenant_override
+    return get_tenant_override('registration', 'hsadmin_can_manage_recommendation') is not None
+
+
 def recommending_school_mode(config=None):
     """The serving campus's ``recommending_school``: STUDENT_SCHOOL,
-    CLASS_SCHOOL or BOTH_SCHOOLS. Missing or unknown values mean
-    STUDENT_SCHOOL.
+    CLASS_SCHOOL or BOTH_SCHOOLS. Missing or unknown values, and tenants
+    overriding ``hsadmin_can_manage_recommendation``, mean STUDENT_SCHOOL.
 
     For decisions about one page (the HS admin student page, served on one
     campus). Querysets that can span campuses use :func:`school_rule`.
     `config` is an already-read ``counselor_recommendation.from_db()``. With no
     campus in context on a multi-campus site it is STUDENT_SCHOOL, the
-    behaviour before the setting existed."""
+    behaviour before the setting existed. Cached per request."""
+    cache = _rule_cache.get()
+    if config is None and cache is not None:
+        from cis.campus_context import current_campus_or_none
+        campus = current_campus_or_none()
+        key = ('mode', getattr(campus, 'pk', None))
+        if key not in cache:
+            cache[key] = _read_mode()
+        return cache[key]
+    return _read_mode(config)
+
+
+def _read_mode(config=None):
+    if _setting_disabled():
+        return STUDENT_SCHOOL
     if config is None:
         from cis.campus_context import NoCampusContext
         from cis.settings.counselor_recommendation import counselor_recommendation
@@ -176,7 +197,9 @@ def _read_school_rule(config=None):
     a single-campus site given an already-read `config`."""
     from cis.campus_context import is_multi_campus
     if not is_multi_campus():
-        return recommending_school_mode(config)
+        return _read_mode(config)
+    if _setting_disabled():
+        return STUDENT_SCHOOL
     from cis.models.settings import Setting
     from cis.settings.counselor_recommendation import counselor_recommendation
     rule = {}
@@ -257,37 +280,109 @@ def recommending_school_ids_of(registrations, mode=None):
     return ids
 
 
-def covering_outer_q(mode):
-    """Q on StudentRecommendation, for a subquery correlated to a
-    registration (``OuterRef``): the record covers it under `mode` — the SQL
-    twin of ``StudentRecommendation.covering``. A row with no school is the
-    student's own school's."""
+def registration_mode(registration, rule=None):
+    """The mode that applies to `registration`: on a multi-campus site its
+    course's campus's (STUDENT_SCHOOL when that campus has no row)."""
+    rule = school_rule() if rule is None else rule
+    if isinstance(rule, str):
+        return rule
+    campus_id = registration.class_section.course.campus_id
+    for mode, campuses in rule.items():
+        if campus_id in campuses:
+            return mode
+    return STUDENT_SCHOOL
+
+
+def _own_school_recommends(mode, host, own):
+    return mode != CLASS_SCHOOL or host is None or host == own
+
+
+def registration_school_ids(registration, rule=None):
+    """The recommending schools of one registration, from its loaded
+    student and section (no query of its own)."""
+    mode = registration_mode(registration, rule)
+    own = registration.student.highschool_id
+    host = registration.class_section.highschool_id
+    ids = set()
+    if mode != STUDENT_SCHOOL and host:
+        ids.add(host)
+    if _own_school_recommends(mode, host, own) and own:
+        ids.add(own)
+    return ids
+
+
+def covering_q(registration, rule=None):
+    """Q on StudentRecommendation (beyond student and term): the records that
+    cover `registration`. Any of the student's while the student's school
+    recommends; otherwise one filed for the class's host school, or — when the
+    student's own school recommends for it — one with no school or naming the
+    student's school. :func:`covering_outer_q` is the SQL twin."""
+    mode = registration_mode(registration, rule)
+    if mode == STUDENT_SCHOOL:
+        return Q()
+    own = registration.student.highschool_id
+    host = registration.class_section.highschool_id
+    q = Q(pk__in=[])
+    if host:
+        q |= Q(highschool_id=host)
+    if _own_school_recommends(mode, host, own):
+        q |= Q(highschool__isnull=True)
+        if own:
+            q |= Q(highschool_id=own)
+    return q
+
+
+def _outer_q(mode):
     from django.db.models import OuterRef
     from django.db.models.lookups import Exact, IsNull
     if mode == STUDENT_SCHOOL:
         return Q()
     host, own = OuterRef('class_section__highschool'), OuterRef('student__highschool')
+    own_school = Q(highschool__isnull=True) | Q(highschool=own)
     if mode == CLASS_SCHOOL:
-        own_school_recommends = Q(IsNull(host, True)) | Q(Exact(host, own))
-    else:
-        own_school_recommends = Q()
-    return Q(highschool=host) | (Q(highschool__isnull=True) & own_school_recommends)
+        own_school &= Q(IsNull(host, True)) | Q(Exact(host, own))
+    return Q(highschool=host) | own_school
 
 
-def filing_school(hsadmin, registrations, student, campus=None):
-    """The school a recommendation `hsadmin` files on `registrations` is
-    recorded for (``StudentRecommendation.highschool``): None for the
-    student's own school — every filing when the student's school recommends
-    — otherwise the first, by name, of the registrations' recommending schools
-    where `hsadmin` holds the permission."""
+def covering_outer_q(rule):
+    """:func:`covering_q` for a subquery correlated to a registration
+    (``OuterRef``); `rule` is a mode or a :func:`school_rule`."""
+    if isinstance(rule, str):
+        return _outer_q(rule)
+    if is_student_rule(rule):
+        return Q()
+    from django.db.models import OuterRef
+    from django.db.models.lookups import In, IsNull
+    campus = OuterRef('class_section__course__campus')
+    others = [c for m, campuses in rule.items() if m != STUDENT_SCHOOL for c in campuses]
+    q = Q(IsNull(campus, True)) | ~Q(In(campus, others))
+    for mode, campuses in rule.items():
+        if mode != STUDENT_SCHOOL:
+            q |= Q(In(campus, campuses)) & _outer_q(mode)
+    return q
+
+
+def filing_groups(hsadmin, registrations, student, campus=None):
+    """``[(highschool, [registrations])]``: `registrations` grouped by the
+    school a filing by `hsadmin` is recorded for
+    (``StudentRecommendation.highschool``) — None for the student's own
+    school, preferred whenever it recommends for a registration; otherwise
+    the registration's recommending school where `hsadmin` holds the
+    permission."""
     from cis.models.highschool import HighSchool
     if hsadmin is None:
-        return None
-    schools = recommending_school_ids_of(registrations) & {
-        p.highschool_id for p in recommender_positions(campus, hsadmin=hsadmin)}
-    if not schools or student.highschool_id in schools:
-        return None
-    return HighSchool.objects.filter(id__in=schools).order_by('name').first()
+        return []
+    permitted = {p.highschool_id for p in recommender_positions(campus, hsadmin=hsadmin)}
+    rule = school_rule()
+    groups = OrderedDict()
+    for registration in registrations.select_related('student', 'class_section__course'):
+        schools = registration_school_ids(registration, rule) & permitted
+        if not schools:
+            continue
+        school = None if student.highschool_id in schools else sorted(schools, key=str)[0]
+        groups.setdefault(school, []).append(registration)
+    names = HighSchool.objects.in_bulk([s for s in groups if s])
+    return [(names.get(school) if school else None, regs) for school, regs in groups.items()]
 
 
 def recommender_positions(campus=None, highschool_ids=None, hsadmin=None):

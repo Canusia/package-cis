@@ -19,7 +19,7 @@ class ParentConsentAdmin(admin.ModelAdmin):
 
 class StudentRecommendationAdmin(admin.ModelAdmin):
     model = StudentRecommendation
-    list_display = ['student_name', 'term']
+    list_display = ['student_name', 'term', 'highschool']
     search_fields = ['user__email', 'user__last_name', 'user__first_name', 'user__psid']
 
     def student_name(self, obj):

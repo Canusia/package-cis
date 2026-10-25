@@ -478,16 +478,34 @@ class StudentViewSet(viewsets.ReadOnlyModelViewSet):
                     recommendation_required_q()
                 ).values_list('student__id', flat=True)
 
-                has_recommendation = StudentRecommendation.objects.filter(
-                    term__id__in=expand_term_ids(registration_term_id)
-                ).values_list('student__id', flat=True)
+                from cis.services.recommender_scope import (
+                    covering_outer_q, is_student_rule, school_rule)
+                rule = school_rule()
+                if is_student_rule(rule):
+                    has_recommendation = StudentRecommendation.objects.filter(
+                        term__id__in=expand_term_ids(registration_term_id)
+                    ).values_list('student__id', flat=True)
 
-
-                records = records.filter(
-                    id__in=applied_students
-                ).exclude(
-                    id__in=has_recommendation
-                )
+                    records = records.filter(
+                        id__in=applied_students
+                    ).exclude(
+                        id__in=has_recommendation
+                    )
+                else:
+                    # With the class's high school recommending: a student
+                    # with a registration its recommending school's record
+                    # does not cover.
+                    from django.db.models import Exists, OuterRef
+                    uncovered = StudentRegistration.objects.filter(
+                        Q(status__in=['applied', 'registered', 'approved']) &
+                        Q(class_section__registration_term__id__in=expand_term_ids(
+                            registration_term_id)) &
+                        recommendation_required_q()
+                    ).exclude(Exists(StudentRecommendation.objects.filter(
+                        student=OuterRef('student'),
+                        term__id__in=expand_term_ids(registration_term_id),
+                    ).filter(covering_outer_q(rule)))).values_list('student__id', flat=True)
+                    records = records.filter(id__in=uncovered)
 
                 # skip_ids = []
                 # for record in records:

@@ -290,11 +290,11 @@ def annotate_registration_flags(records):
     # section's term or its registration_term, mirroring the property's Q().
     #
     # When the class's high school recommends, only the recommending school's
-    # record covers a registration (covering_outer_q). A multi-campus site
-    # whose campuses differ gets no annotation, and the property asks per row.
+    # record covers a registration (covering_outer_q, per campus on a
+    # multi-campus site).
     from cis.services.recommender_scope import covering_outer_q, school_rule
     rule = school_rule()
-    if _tenant_registration_override('has_recommendation') is None and isinstance(rule, str):
+    if _tenant_registration_override('has_recommendation') is None:
         annotations['_has_recommendation'] = Exists(
             StudentRecommendation.objects.filter(
                 Q(student=OuterRef('student'))
