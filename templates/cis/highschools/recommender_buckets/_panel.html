@@ -1,0 +1,88 @@
+{% comment %}
+Recommender buckets for one high school: the bucket table and the A–Z
+coverage bar. Context from cis.views.recommender_bucket.panel_context; the
+add / edit / delete buttons post through ActionRegistry to urls.add|edit|delete.
+{% endcomment %}
+<div class="recommender-buckets mb-3" data-highschool="{{ highschool.id }}">
+    <p class="text-muted">
+        Buckets split {{ highschool.name }}'s recommendations by student last name.
+        A counselor in a bucket sees, is emailed about and recommends for only those students;
+        a counselor in no bucket recommends for every student at the school.
+    </p>
+
+    <div class="recommender-coverage mb-2" role="img" aria-label="Last-name coverage A to Z">
+        {% for cell in coverage.letters %}
+        <span class="recommender-letter recommender-{{ cell.state }}"
+              title="{{ cell.letter }}: {% if cell.admins %}{{ cell.admins|join:', ' }}{% elif coverage.fallback %}falls back to {{ coverage.fallback|join:', ' }}{% else %}no recommender{% endif %}">{{ cell.letter }}</span>
+        {% endfor %}
+    </div>
+    <div class="small mb-3">
+        {% if not coverage.has_buckets %}
+            No buckets in use: {% if coverage.fallback %}{{ coverage.fallback|join:', ' }} recommend{% if coverage.fallback|length == 1 %}s{% endif %} for every student.{% else %}<span class="text-danger font-weight-bold">no one can manage student recommendations at this school.</span>{% endif %}
+        {% else %}
+            {% if coverage.gaps %}
+                Gap: {{ coverage.gaps|join:', ' }} →
+                {% if coverage.fallback %}falls back to {{ coverage.fallback|join:', ' }} (no bucket).
+                {% else %}<span class="text-danger font-weight-bold">no fallback, so these students have no recommender.</span>{% endif %}
+            {% else %}A–Z covered.{% endif %}
+            {% if coverage.overlaps %}<br>Shared: {{ coverage.overlaps|join:', ' }} (more than one counselor).{% endif %}
+        {% endif %}
+        {% if coverage.non_az_students %}
+            <br>{{ coverage.non_az_students }} student{{ coverage.non_az_students|pluralize }} with a last name not starting A–Z
+            {% if coverage.fallback %}go to {{ coverage.fallback|join:', ' }}{% else %}<span class="text-danger">have no recommender</span>{% endif %}.
+        {% endif %}
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-striped" style="width:100%">
+            <thead>
+                <tr><th>Bucket</th><th>Last names</th><th>Counselors</th><th></th></tr>
+            </thead>
+            <tbody>
+                {% for bucket in buckets %}
+                <tr>
+                    <td>{{ bucket.name }}</td>
+                    <td>{{ bucket.range_label }}</td>
+                    <td>
+                        {% for p in bucket.positions.all %}
+                            <span class="d-block{% if p.status != 'Active' %} text-muted{% endif %}">{{ p.hsadmin }}{% if p.status != 'Active' %} (inactive){% endif %}</span>
+                        {% empty %}<span class="text-muted">Nobody, covers no one</span>{% endfor %}
+                    </td>
+                    <td class="text-right text-nowrap">
+                        {% if can_manage %}
+                        <button type="button" class="btn btn-sm btn-primary"
+                            onclick="ActionRegistry.doAction('{% url urls.edit bucket.id %}', 'edit_recommender_bucket', '{{ bucket.id }}')">Edit</button>
+                        <button type="button" class="btn btn-sm btn-danger"
+                            onclick="ActionRegistry.doAction('{% url urls.delete bucket.id %}', 'delete_recommender_bucket', '{{ bucket.id }}')">Remove</button>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="4" class="text-muted">No buckets.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if can_manage %}
+    <button type="button" class="btn btn-sm btn-primary"
+        onclick="ActionRegistry.doAction('{% url urls.add highschool.id %}', 'add_recommender_bucket', '{{ highschool.id }}')">
+        <i class="fas fa-plus"></i> Add bucket</button>
+    {% endif %}
+</div>
+<style>
+    .recommender-coverage { display: flex; flex-wrap: wrap; gap: 2px; }
+    .recommender-letter { display: inline-block; min-width: 1.6rem; text-align: center; padding: .15rem 0;
+                          border-radius: .2rem; font-size: .8rem; font-weight: 600; color: #fff; }
+    .recommender-covered { background: #28a745; }
+    .recommender-overlap { background: #17a2b8; }
+    .recommender-gap { background: #e9ecef; color: #6c757d; }
+</style>
+<script>
+    // Called by ActionRegistry after a bucket action succeeds.
+    window.reloadRecommenderBuckets = function (args) {
+        var span = document.createElement('span');
+        span.textContent = (args && args.message) || '';
+        swal({ title: (args && args.title) || 'Done', content: span, icon: 'success' })
+            .then(function () { window.location.reload(); });
+    };
+</script>

@@ -15,6 +15,7 @@ from .highschool_administrator import (
     HSAdministrator, HSPosition, HSAdministratorPosition,
     HSAdministratorAccessRequest
 )
+from .recommender_bucket import RecommenderBucket
 from .term import AcademicYear, Term
 from .course import (
     Campus, Cohort, Category, Department, College,

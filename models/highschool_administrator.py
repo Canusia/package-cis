@@ -272,9 +272,17 @@ class HSAdministrator(models.Model):
         except HSAdministratorPosition.DoesNotExist:
             return []
 
-    def can_manage_student_recommendation(self, highschool_id, campus=None):
-        return self.has_school_perm(
-            HSAdminPerm.MANAGE_STUDENT_RECOMMENDATION, highschool_id, campus)
+    def can_manage_student_recommendation(self, highschool_id, campus=None, student=None):
+        """With `student`, also require that one of the admin's positions at
+        the school covers the student's last-name initial (recommender
+        buckets); without it, the school-level check only."""
+        if student is None:
+            return self.has_school_perm(
+                HSAdminPerm.MANAGE_STUDENT_RECOMMENDATION, highschool_id, campus)
+        if not highschool_id:
+            return False
+        from cis.services.recommender_scope import admin_covers_student
+        return admin_covers_student(self, student, highschool_id, campus)
 
     def can_verify_roster(self, highschool_id, campus=None):
         """True if this admin's Active role at the school has Verify Class
@@ -544,6 +552,12 @@ class HSAdministratorPosition(models.Model):
         'auth.Permission', blank=True, related_name='hsadmin_positions',
         through='cis.HSPositionPermission',
         limit_choices_to={**_PERMISSION_CT, 'codename__in': HSAdminPerm.ALL})
+
+    # Last-name buckets limiting which of the school's students this position
+    # recommends for; none = the whole school. Write through
+    # cis.services.recommender_scope.assign_buckets (same-school check).
+    recommender_buckets = models.ManyToManyField(
+        'cis.RecommenderBucket', blank=True, related_name='positions')
 
     objects = HSAdministratorPositionQuerySet.as_manager()
 

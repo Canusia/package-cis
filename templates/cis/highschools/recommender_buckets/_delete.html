@@ -1,0 +1,22 @@
+{% comment %}
+Remove recommender bucket confirmation, rendered into #bulk_modal_content.
+{% endcomment %}
+<div class="card">
+    <div class="card-body">
+        <h3 class="card-title">Remove Recommender Bucket</h3>
+        <div class="card-text">
+            <form action="{{ form_action }}" method="post" class="frm_ajax">
+                {% csrf_token %}
+                <input type="hidden" name="apply" value="1">
+                <p>Remove <strong>{{ bucket.name }}</strong> ({{ bucket.range_label }}) from {{ bucket.highschool.name }}?</p>
+                {% if unranged %}
+                <div class="alert alert-warning">
+                    {{ unranged|join:", " }} will be in no bucket and will recommend for <strong>every</strong> student at the school.
+                </div>
+                {% endif %}
+                <input type="submit" class="btn btn-danger btn-sm" value="Remove">
+                <input type="button" class="btn btn-sm" onclick="window.closeBulkActionModal()" value="Cancel &amp; Close">
+            </form>
+        </div>
+    </div>
+</div>

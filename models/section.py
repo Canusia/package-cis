@@ -2157,38 +2157,27 @@ class StudentRegistration(models.Model):
         applied_registrations = StudentRegistration.objects.awaiting_recommendation(
             terms=terms)
 
-        # Preserved verbatim, quirk included: DISTINCT ON the *student's* school
-        # while selecting the *section's* school, so only one section-school
-        # survives per student-school and the rest are never notified. Changing
-        # it here would change behaviour for every tenant on a release meant to
-        # be a refactor; ewu's override regroups by the student's school, which
-        # is the school that owns the recommendation.
-        highschool_ids = applied_registrations.distinct(
-            'student__highschool__id').values_list(
-                'class_section__highschool',
-                flat=True
-            )
+        # Grouped by the STUDENT's school — the school that owns the
+        # recommendation — and within it by the counselors whose recommender
+        # buckets cover each student, so a counselor hears only about their own
+        # students. (Before v0.1.37a this selected the section's school under a
+        # DISTINCT ON the student's, so some section-schools were never
+        # notified.)
+        from cis.campus_context import current_campus_or_none
+        from cis.services.recommender_scope import split_by_recommenders
+
+        highschool_ids = set(applied_registrations.values_list(
+            'student__highschool__id', flat=True))
+        highschool_ids.discard(None)
 
         groups = []
-        for highschool_id in list(set(highschool_ids)):
-            highschool = HighSchool.objects.get(
-                pk=highschool_id
-            )
-
+        for highschool in HighSchool.objects.filter(id__in=highschool_ids).order_by('name'):
             # Per-campus job: only counselors permitted for this campus (#66).
-            from cis.campus_context import current_campus_or_none
-            hs_administrators = highschool.administrators_in_highschool(
-                'can_manage_student_recommendation', campus=current_campus_or_none())
-
-            groups.append({
-                'highschool': highschool,
-                'registrations': applied_registrations.filter(
-                    class_section__highschool=highschool
-                ).distinct('student'),
-                'recipients': [
-                    member.user.email for member in hs_administrators
-                ],
-            })
+            groups.extend(split_by_recommenders(
+                highschool,
+                applied_registrations.filter(
+                    student__highschool=highschool).distinct('student'),
+                campus=current_campus_or_none()))
         return groups
 
     @staticmethod

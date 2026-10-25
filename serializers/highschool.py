@@ -154,7 +154,9 @@ class HighSchoolAdministratorSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = HSAdministratorPosition
-        fields = '__all__'
+        # All fields but the recommender-bucket M2M, which no table reads and
+        # would cost a query per row (cis.services.recommender_scope).
+        exclude = ['recommender_buckets']
 
     def get_permissions(self, obj):
         return [{'codename': code, 'campus': campus.code if campus else None}

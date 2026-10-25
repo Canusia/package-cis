@@ -98,6 +98,13 @@ def administrators_tab(request, record):
             f'/ce/api/highschool-administrator/?highschool_id={record.id}&format=datatables'}
 
 
+@highschool_tabs.tab(slug='recommenders', title='Recommenders', order=65,
+                     template='cis/highschools/tabs/_recommenders.html')
+def recommenders_tab(request, record):
+    from cis.views.recommender_bucket import CE_URLS, panel_context
+    return panel_context(record, can_manage=True, urls=CE_URLS)
+
+
 @highschool_tabs.tab(slug='visits', title='Visits', order=70,
                      template='cis/highschools/tabs/_visits.html')
 def visits_tab(request, record):

@@ -146,6 +146,7 @@ from cis.views.course_cohort import (
 
 from cis.views import consortium as consortium_views
 from cis.views import course_type as course_type_views
+from cis.views import recommender_bucket as recommender_bucket_views
 from cis.views.campus import (
     index as campuses,
     detail as campus, add_new as campus_add_new,
@@ -650,6 +651,9 @@ urlpatterns = [
     path('highschool/<uuid:record_id>/course-type/add', user_passes_test(user_has_cis_role, login_url='/')(course_type_views.highschool_course_type_add), name='highschool_course_type_add'),
     path('highschool/course-type-link/<uuid:link_id>/edit', user_passes_test(user_has_cis_role, login_url='/')(course_type_views.highschool_course_type_edit), name='highschool_course_type_edit'),
     path('highschool/course-type-link/<uuid:link_id>/delete', user_passes_test(user_has_cis_role, login_url='/')(course_type_views.highschool_course_type_delete), name='highschool_course_type_delete'),
+    path('highschool/<uuid:record_id>/recommender-bucket/add', user_passes_test(user_has_cis_role, login_url='/')(recommender_bucket_views.ce_bucket_add), name='recommender_bucket_add'),
+    path('highschool/recommender-bucket/<uuid:bucket_id>/edit', user_passes_test(user_has_cis_role, login_url='/')(recommender_bucket_views.ce_bucket_edit), name='recommender_bucket_edit'),
+    path('highschool/recommender-bucket/<uuid:bucket_id>/delete', user_passes_test(user_has_cis_role, login_url='/')(recommender_bucket_views.ce_bucket_delete), name='recommender_bucket_delete'),
     path('consortiums/', user_passes_test(user_has_cis_role, login_url='/')(consortium_views.index), name='consortiums'),
     path('consortium/add', user_passes_test(user_has_cis_role, login_url='/')(consortium_views.consortium_add), name='consortium_add'),
     path('consortium/<uuid:record_id>', user_passes_test(user_has_cis_role, login_url='/')(consortium_views.detail), name='consortium'),
