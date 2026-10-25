@@ -36,11 +36,10 @@ def syllabi_added(sender, instance, action, reverse=False, pk_set=None, **kwargs
     """
     if action != 'post_add' or not pk_set:
         return
-    if reverse:
-        # section.classsectionsyllabi_set.add(file): instance is the section.
-        sections = [instance]
-    else:
-        sections = ClassSection.objects.filter(pk__in=pk_set)
+    # Fresh rows, so a caller's stale in-memory instance can't be saved over
+    # newer data (reverse: section.classsectionsyllabi_set.add(file)).
+    section_ids = [instance.pk] if reverse else pk_set
+    sections = ClassSection.objects.filter(pk__in=section_ids)
     for section in sections:
         changed_on = section.syllabi_status_changed_on or {}
         if section.syllabi_status == 'pending review' and not changed_on.get('note'):
@@ -59,6 +58,8 @@ def reset_class_section_syl_status(sender, instance, **kwargs):
             id=instance.id
         ).exists():
             section.syllabi_status = ''
+            # No file left: no review either (the report showed the old one).
+            section.syllabi_status_changed_on = {}
             section.save()
 
 @receiver(pre_save, sender=ClassSection)

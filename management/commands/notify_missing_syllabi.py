@@ -50,7 +50,7 @@ def sections_needing_update(term_ids):
 
 
 def _section_label(section):
-    return f'{section.course.name}/{section.class_number}/{section.section_number}'
+    return f'{section.course.name}/{section.class_number or ""}/{section.section_number or ""}'
 
 
 def needs_update_context(recipient):
@@ -61,14 +61,15 @@ def needs_update_context(recipient):
     name every course and fall back to the list, so a saved template that
     predates {{section_list}} still shows every section.
     """
-    from django.utils.html import format_html, format_html_join
+    from django.utils.html import format_html_join
+    from django.utils.safestring import mark_safe
     sections = recipient['sections']
 
     def note(section):
         return (section.syllabi_status_changed_on or {}).get('note') or ''
 
     section_list = format_html_join(
-        format_html('<br>'), '{}{}',
+        mark_safe('<br>'), '{}{}',
         ((_section_label(s), f' - {note(s)}' if note(s) else '') for s in sections))
     if len(sections) == 1:
         course, note_text = str(sections[0].course), note(sections[0])
@@ -180,10 +181,7 @@ class Command(CampusCommand):
                 'instructor_last_name': recipient.get('last_name'),
                 'term': str(recipient.get('term')),
                 'section_list': ', '.join(
-                    [ 
-                        sect.course.name + '/' + str(sect.class_number) + '/' + sect.section_number for sect in recipient.get('sections') 
-                    ]
-                )
+                    _section_label(sect) for sect in recipient.get('sections'))
             })
             text_body = message.render(context)
 

@@ -551,8 +551,13 @@ class ClassSection(MyCEBaseModel):
         })
 
         send_to = [e for e in (user.secondary_email, user.email) if e]
-        if notif_settings.get('mode') == 'test':
-            send_to = (notif_settings.get('testers') or '').split(',')
+        if (notif_settings.get('mode') or '').lower() == 'test':
+            send_to = [t.strip() for t in (notif_settings.get('testers') or '').split(',')
+                       if t.strip()]
+        if not send_to:
+            logger.warning('syllabi %s email skipped: no recipient for section %s',
+                           kind, self.pk)
+            return
 
         text_body = Template(email_text).render(context)
         html_body = get_template('cis/email.html').render({'message': text_body})
@@ -570,21 +575,28 @@ class ClassSection(MyCEBaseModel):
         self._add_syllabi_note('Marked syllabi as reviewed.', updated_by)
         self._send_syllabi_review_email('reviewed', note)
 
-    def mark_syllabi_as_needs_update(self, note='', updated_by=None):
-        try:
-            # update all sections for which syllabi is associated with
-            class_section_syllabi = ClassSectionSyllabi.objects.filter(
-                class_sections=self
-            )
+    def syllabi_siblings(self):
+        """The other sections a Needs Update on this section also marks: those
+        sharing its first syllabus file (the rule since before #125, which
+        will revisit it). Faculty's shared-scope check should use this too."""
+        first = ClassSectionSyllabi.objects.filter(class_sections=self).first()
+        if first is None:
+            return ClassSection.objects.none()
+        return first.class_sections.exclude(pk=self.pk)
 
-            class_section_syllabi[0].class_sections.all().update(
-                syllabi_status='needs update'
-            )
-        except:
-            ...
+    def mark_syllabi_as_needs_update(self, note='', updated_by=None):
+        from django.template.defaultfilters import linebreaksbr
+        from django.utils.html import format_html
+        # Each sibling is saved (history) with the same review record, so its
+        # banner, reminder and report row carry the note (#124/#127).
+        for sibling in self.syllabi_siblings():
+            sibling._record_syllabi_review('needs update', note, updated_by)
 
         self._record_syllabi_review('needs update', note, updated_by)
-        self._add_syllabi_note('Marked syllabi as needs update.<br><br>' + note, updated_by)
+        # The note is rendered |safe on the Notes tabs: escape it.
+        self._add_syllabi_note(
+            format_html('Marked syllabi as needs update.<br><br>{}', linebreaksbr(note)),
+            updated_by)
         self._send_syllabi_review_email('needs_update', note)
 
     @property

@@ -298,3 +298,65 @@ class UploadSignalTests(SyllabiFixtureMixin, TestCase):
         self.section.classsectionsyllabi_set.add(syllabus)
         self.section.refresh_from_db()
         self.assertEqual(self.section.syllabi_status, 'pending review')
+
+
+class ReviewFixTests(SyllabiFixtureMixin, TestCase):
+    """Code-review fixes for the R1 release."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.make_world()
+
+    def setUp(self):
+        set_value(saved_form_value())
+        self.section = ClassSection.objects.get(pk=self.section.pk)
+
+    def test_needs_update_note_is_escaped_in_the_public_note(self):
+        from cis.models.note import ClassSectionNote
+        with mock.patch(MODEL_SEND):
+            self.section.mark_syllabi_as_needs_update(
+                '<img src=x onerror=alert(1)>\nline two', updated_by=self.reviewer)
+        text = ClassSectionNote.objects.filter(class_section=self.section).latest('createdon').note
+        self.assertNotIn('<img', text)
+        self.assertIn('&lt;img', text)
+        self.assertIn('<br>line two', text)
+
+    def test_sibling_on_a_shared_file_gets_the_record_and_history(self):
+        sibling = ClassSection.objects.create(
+            course=self.course, term=self.term, class_number='SIB', section_number='01',
+            teacher=self.teacher)
+        syllabus = ClassSectionSyllabi.objects.create(media='shared.pdf')
+        syllabus.class_sections.add(self.section, sibling)
+        sibling.refresh_from_db()
+        before = sibling.history.count()
+        self.assertEqual(list(self.section.syllabi_siblings()), [sibling])
+        with mock.patch(MODEL_SEND):
+            self.section.mark_syllabi_as_needs_update('Fix grading', updated_by=self.reviewer)
+        sibling.refresh_from_db()
+        self.assertEqual(sibling.syllabi_status, 'needs update')
+        self.assertEqual(sibling.syllabi_status_changed_on['note'], 'Fix grading')
+        self.assertEqual(sibling.syllabi_status_changed_on['reviewed_on'], _today())
+        self.assertEqual(sibling.history.count(), before + 1)
+
+    def test_deleting_the_last_file_clears_the_review(self):
+        syllabus = ClassSectionSyllabi.objects.create(media='only.pdf')
+        syllabus.class_sections.add(self.section)
+        with mock.patch(MODEL_SEND):
+            ClassSection.objects.get(pk=self.section.pk).mark_syllabi_as_reviewed(
+                'ok', updated_by=self.reviewer)
+        syllabus.delete()
+        self.section.refresh_from_db()
+        self.assertEqual(self.section.syllabi_status, '')
+        self.assertEqual(self.section.syllabi_status_changed_on, {})
+
+    def test_test_mode_recipients(self):
+        set_value(saved_form_value(mode='Test', testers='a@x.com, b@x.com,'))
+        with mock.patch(MODEL_SEND) as send:
+            self.section.mark_syllabi_as_reviewed(updated_by=self.reviewer)
+        self.assertEqual(send.call_args.args[4], ['a@x.com', 'b@x.com'])
+
+    def test_test_mode_without_testers_sends_nothing(self):
+        set_value(saved_form_value(mode='test', testers=''))
+        with mock.patch(MODEL_SEND) as send, self.assertLogs('cis.models.section', 'WARNING'):
+            self.section.mark_syllabi_as_reviewed(updated_by=self.reviewer)
+        send.assert_not_called()
