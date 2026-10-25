@@ -5,9 +5,15 @@ its high school. With no recommender buckets it covers all of them (the
 behaviour before buckets, and the fallback for students no bucket covers);
 with buckets, only students whose last-name initial falls in one of them.
 
-Every surface that decides "may this admin recommend for this student" goes
-through this module — the student page, the pending list and count, and the
-counselor digest — so they cannot disagree about who sees whom.
+Which school recommends for a registration is the Counselor Rec. Form
+setting's ``recommending_school``: the student's high school (default), the
+class's host high school (the student's when the section has none), or both.
+Buckets apply at whichever school recommends; the student's last name picks
+the letter.
+
+Every surface that decides "may this admin recommend for this registration"
+goes through this module — the student page, the pending list and count, and
+the counselor digest — so they cannot disagree about who sees whom.
 
 The initial is the first character of ``user.last_name``, leading spaces
 trimmed, accents folded (Á→A, Ñ→N, Ø→O), upper-cased. Folding uses one table
@@ -28,6 +34,8 @@ from django.db.models.functions import Left, Trim, Upper
 from cis.models.highschool_administrator import (
     ANY_CAMPUS, HSAdminPerm, HSAdministrator, HSAdministratorPosition)
 from cis.models.recommender_bucket import LETTERS, RecommenderBucket
+from cis.settings.counselor_recommendation import (
+    BOTH_SCHOOLS, CLASS_SCHOOL, STUDENT_SCHOOL)
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +89,57 @@ def student_initial_sql(prefix=''):
     return Upper(folded)
 
 
+def recommending_school_mode(config=None):
+    """The setting's ``recommending_school``: STUDENT_SCHOOL, CLASS_SCHOOL or
+    BOTH_SCHOOLS. Missing or unknown values mean STUDENT_SCHOOL.
+
+    `config` is an already-read ``counselor_recommendation.from_db()``, to save
+    the query. The setting is per campus, so the campus serving the request
+    decides (as for ``require_grade_level_match``); with no campus in context
+    on a multi-campus site it is STUDENT_SCHOOL, the behaviour before it
+    existed."""
+    if config is None:
+        from cis.campus_context import NoCampusContext
+        from cis.settings.counselor_recommendation import counselor_recommendation
+        try:
+            config = counselor_recommendation.from_db()
+        except NoCampusContext:
+            config = {}
+    mode = (config or {}).get('recommending_school')
+    return mode if mode in (CLASS_SCHOOL, BOTH_SCHOOLS) else STUDENT_SCHOOL
+
+
+def recommending_school_q(highschool_ids, prefix='', mode=None):
+    """Q for registrations (reached through `prefix`, '' for a
+    StudentRegistration queryset) whose recommending school is one of
+    `highschool_ids`."""
+    mode = mode or recommending_school_mode()
+    ids = list(highschool_ids)
+    student = Q(**{f'{prefix}student__highschool_id__in': ids})
+    if mode == STUDENT_SCHOOL:
+        return student
+    host = Q(**{f'{prefix}class_section__highschool_id__in': ids})
+    if mode == CLASS_SCHOOL:
+        return host | (Q(**{f'{prefix}class_section__highschool__isnull': True}) & student)
+    return host | student
+
+
+def recommending_school_ids_of(registrations, mode=None):
+    """Ids of every recommending school of `registrations`."""
+    mode = mode or recommending_school_mode()
+    ids = set()
+    if mode in (STUDENT_SCHOOL, BOTH_SCHOOLS):
+        ids |= set(registrations.values_list('student__highschool_id', flat=True).distinct())
+    if mode in (CLASS_SCHOOL, BOTH_SCHOOLS):
+        ids |= set(registrations.values_list(
+            'class_section__highschool_id', flat=True).distinct())
+    if mode == CLASS_SCHOOL:
+        ids |= set(registrations.filter(class_section__highschool__isnull=True).values_list(
+            'student__highschool_id', flat=True).distinct())
+    ids.discard(None)
+    return ids
+
+
 def recommender_positions(campus=None, highschool_ids=None, hsadmin=None):
     """Active positions holding the recommendation permission for `campus`,
     with their buckets prefetched."""
@@ -112,11 +171,13 @@ def admin_covers_student(hsadmin, student, highschool_id, campus=None):
         campus, highschool_ids=[highschool_id], hsadmin=hsadmin))
 
 
-def scope_students(qs, hsadmin, campus=None, prefix=''):
-    """Narrow `qs` (Students, or rows reaching a student through `prefix`, e.g.
-    'student__' for registrations) to the students `hsadmin` may recommend for.
+def scope_registrations(qs, hsadmin, campus=None, prefix=''):
+    """Narrow `qs` (StudentRegistrations, or rows reaching one through
+    `prefix`) to the registrations `hsadmin` may recommend for: one of their
+    positions is at a recommending school of the registration and covers the
+    student's initial.
 
-    Filters on the student's own high school. Apply before any DISTINCT ON.
+    Apply before any DISTINCT ON.
     """
     if hsadmin is None:
         return qs.none()
@@ -124,25 +185,28 @@ def scope_students(qs, hsadmin, campus=None, prefix=''):
     if not positions:
         return qs.none()
 
+    mode = recommending_school_mode()
     q = Q(pk__in=[])
     for position in positions:
-        school = Q(**{f'{prefix}highschool_id': position.highschool_id})
+        school = recommending_school_q([position.highschool_id], prefix, mode)
         buckets = list(position.recommender_buckets.all())
         if not buckets:
             q |= school
             continue
         letters = sorted({c for b in buckets for c in b.letters()})
         q |= school & Q(**{f'{INITIAL_ANNOTATION}__in': letters})
-    return qs.annotate(**{INITIAL_ANNOTATION: student_initial_sql(prefix)}).filter(q)
+    return qs.annotate(
+        **{INITIAL_ANNOTATION: student_initial_sql(f'{prefix}student__')}).filter(q)
 
 
-def recommenders_for_student(student, campus=None):
-    """HSAdministrators who may recommend for `student` (its own school)."""
-    if not student.highschool_id:
-        return HSAdministrator.objects.none()
-    initial = student_initial(student)
-    ids = {p.hsadmin_id for p in recommender_positions(
-        campus, highschool_ids=[student.highschool_id]) if position_covers(p, initial)}
+def recommenders_for_registration(registration, campus=None):
+    """HSAdministrators who may recommend for `registration`."""
+    from cis.models.section import StudentRegistration
+    school_ids = recommending_school_ids_of(
+        StudentRegistration.objects.filter(pk=registration.pk))
+    initial = student_initial(registration.student)
+    ids = {p.hsadmin_id for p in recommender_positions(campus, highschool_ids=school_ids)
+           if position_covers(p, initial)}
     return HSAdministrator.objects.filter(id__in=ids)
 
 
@@ -173,6 +237,25 @@ def split_by_recommenders(highschool, registrations, campus=None):
         'registrations': registrations.filter(pk__in=ids),
         'recipients': list(recipients),
     } for recipients, ids in groups.items()]
+
+
+def recommender_groups(registrations, campus=None):
+    """Counselor digest groups for `registrations` (applied, awaiting a
+    recommendation): by recommending school, then by the counselors covering
+    each student (split_by_recommenders). One row per student per school.
+    With both schools recommending, a registration appears under each."""
+    from cis.models.highschool import HighSchool
+
+    mode = recommending_school_mode()
+    groups = []
+    for highschool in HighSchool.objects.filter(
+            id__in=recommending_school_ids_of(registrations, mode)).order_by('name'):
+        groups.extend(split_by_recommenders(
+            highschool,
+            registrations.filter(
+                recommending_school_q([highschool.id], mode=mode)).distinct('student'),
+            campus=campus))
+    return groups
 
 
 def _runs(letters):
@@ -225,7 +308,7 @@ def coverage(highschool):
     from cis.utils import registration_terms
     non_az = StudentRegistration.objects.awaiting_recommendation(
         terms=registration_terms() or []).filter(
-        student__highschool=highschool).annotate(
+        recommending_school_q([highschool.id])).annotate(
         **{INITIAL_ANNOTATION: student_initial_sql('student__')}).exclude(
         **{f'{INITIAL_ANNOTATION}__in': LETTERS}).values('student').distinct().count()
 

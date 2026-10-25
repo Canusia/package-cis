@@ -2148,7 +2148,6 @@ class StudentRegistration(models.Model):
         if override is not None:
             return override(terms=terms)
 
-        from cis.models.highschool import HighSchool
         from cis.utils import registration_terms as get_registration_terms
 
         if terms is None:
@@ -2157,28 +2156,18 @@ class StudentRegistration(models.Model):
         applied_registrations = StudentRegistration.objects.awaiting_recommendation(
             terms=terms)
 
-        # Grouped by the STUDENT's school — the school that owns the
-        # recommendation — and within it by the counselors whose recommender
+        # Grouped by the recommending school (the Counselor Rec. Form
+        # setting: the student's school by default, or the class's host
+        # school, or both) and within it by the counselors whose recommender
         # buckets cover each student, so a counselor hears only about their own
         # students. (Before v0.1.37a this selected the section's school under a
         # DISTINCT ON the student's, so some section-schools were never
-        # notified.)
+        # notified.) Per-campus job: only counselors permitted for this campus
+        # (#66).
         from cis.campus_context import current_campus_or_none
-        from cis.services.recommender_scope import split_by_recommenders
+        from cis.services.recommender_scope import recommender_groups
 
-        highschool_ids = set(applied_registrations.values_list(
-            'student__highschool__id', flat=True).distinct())
-        highschool_ids.discard(None)
-
-        groups = []
-        for highschool in HighSchool.objects.filter(id__in=highschool_ids).order_by('name'):
-            # Per-campus job: only counselors permitted for this campus (#66).
-            groups.extend(split_by_recommenders(
-                highschool,
-                applied_registrations.filter(
-                    student__highschool=highschool).distinct('student'),
-                campus=current_campus_or_none()))
-        return groups
+        return recommender_groups(applied_registrations, campus=current_campus_or_none())
 
     @staticmethod
     def notify_school_counselors(*args, **kwargs):
@@ -2487,16 +2476,19 @@ class StudentRegistration(models.Model):
             records = records.filter(student__id__in=student_ids)
 
         if highschool_ids:
-            # Scope by the STUDENT's high school, not the section's host high
-            # school. The recommendation belongs to the school the student
-            # attends; those differ whenever a student takes a section hosted
-            # elsewhere, and filtering on the section's school surfaced pending
-            # work to admins who hold no recommendation permission for that
-            # student.
-            records = records.filter(
-                status__in=['applied'],
-                student__highschool__id__in=highschool_ids
-            )
+            # Scope by the recommending school: the STUDENT's high school
+            # unless the Counselor Rec. Form setting says the class's host
+            # school, or both. Filtering on the host school regardless of the
+            # setting surfaced pending work to admins with no say over it.
+            # One read of the setting serves both the school rule and the
+            # grade gate below.
+            from cis.services.recommender_scope import (
+                recommending_school_mode, recommending_school_q)
+            from cis.settings.counselor_recommendation import counselor_recommendation
+            config = counselor_recommendation.from_db()
+            records = records.filter(status__in=['applied']).filter(
+                recommending_school_q(
+                    highschool_ids, mode=recommending_school_mode(config)))
 
             # The eligibility test reads `student.grade_level` and
             # `course.registration_eligibility` per row. select_related pulls
@@ -2504,7 +2496,7 @@ class StudentRegistration(models.Model):
             # count rather than one per row plus one.
             records = records.select_related('student', 'class_section__course')
             from cis.models.student import recommendation_grade_gate_enabled
-            if recommendation_grade_gate_enabled():
+            if recommendation_grade_gate_enabled(config):
                 skip_ids = [
                     record.id for record in records
                     if f'{record.student.grade_level}*' not in

@@ -11,6 +11,15 @@ from crispy_forms.layout import Submit
 from ..models.term import Term, AcademicYear
 from ..models.settings import Setting
 
+# Values stored in the setting; read through
+# cis.services.recommender_scope.recommending_school_mode().
+STUDENT_SCHOOL, CLASS_SCHOOL, BOTH_SCHOOLS = 'student', 'class', 'both'
+RECOMMENDING_SCHOOL_CHOICES = [
+    (STUDENT_SCHOOL, "Student's high school"),
+    (CLASS_SCHOOL, "Class's high school"),
+    (BOTH_SCHOOLS, 'Both'),
+]
+
 class SettingForm(forms.Form):
 
     upload_label = forms.CharField(
@@ -28,6 +37,15 @@ class SettingForm(forms.Form):
                    "(FR*, SO*, JR*, SR*). When off, every applied registration "
                    "needs a recommendation regardless of grade level."))
 
+    recommending_school = forms.ChoiceField(
+        choices=RECOMMENDING_SCHOOL_CHOICES,
+        initial=STUDENT_SCHOOL,
+        required=False,
+        label='Recommending school',
+        help_text=("Whose high school counselors recommend for a registration: the "
+                   "student's own high school, the high school offering the class "
+                   "(the student's school when the class has none), or either."))
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -39,6 +57,8 @@ class SettingForm(forms.Form):
             'upload_label': self.cleaned_data['upload_label'],
             'require_grade_level_match': bool(
                 self.cleaned_data.get('require_grade_level_match')),
+            'recommending_school': self.cleaned_data.get(
+                'recommending_school') or STUDENT_SCHOOL,
         }
 
 
@@ -67,6 +87,7 @@ class counselor_recommendation(SettingForm):
         defaults = {
             'upload_label': "Change this in Settings -> Student -> Counselor Rec. Form",
             'require_grade_level_match': True,
+            'recommending_school': STUDENT_SCHOOL,
         }
 
         Setting.install_defaults(self.key, defaults)

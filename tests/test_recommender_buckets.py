@@ -66,19 +66,31 @@ class RecommenderBucketTestBase(TestCase):
             username=f'stu{n}', email=f'stu{n}@x.com', last_name=last_name)
         return Student.objects.create(user=user, highschool=highschool or self.hs, grade_level='JR')
 
-    def register(self, student):
+    def register(self, student, host='school'):
+        """`host`: the section's high school; default this school, None for none."""
         n = self._n()
         course = Course.objects.create(
             name=f'ENGL {n}', title='Comp', catalog_number='101', cohort=self.cohort,
             status='Active', registration_eligibility=['JR*'])
         section = ClassSection.objects.create(
-            course=course, term=self.term, highschool=self.hs, registration_term=self.term,
+            course=course, term=self.term, highschool=self.hs if host == 'school' else host,
+            registration_term=self.term,
             class_number=f'C{n:05d}', section_number='01')
         return StudentRegistration.objects.create(
             student=student, class_section=section, status='applied', status_changed_on={})
 
     def scoped(self, hsadmin, campus=None):
-        return set(rs.scope_students(Student.objects.all(), hsadmin, campus))
+        """Students with a registration `hsadmin` may recommend for."""
+        return {r.student for r in rs.scope_registrations(
+            StudentRegistration.objects.all(), hsadmin, campus)}
+
+    def set_mode(self, mode):
+        from cis.models.settings import Setting
+        from cis.settings.counselor_recommendation import counselor_recommendation
+        Setting.objects.update_or_create(
+            key=counselor_recommendation.key, defaults={'value': {
+                'upload_label': 'x', 'require_grade_level_match': True,
+                'recommending_school': mode}})
 
 
 class InitialTests(RecommenderBucketTestBase):
@@ -114,6 +126,8 @@ class ScopeTests(RecommenderBucketTestBase):
         self.avila = self.student('Ávila')
         self.ivanov = self.student('Иванов')
         self.elsewhere = self.student('Abbot', highschool=self.other_hs)
+        for s in (self.adams, self.green, self.young, self.avila, self.ivanov, self.elsewhere):
+            self.register(s)
 
     def test_unranged_admin_covers_whole_school(self):
         admin, _ = self.admin('Lead')
@@ -160,12 +174,14 @@ class ScopeTests(RecommenderBucketTestBase):
         self.bucket('A', 'F', pos)
         self.assertTrue(admin.can_manage_student_recommendation(self.hs.id))
 
-    def test_registration_prefix(self):
+    def test_distinct_on_after_scope(self):
         admin, pos = self.admin('Lee')
         self.bucket('A', 'F', pos)
-        reg_a, reg_g = self.register(self.adams), self.register(self.green)
-        qs = rs.scope_students(StudentRegistration.objects.all(), admin, None, prefix='student__')
-        self.assertEqual(set(qs), {reg_a})
+        reg_a = self.register(self.adams)
+        qs = rs.scope_registrations(
+            StudentRegistration.objects.filter(student__in=[self.adams, self.green]), admin)
+        self.assertEqual(len(qs), 2)
+        self.assertIn(reg_a, qs)
         # DISTINCT ON after the scope still works (Pending feed shape).
         self.assertEqual(len(list(qs.order_by('student__id').distinct('student__id'))), 1)
 
@@ -199,7 +215,8 @@ class ThreeSurfacesTests(RecommenderBucketTestBase):
         for s in students:
             expected[s] = {a for a in admins
                            if a.can_manage_student_recommendation(self.hs.id, student=s)}
-            self.assertEqual(set(rs.recommenders_for_student(s)), expected[s], s.user.last_name)
+        for s, r in zip(students, regs):
+            self.assertEqual(set(rs.recommenders_for_registration(r)), expected[s], s.user.last_name)
         for a in admins:
             self.assertEqual(self.scoped(a), {s for s in students if a in expected[s]})
 
@@ -222,6 +239,98 @@ class ThreeSurfacesTests(RecommenderBucketTestBase):
         reg = self.register(self.student('Young'))
         groups = rs.split_by_recommenders(self.hs, StudentRegistration.objects.filter(pk=reg.pk))
         self.assertEqual(groups, [])
+
+
+class RecommendingSchoolTests(RecommenderBucketTestBase):
+    """The Counselor Rec. Form setting's recommending school: the student's
+    high school (default), the class's host high school, or both."""
+
+    def setUp(self):
+        super().setUp()
+        self.home, _ = self.admin('Home')                         # student's school
+        self.host, self.p_host = self.admin('Host', highschool=self.other_hs)
+        self.stu = self.student('Young')                          # attends self.hs
+        self.reg = self.register(self.stu, host=self.other_hs)    # class at other_hs
+
+    def pending(self, school):
+        return set(StudentRegistration.get_pending_recommendations(highschool_ids=[school.id]))
+
+    def test_default_is_the_students_school(self):
+        self.assertEqual(rs.recommending_school_mode(), 'student')
+        self.assertEqual(self.scoped(self.home), {self.stu})
+        self.assertEqual(self.scoped(self.host), set())
+        self.assertEqual(self.pending(self.hs), {self.reg})
+        self.assertEqual(self.pending(self.other_hs), set())
+
+    def test_unknown_value_means_students_school(self):
+        self.set_mode('nonsense')
+        self.assertEqual(rs.recommending_school_mode(), 'student')
+
+    def test_class_school(self):
+        self.set_mode('class')
+        self.assertEqual(self.scoped(self.home), set())
+        self.assertEqual(self.scoped(self.host), {self.stu})
+        self.assertEqual(self.pending(self.hs), set())
+        self.assertEqual(self.pending(self.other_hs), {self.reg})
+        self.assertEqual(set(rs.recommenders_for_registration(self.reg)), {self.host})
+
+    def test_class_school_falls_back_when_section_has_none(self):
+        self.set_mode('class')
+        reg = self.register(self.student('Adams'), host=None)
+        self.assertIn(reg, self.pending(self.hs))
+        self.assertEqual(set(rs.recommenders_for_registration(reg)), {self.home})
+
+    def test_both(self):
+        self.set_mode('both')
+        self.assertEqual(self.scoped(self.home), {self.stu})
+        self.assertEqual(self.scoped(self.host), {self.stu})
+        self.assertEqual(set(rs.recommenders_for_registration(self.reg)), {self.home, self.host})
+        groups = rs.recommender_groups(StudentRegistration.objects.filter(pk=self.reg.pk))
+        self.assertEqual({(g['highschool'], tuple(g['recipients'])) for g in groups}, {
+            (self.hs, (self.home.user.email,)),
+            (self.other_hs, (self.host.user.email,))})
+
+    def test_buckets_apply_at_the_host_school(self):
+        self.set_mode('class')
+        self.bucket('A', 'F', self.p_host, highschool=self.other_hs)
+        self.assertEqual(self.scoped(self.host), set())              # Young is not A–F
+        adams = self.student('Adams')
+        self.register(adams, host=self.other_hs)
+        self.assertEqual(self.scoped(self.host), {adams})
+        self.assertEqual(rs.recommender_groups(
+            StudentRegistration.objects.filter(pk=self.reg.pk)), [])
+
+    def test_digest_default_groups_by_recommending_school(self):
+        self.set_mode('class')
+        with patch('cis.utils.registration_terms', return_value=[self.term]):
+            groups = StudentRegistration.counselor_notification_groups()
+        self.assertEqual([(g['highschool'], g['recipients']) for g in groups],
+                         [(self.other_hs, [self.host.user.email])])
+
+    def test_cis_defaults_without_tenant_overrides(self):
+        self.set_mode('class')
+        with patch('cis.models.section._tenant_registration_override', return_value=None), \
+                patch('cis.utils.registration_terms', return_value=[self.term]):
+            self.assertEqual(self.pending(self.other_hs), {self.reg})
+            self.assertEqual(self.pending(self.hs), set())
+            groups = StudentRegistration.counselor_notification_groups()
+        self.assertEqual([(g['highschool'], g['recipients']) for g in groups],
+                         [(self.other_hs, [self.host.user.email])])
+
+    def test_coverage_counts_follow_the_mode(self):
+        self.register(self.student('1st'), host=self.other_hs)
+        with patch('cis.utils.registration_terms', return_value=[self.term]):
+            self.assertEqual(rs.coverage(self.other_hs)['non_az_students'], 0)
+            self.set_mode('class')
+            self.assertEqual(rs.coverage(self.other_hs)['non_az_students'], 1)
+
+    def test_setting_form_saves_the_choice(self):
+        from cis.settings.counselor_recommendation import SettingForm
+        form = SettingForm(data={'upload_label': 'x', 'recommending_school': 'both'})
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form._to_python()['recommending_school'], 'both')
+        self.assertFalse(SettingForm(data={'upload_label': 'x',
+                                           'recommending_school': 'nope'}).is_valid())
 
 
 class CoverageAndValidationTests(RecommenderBucketTestBase):

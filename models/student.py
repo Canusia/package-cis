@@ -2998,7 +2998,7 @@ class StudentSupportingDocument(models.Model):
         return os.path.basename(self.media.name)
 
 
-def recommendation_grade_gate_enabled():
+def recommendation_grade_gate_enabled(config=None):
     """Whether a recommendation depends on the student's grade level (#10).
 
     The counselor_recommendation setting's `require_grade_level_match`. On (the
@@ -3006,10 +3006,12 @@ def recommendation_grade_gate_enabled():
     where the course's registration_eligibility marks the student's grade with
     `*`. Off, every applied registration needs one. The single switch both the
     Python checks and recommendation_required_q() read, so they cannot drift.
+    `config` is an already-read ``counselor_recommendation.from_db()``.
     """
-    from cis.settings.counselor_recommendation import counselor_recommendation
-    return bool(counselor_recommendation.from_db().get(
-        'require_grade_level_match', True))
+    if config is None:
+        from cis.settings.counselor_recommendation import counselor_recommendation
+        config = counselor_recommendation.from_db()
+    return bool(config.get('require_grade_level_match', True))
 
 
 def recommendation_required_q(course_path='class_section__course',
