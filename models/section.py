@@ -2237,15 +2237,12 @@ class StudentRegistration(models.Model):
 
 
     def get_recommendation(self):
+        """The recommendation covering this registration in its class term
+        (StudentRecommendation.covering), or None. The student's own school's
+        first, then the latest."""
         from cis.models.student import StudentRecommendation
-        try:
-            record = StudentRecommendation.objects.get(
-                student=self.student,
-                term=self.class_section.term
-            )
-            return record
-        except StudentRecommendation.DoesNotExist:
-            return None
+        return StudentRecommendation.covering(self, [self.class_section.term_id]).order_by(
+            models.F('highschool').asc(nulls_first=True), '-submitted_on').first()
 
     def get_student_signature(self):
         from cis.models.student import StudentAgreement
@@ -2428,17 +2425,16 @@ class StudentRegistration(models.Model):
             return override(self)
 
         # The annotation is consulted only after the override, so a tenant's
-        # policy always wins over the stock subquery (#67).
+        # policy always wins over the stock subquery (#67). It follows the
+        # recommending school (annotate_registration_flags).
         annotated = getattr(self, '_has_recommendation', None)
         if annotated is not None:
             return annotated
 
-        from django.db.models import Q
         from cis.models.student import StudentRecommendation
-        return StudentRecommendation.objects.filter(
-            Q(student=self.student) & 
-            (Q(term=self.class_section.registration_term) | Q(term=self.class_section.term))
-        ).exists()
+        term_ids = {self.class_section.registration_term_id, self.class_section.term_id}
+        term_ids.discard(None)
+        return StudentRecommendation.covering(self, term_ids).exists()
     
     @classmethod
     def get_pending_recommendations(cls, student_ids=None, highschool_ids=None):
@@ -2482,13 +2478,12 @@ class StudentRegistration(models.Model):
             # setting surfaced pending work to admins with no say over it.
             # One read of the setting serves both the school rule and the
             # grade gate below.
-            from cis.services.recommender_scope import (
-                recommending_school_mode, recommending_school_q)
+            from cis.services.recommender_scope import recommending_school_q, school_rule
             from cis.settings.counselor_recommendation import counselor_recommendation
             config = counselor_recommendation.from_db()
             records = records.filter(status__in=['applied']).filter(
                 recommending_school_q(
-                    highschool_ids, mode=recommending_school_mode(config)))
+                    highschool_ids, mode=school_rule(config)))
 
             # The eligibility test reads `student.grade_level` and
             # `course.registration_eligibility` per row. select_related pulls

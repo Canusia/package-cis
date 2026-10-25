@@ -70,7 +70,9 @@ class LiveFeedMixin:
         request = APIRequestFactory().get('/x', query)
         force_authenticate(request, user=self.user)
         view = router_viewsets[basename].as_view({'get': 'list'})
-        with CaptureQueriesContext(connection) as captured:
+        # As in a request, which reads the recommending-school setting once.
+        from cis.services.recommender_scope import cached_school_rule
+        with cached_school_rule(), CaptureQueriesContext(connection) as captured:
             response = view(request)
             response.render()
         self.assertEqual(response.status_code, 200, basename)

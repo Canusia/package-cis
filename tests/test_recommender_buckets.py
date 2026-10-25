@@ -333,6 +333,139 @@ class RecommendingSchoolTests(RecommenderBucketTestBase):
                                            'recommending_school': 'nope'}).is_valid())
 
 
+class StudentRecommendationPerSchoolTests(RecommenderBucketTestBase):
+    """StudentRecommendation.highschool: one record per student, term and
+    recommending school; a row with no school is the student's own."""
+
+    def setUp(self):
+        super().setUp()
+        self.home, _ = self.admin('Home')
+        self.host, _ = self.admin('Host', highschool=self.other_hs)
+        self.stu = self.student('Young')
+        self.reg_home = self.register(self.stu)
+        self.reg_host = self.register(self.stu, host=self.other_hs)
+
+    def rec(self, highschool=None):
+        from cis.models.student import StudentRecommendation
+        return StudentRecommendation.objects.create(
+            student=self.stu, term=self.term, highschool=highschool, recommendation={})
+
+    def test_one_record_per_school(self):
+        self.rec()
+        self.rec(self.other_hs)
+        for school in (None, self.other_hs):
+            with self.assertRaises(IntegrityError), transaction.atomic():
+                self.rec(school)
+
+    def test_students_school_mode_any_record_counts(self):
+        self.rec(self.other_hs)
+        self.assertTrue(self.stu.has_recommendation(self.term.id))
+        self.assertTrue(self.reg_home.has_recommendation())
+        self.assertTrue(self.reg_host.has_recommendation())
+
+    def test_class_mode_each_recommending_school_must_file(self):
+        self.set_mode('class')
+        self.rec()                                            # student's own school
+        self.assertFalse(self.stu.has_recommendation(self.term.id))
+        self.assertFalse(self.reg_host.has_recommendation())
+        self.assertIsNone(self.reg_host.get_recommendation())
+        hosted = self.rec(self.other_hs)
+        self.assertTrue(self.stu.has_recommendation(self.term.id))
+        self.assertTrue(self.reg_host.has_recommendation())
+        self.assertEqual(self.reg_host.get_recommendation(), hosted)
+        self.assertTrue(self.stu.has_recommendation(self.term.id, highschool_id=self.other_hs.id))
+
+    def test_cis_default_has_recommendation(self):
+        self.set_mode('class')
+        self.rec()
+        with patch('cis.models.section._tenant_registration_override', return_value=None):
+            self.assertTrue(self.reg_home.has_recommendation())
+            self.assertFalse(self.reg_host.has_recommendation())
+
+    def test_annotation_agrees_with_the_property(self):
+        from cis.views.eager import annotate_registration_flags
+        self.rec()
+        regs = StudentRegistration.objects.filter(pk__in=[self.reg_home.pk, self.reg_host.pk])
+        for mode in ('student', 'class', 'both'):
+            self.set_mode(mode)
+            with patch('cis.models.section._tenant_registration_override', return_value=None):
+                annotated = {r.pk: r._has_recommendation for r in annotate_registration_flags(regs)}
+                plain = {r.pk: r.has_recommendation() for r in regs}
+            self.assertEqual(annotated, plain, mode)
+
+    def test_get_recommendation_without_school_prefers_the_students_own(self):
+        hosted = self.rec(self.other_hs)
+        self.assertEqual(self.stu.get_recommendation(self.term.id), hosted)
+        own = self.rec()
+        self.assertEqual(self.stu.get_recommendation(self.term.id), own)
+        self.assertEqual(self.stu.get_recommendation(self.term.id, self.other_hs.id), hosted)
+
+    def test_filing_school(self):
+        regs = StudentRegistration.objects.filter(pk__in=[self.reg_home.pk, self.reg_host.pk])
+        self.assertIsNone(rs.filing_school(self.host, regs, self.stu))       # student mode
+        self.set_mode('class')
+        self.assertEqual(rs.filing_school(self.host, regs, self.stu), self.other_hs)
+        self.assertIsNone(rs.filing_school(self.home, regs, self.stu))
+
+
+class SchoolRuleCacheTests(RecommenderBucketTestBase):
+    def test_one_read_per_request_and_saves_invalidate(self):
+        from django.core.signals import request_finished, request_started
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        # The receivers themselves: sending request_started would also close
+        # the test's database connection.
+        self.assertIn('cis_recommending_school_rule_start', str(request_started.receivers))
+        self.assertIn('cis_recommending_school_rule_end', str(request_finished.receivers))
+        rs._start_request_cache()
+        try:
+            with CaptureQueriesContext(connection) as captured:
+                for _ in range(3):
+                    self.assertEqual(rs.school_rule(), 'student')
+            self.assertEqual(len(captured), 1)
+            self.set_mode('class')
+            self.assertEqual(rs.school_rule(), 'class')
+        finally:
+            rs._end_request_cache()
+        with CaptureQueriesContext(connection) as captured:
+            rs.school_rule()
+            rs.school_rule()
+        self.assertEqual(len(captured), 2)                        # outside a request
+
+
+class MultiCampusRuleTests(RecommenderBucketTestBase):
+    """Each campus's own setting decides for its registrations."""
+
+    def test_rule_per_campus(self):
+        from django.contrib.sites.models import Site
+        from cis.models.course import Campus
+        from cis.models.settings import Setting
+        from cis.settings.counselor_recommendation import counselor_recommendation
+        north = Campus.objects.create(name='North', code='N1', site=Site.objects.create(
+            domain='n.example.edu', name='N'))
+        south = Campus.objects.create(name='South', code='S1', site=Site.objects.create(
+            domain='s.example.edu', name='S'))
+        for campus, mode in ((north, 'class'), (south, 'student')):
+            Setting.objects.create(key=counselor_recommendation.key, campus=campus,
+                                   value={'recommending_school': mode})
+        stu = self.student('Young')
+        regs = {}
+        for campus in (north, south):
+            reg = self.register(stu, host=self.other_hs)
+            reg.class_section.course.campus = campus
+            reg.class_section.course.save()
+            regs[campus] = reg
+        with patch('cis.campus_context.is_multi_campus', return_value=True):
+            rule = rs.school_rule()
+            self.assertEqual(rule, {'class': [north.id], 'student': [south.id]})
+            at_host = set(StudentRegistration.objects.filter(
+                rs.recommending_school_q([self.other_hs.id], mode=rule)))
+            at_home = set(StudentRegistration.objects.filter(
+                rs.recommending_school_q([self.hs.id], mode=rule)))
+        self.assertEqual(at_host, {regs[north]})
+        self.assertEqual(at_home, {regs[south]})
+
+
 class CoverageAndValidationTests(RecommenderBucketTestBase):
     def test_coverage_gaps_overlaps_fallback(self):
         _, p1 = self.admin('Lee')

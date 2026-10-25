@@ -288,12 +288,19 @@ def annotate_registration_flags(records):
     # be read, so skip it rather than make the database evaluate a correlated
     # EXISTS per row for nothing. The stock rule matches on either the
     # section's term or its registration_term, mirroring the property's Q().
-    if _tenant_registration_override('has_recommendation') is None:
+    #
+    # When the class's high school recommends, only the recommending school's
+    # record covers a registration (covering_outer_q). A multi-campus site
+    # whose campuses differ gets no annotation, and the property asks per row.
+    from cis.services.recommender_scope import covering_outer_q, school_rule
+    rule = school_rule()
+    if _tenant_registration_override('has_recommendation') is None and isinstance(rule, str):
         annotations['_has_recommendation'] = Exists(
             StudentRecommendation.objects.filter(
                 Q(student=OuterRef('student'))
                 & (Q(term=OuterRef('class_section__registration_term'))
-                   | Q(term=OuterRef('class_section__term')))))
+                   | Q(term=OuterRef('class_section__term')))
+                & covering_outer_q(rule)))
 
     return records.annotate(**annotations)
 

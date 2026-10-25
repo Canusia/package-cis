@@ -232,7 +232,9 @@ def _cost(queryset, serializer_class, limit):
     The evaluation happens inside the capture on purpose -- see the module
     docstring.
     """
-    with CaptureQueriesContext(connection) as captured:
+    # As in a request, which reads the recommending-school setting once.
+    from cis.services.recommender_scope import cached_school_rule
+    with cached_school_rule(), CaptureQueriesContext(connection) as captured:
         rows = list(queryset.order_by('id')[:limit])
         serializer_class(rows, many=True).data
     return len(rows), len(captured.captured_queries)

@@ -104,6 +104,11 @@ class StudentSISError(models.Model):
         result += "</div>"
         return result
 
+# "Any recommending school" for the highschool_id arguments, where None means
+# the student's own school.
+_ANY_SCHOOL = object()
+
+
 class Student(models.Model):
     """
     Student model
@@ -2110,11 +2115,14 @@ class Student(models.Model):
         from cis.campus_context import current_campus_or_none
         return ParentConsent.has_signed(self, campus=current_campus_or_none())
 
-    def has_recommendation(self, term_id=None):
-        """Student-facing: the campus being served when no term is given (#66)."""
+    def has_recommendation(self, term_id=None, highschool_id=_ANY_SCHOOL):
+        """Student-facing: the campus being served when no term is given (#66).
+        `highschool_id`: filed for that recommending school (see
+        StudentRecommendation.has_recommendation)."""
         from cis.campus_context import current_campus_or_none
         return StudentRecommendation.has_recommendation(
-            self, term_id, campus=None if term_id else current_campus_or_none())
+            self, term_id, campus=None if term_id else current_campus_or_none(),
+            highschool_id=highschool_id)
 
     def needs_recommendation(self, term_id=None):
         """Whether this student has an applied registration awaiting one.
@@ -2156,10 +2164,21 @@ class Student(models.Model):
             return True
         return False
 
-    def get_recommendation(self, term_id):
-        return StudentRecommendation.objects.get(
-            student=self,
-            term__id=term_id)
+    def get_recommendation(self, term_id, highschool_id=_ANY_SCHOOL):
+        """The term's recommendation; raises StudentRecommendation.DoesNotExist.
+
+        With `highschool_id`, the one filed for that recommending school (None
+        is the student's own). Without, the student's own school's if there is
+        one, else the latest — a term can hold one per recommending school."""
+        if highschool_id is not _ANY_SCHOOL:
+            record = StudentRecommendation.for_school(self, term_id, highschool_id)
+        else:
+            record = StudentRecommendation.objects.filter(
+                student=self, term__id=term_id).order_by(
+                models.F('highschool').asc(nulls_first=True), '-submitted_on').first()
+        if record is None:
+            raise StudentRecommendation.DoesNotExist
+        return record
     
     def get_ferpa(self, campus=None):
         """This student's FERPA record for `campus` (default: current), or an
@@ -2718,24 +2737,87 @@ class StudentRecommendation(models.Model):
         upload_to=student_recommendation_upload_path,
         max_length=255,
         blank=True)
+    # The recommending school this was filed for, when the Counselor Rec.
+    # Form setting lets the class's high school recommend
+    # (cis.services.recommender_scope). Null is the student's own school:
+    # every row filed while the student's school recommends, and every row
+    # from before the field existed. One row per student, term and school.
+    highschool = models.ForeignKey(
+        'cis.HighSchool', on_delete=models.PROTECT, null=True, blank=True,
+        related_name='+')
 
     class Meta:
-        unique_together = ['student', 'term']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['student', 'term'], condition=models.Q(highschool__isnull=True),
+                name='cis_studentrec_student_term_own_school'),
+            models.UniqueConstraint(
+                fields=['student', 'term', 'highschool'],
+                condition=models.Q(highschool__isnull=False),
+                name='cis_studentrec_student_term_school'),
+        ]
 
     @classmethod
-    def has_recommendation(cls, student, term_id=None, campus=None):
+    def for_school(cls, student, term_id, highschool_id=None):
+        """The record filed for `highschool_id` in `term_id` (None, or the
+        student's own school, is the row with no school), or None."""
+        qs = cls.objects.filter(student=student, term__id=term_id)
+        if highschool_id is None or highschool_id == student.highschool_id:
+            return qs.filter(highschool__isnull=True).first()
+        return qs.filter(highschool_id=highschool_id).first()
+
+    @classmethod
+    def covering(cls, registration, term_ids, rule=None):
+        """Records in `term_ids` that cover `registration`: any of the
+        student's, when the student's school recommends; otherwise those filed
+        for one of the registration's recommending schools."""
+        from cis.services.recommender_scope import (
+            is_student_rule, recommending_school_ids_of, school_rule)
+        rule = school_rule() if rule is None else rule
+        qs = cls.objects.filter(student_id=registration.student_id, term__id__in=term_ids)
+        if is_student_rule(rule):
+            return qs
+        schools = recommending_school_ids_of(
+            StudentRegistration.objects.filter(pk=registration.pk), rule)
+        q = models.Q(highschool_id__in=schools)
+        if registration.student.highschool_id in schools:
+            q |= models.Q(highschool__isnull=True)
+        return qs.filter(q)
+
+    @classmethod
+    def _filed_for_term(cls, student, term_id, rule):
+        """Filed for `term_id` — by every recommending school of the student's
+        registrations that term, when the class's high school recommends."""
+        from cis.services.recommender_scope import is_student_rule, recommending_school_ids_of
+        records = cls.objects.filter(term__id=term_id, student=student)
+        if is_student_rule(rule):
+            return records.exists()
+        filed = {hs or student.highschool_id
+                 for hs in records.values_list('highschool_id', flat=True)}
+        required = recommending_school_ids_of(StudentRegistration.objects.filter(
+            student=student, class_section__term__id=term_id), rule)
+        return required <= filed if required else bool(filed)
+
+    @classmethod
+    def has_recommendation(cls, student, term_id=None, campus=None, highschool_id=_ANY_SCHOOL):
         """Filed for `term_id`; without one, for every registered open term of
         each campus covered by _open_terms_by_campus (#66). No open term means
-        nothing outstanding."""
+        nothing outstanding.
+
+        When the class's high school recommends, "filed" means by every
+        recommending school of that term's registrations; with
+        `highschool_id` (requires `term_id`), by that school only."""
+        if highschool_id is not _ANY_SCHOOL:
+            return cls.for_school(student, term_id, highschool_id) is not None
+        from cis.services.recommender_scope import school_rule
+        rule = school_rule()
         if term_id:
-            return StudentRecommendation.objects.filter(
-                term__id=term_id, student=student).exists()
+            return cls._filed_for_term(student, term_id, rule)
         registered = set(StudentRegistration.objects.filter(student=student)
                          .values_list('class_section__term__id', flat=True))
         for _campus, terms in _open_terms_by_campus(student, campus):
             for term in terms:
-                if term.id in registered and not StudentRecommendation.objects.filter(
-                        term__id=term.id, student=student).exists():
+                if term.id in registered and not cls._filed_for_term(student, term.id, rule):
                     return False
         return True
 
