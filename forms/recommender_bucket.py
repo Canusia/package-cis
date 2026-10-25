@@ -62,7 +62,12 @@ class RecommenderBucketForm(forms.ModelForm):
             bucket.highschool = self.highschool
             bucket.save()
             members = list(self.cleaned_data['members'])
-            set_bucket_members(bucket, members)
+            # Members the form could not offer (Inactive, or no longer holding
+            # the permission) stay put: dropping them would make them unranged,
+            # covering the whole school, the day they are reactivated.
+            hidden = list(bucket.positions.exclude(
+                pk__in=self.fields['members'].queryset.values('pk'))) if not creating else []
+            set_bucket_members(bucket, members + hidden)
             # Notes render as HTML on the CE Notes tab, and HS admins choose
             # the bucket name: escape it.
             names = ', '.join(escape(str(p.hsadmin)) for p in members) or 'nobody'

@@ -5,6 +5,8 @@ The per-student check, the queryset scope and the digest split must agree —
 `test_three_surfaces_agree` pins that — so a counselor never sees a student on
 the list they cannot open, or is emailed about a student who is not theirs.
 """
+from unittest.mock import patch
+
 from django.contrib.auth.models import Group
 from django.db import IntegrityError, transaction
 from django.test import TestCase
@@ -80,7 +82,8 @@ class RecommenderBucketTestBase(TestCase):
 
 
 class InitialTests(RecommenderBucketTestBase):
-    NAMES = ['Smith', ' smith', "O'Brien", 'de la Cruz', '', 'Ávila', '1st', 'ßeta', 'zed']
+    NAMES = ['Smith', ' smith', "O'Brien", 'de la Cruz', '', 'Ávila', 'ñúñez', 'Øster',
+             'Łukasz', 'ıl', '1st', 'ßeta', 'zed', 'Иванов', 'Ærø']
 
     def test_python_and_sql_initials_agree_on_a_to_z(self):
         students = {name: self.student(name) for name in self.NAMES}
@@ -95,8 +98,11 @@ class InitialTests(RecommenderBucketTestBase):
         self.assertEqual(rs.initial_of("O'Brien"), 'O')
         self.assertIsNone(rs.initial_of(''))
         self.assertIsNone(rs.initial_of(None))
-        self.assertIsNone(rs.initial_of('Ávila'))
+        self.assertEqual(rs.initial_of('Ávila'), 'A')
+        self.assertEqual(rs.initial_of('ñúñez'), 'N')
+        self.assertEqual(rs.initial_of('Øster'), 'O')
         self.assertIsNone(rs.initial_of('1st'))
+        self.assertIsNone(rs.initial_of('Иванов'))
 
 
 class ScopeTests(RecommenderBucketTestBase):
@@ -106,16 +112,19 @@ class ScopeTests(RecommenderBucketTestBase):
         self.green = self.student('Green')
         self.young = self.student('Young')
         self.avila = self.student('Ávila')
+        self.ivanov = self.student('Иванов')
         self.elsewhere = self.student('Abbot', highschool=self.other_hs)
 
     def test_unranged_admin_covers_whole_school(self):
         admin, _ = self.admin('Lead')
-        self.assertEqual(self.scoped(admin), {self.adams, self.green, self.young, self.avila})
+        self.assertEqual(self.scoped(admin),
+                         {self.adams, self.green, self.young, self.avila, self.ivanov})
 
     def test_ranged_admin_covers_only_their_letters(self):
         admin, pos = self.admin('Lee')
         self.bucket('A', 'F', pos)
-        self.assertEqual(self.scoped(admin), {self.adams})
+        self.assertEqual(self.scoped(admin), {self.adams, self.avila})
+        self.assertTrue(admin.can_manage_student_recommendation(self.hs.id, student=self.avila))
         self.assertTrue(admin.can_manage_student_recommendation(self.hs.id, student=self.adams))
         self.assertFalse(admin.can_manage_student_recommendation(self.hs.id, student=self.green))
 
@@ -123,12 +132,13 @@ class ScopeTests(RecommenderBucketTestBase):
         admin, pos = self.admin('Lee')
         self.bucket('A', 'C', pos)
         self.bucket('X', 'Z', pos)
-        self.assertEqual(self.scoped(admin), {self.adams, self.young})
+        self.assertEqual(self.scoped(admin), {self.adams, self.avila, self.young})
 
-    def test_accented_initial_is_not_inside_a_range(self):
+    def test_accents_fold_and_other_scripts_match_no_bucket(self):
         admin, pos = self.admin('Lee')
         self.bucket('A', 'Z', pos)
-        self.assertNotIn(self.avila, self.scoped(admin))
+        self.assertIn(self.avila, self.scoped(admin))
+        self.assertNotIn(self.ivanov, self.scoped(admin))
 
     def test_overlap_both_admins_see_shared_letters(self):
         a, pa = self.admin('Lee')
@@ -169,9 +179,9 @@ class ScopeTests(RecommenderBucketTestBase):
             domain='s.example.edu', name='S'))
         pos.grant(HSAdminPerm.MANAGE_STUDENT_RECOMMENDATION, campus=campus)
         self.bucket('A', 'F', pos)
-        self.assertEqual(self.scoped(admin, campus), {self.adams})
+        self.assertEqual(self.scoped(admin, campus), {self.adams, self.avila})
         self.assertEqual(self.scoped(admin, other), set())
-        self.assertEqual(self.scoped(admin, ANY_CAMPUS), {self.adams})
+        self.assertEqual(self.scoped(admin, ANY_CAMPUS), {self.adams, self.avila})
 
 
 class ThreeSurfacesTests(RecommenderBucketTestBase):
@@ -181,7 +191,7 @@ class ThreeSurfacesTests(RecommenderBucketTestBase):
         ruiz, p_ruiz = self.admin('Ruiz')
         self.bucket('A', 'F', p_lee)
         self.bucket('F', 'M', p_ruiz)                   # overlap on F; gap N–Z
-        students = [self.student(n) for n in ('Adams', 'Fox', 'Kim', 'Young', 'Ávila', '')]
+        students = [self.student(n) for n in ('Adams', 'Fox', 'Kim', 'Young', 'Ávila', '', '1st')]
         regs = [self.register(s) for s in students]
         admins = [lead, lee, ruiz]
 
@@ -221,8 +231,10 @@ class CoverageAndValidationTests(RecommenderBucketTestBase):
         self.bucket('A', 'F', p1)
         self.bucket('E', 'M', p2)
         self.bucket('X', 'Z')                           # no members: covers nothing
-        self.student('Ávila')
-        cov = rs.coverage(self.hs)
+        self.register(self.student('1st'))              # pending, matches no bucket
+        self.student('2nd')                             # not pending: not counted
+        with patch('cis.utils.registration_terms', return_value=[self.term]):
+            cov = rs.coverage(self.hs)
         self.assertEqual(cov['gaps'], ['N–Z'])
         self.assertEqual(cov['overlaps'], ['E–F'])
         self.assertEqual(cov['fallback'], [])
@@ -313,6 +325,23 @@ class CEScreenTests(RecommenderBucketTestBase):
             'members': [str(elsewhere.id)]})
         self.assertEqual(resp.status_code, 400)
         self.assertFalse(self.hs.recommender_buckets.exists())
+
+    def test_edit_keeps_members_the_form_cannot_show(self):
+        from cis.views import recommender_bucket as v
+        bucket = self.bucket('A', 'F', self.p_lee)
+        self.p_lee.status = 'Inactive'
+        self.p_lee.save()
+        resp, _ = self.call(v.ce_bucket_edit, self.staff, bucket_id=bucket.id, post={
+            'apply': '1', 'name': 'renamed', 'start_letter': 'A', 'end_letter': 'F'})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(list(bucket.positions.all()), [self.p_lee])
+
+    def test_staff_need_every_campus_link(self):
+        from unittest.mock import patch as _patch
+        from cis.views import recommender_bucket as v
+        with _patch('cis.views.recommender_bucket.ce_can_manage', return_value=False):
+            resp, _ = self.call(v.ce_bucket_add, self.staff, record_id=self.hs.id)
+        self.assertEqual(resp.status_code, 403)
 
     def test_edit_and_delete(self):
         from cis.views import recommender_bucket as v

@@ -10,15 +10,19 @@ through this module — the student page, the pending list and count, and the
 counselor digest — so they cannot disagree about who sees whom.
 
 The initial is the first character of ``user.last_name``, leading spaces
-trimmed, upper-cased. Anything outside A–Z (accents, digits, blank) matches no
-bucket, so only unranged positions cover it. Buckets are matched with
+trimmed, accents folded (Á→A, Ñ→N, Ø→O), upper-cased. Folding uses one table
+(``FOLD_FROM``/``FOLD_TO``) on both the Python and the SQL side — SQL applies
+it with TRANSLATE, so no ``unaccent`` extension is needed — which keeps the two
+in step. Whatever is still outside A–Z (digits, other scripts, blank) matches
+no bucket, so only unranged positions cover it. Buckets are matched with
 ``initial IN (letters)``, never ``BETWEEN``: a range comparison follows the
-database collation, under which 'Á' sorts inside A–F, while equality does not.
+database collation, while equality does not.
 """
 import logging
+import unicodedata
 from collections import OrderedDict
 
-from django.db.models import F, Prefetch, Q
+from django.db.models import CharField, F, Func, Prefetch, Q, Value
 from django.db.models.functions import Left, Trim, Upper
 
 from cis.models.highschool_administrator import (
@@ -30,9 +34,36 @@ logger = logging.getLogger(__name__)
 INITIAL_ANNOTATION = '_recommender_initial'
 
 
+def _fold_table():
+    """Latin letters whose decomposition starts with an ASCII letter, mapped to
+    it, plus the few that do not decompose (Ø, Ł, Đ, Æ, Œ, ß...)."""
+    src, dst = [], []
+    for code in range(0xC0, 0x250):
+        ch = chr(code)
+        base = unicodedata.normalize('NFKD', ch)[:1]
+        if base.isascii() and base.isalpha() and base != ch:
+            src.append(ch)
+            dst.append(base)
+    for ch, base in (('Ø', 'O'), ('ø', 'o'), ('Ł', 'L'), ('ł', 'l'), ('Đ', 'D'),
+                     ('đ', 'd'), ('Æ', 'A'), ('æ', 'a'), ('Œ', 'O'), ('œ', 'o'),
+                     ('ß', 's'), ('Þ', 'T'), ('þ', 't'), ('Ð', 'D'), ('ð', 'd'),
+                     ('Ħ', 'H'), ('ħ', 'h'), ('ı', 'i')):
+        if ch not in src:
+            src.append(ch)
+            dst.append(base)
+    return ''.join(src), ''.join(dst)
+
+
+FOLD_FROM, FOLD_TO = _fold_table()
+_FOLD = str.maketrans(FOLD_FROM, FOLD_TO)
+
+
 def initial_of(last_name):
-    """'A'..'Z', or None when the name does not start with one."""
-    first = (last_name or '').lstrip(' ')[:1].upper()
+    """'A'..'Z', or None when the name does not start with a (folded) letter."""
+    first = (last_name or '').lstrip(' ')[:1].translate(_FOLD)
+    if not first.isascii():
+        return None
+    first = first.upper()
     return first if first in LETTERS else None
 
 
@@ -41,9 +72,13 @@ def student_initial(student):
 
 
 def student_initial_sql(prefix=''):
-    """SQL twin of student_initial: first character, spaces trimmed, upper.
-    Compare it only by equality to single A–Z letters (see module docstring)."""
-    return Upper(Left(Trim(F(f'{prefix}user__last_name')), 1))
+    """SQL twin of student_initial: first character, spaces trimmed, accents
+    folded, upper. Compare it only by equality to single A–Z letters (see
+    module docstring)."""
+    first = Left(Trim(F(f'{prefix}user__last_name')), 1)
+    folded = Func(first, Value(FOLD_FROM), Value(FOLD_TO),
+                  function='TRANSLATE', output_field=CharField())
+    return Upper(folded)
 
 
 def recommender_positions(campus=None, highschool_ids=None, hsadmin=None):
@@ -160,9 +195,10 @@ def coverage(highschool):
     campus). Returns ``letters`` (one dict per A–Z with its admins and a state
     of covered / overlap / gap), ``gaps`` and ``overlaps`` as run labels,
     ``fallback`` (unranged admins, who cover the gaps), ``has_buckets`` and
-    ``non_az_students`` (students whose initial matches no bucket).
+    ``non_az_students`` (students awaiting a recommendation whose initial
+    matches no bucket).
     """
-    from cis.models.student import Student
+    from cis.models.section import StudentRegistration
 
     positions = list(recommender_positions(
         ANY_CAMPUS, highschool_ids=[highschool.id]).select_related('hsadmin__user'))
@@ -186,9 +222,12 @@ def coverage(highschool):
         state = 'gap' if not admins else ('overlap' if len(admins) > 1 else 'covered')
         letters.append({'letter': c, 'admins': admins, 'state': state})
 
-    non_az = Student.objects.filter(highschool=highschool).annotate(
-        **{INITIAL_ANNOTATION: student_initial_sql()}).exclude(
-        **{f'{INITIAL_ANNOTATION}__in': LETTERS}).count()
+    from cis.utils import registration_terms
+    non_az = StudentRegistration.objects.awaiting_recommendation(
+        terms=registration_terms() or []).filter(
+        student__highschool=highschool).annotate(
+        **{INITIAL_ANNOTATION: student_initial_sql('student__')}).exclude(
+        **{f'{INITIAL_ANNOTATION}__in': LETTERS}).values('student').distinct().count()
 
     return {
         'letters': letters,

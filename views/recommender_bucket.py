@@ -87,9 +87,10 @@ def bucket_delete_response(request, bucket, action_url):
 
     if request.method != 'POST':
         return _forbidden()
-    members = list(bucket.positions.select_related('hsadmin__user'))
     if request.POST.get('apply') != '1':
-        unranged = [str(p.hsadmin) for p in members if p.recommender_buckets.count() == 1]
+        from django.db.models import Count
+        unranged = [str(p.hsadmin) for p in bucket.positions.select_related(
+            'hsadmin__user').annotate(n=Count('recommender_buckets')) if p.n == 1]
         return _modal('cis/highschools/recommender_buckets/_delete.html', {
             'bucket': bucket, 'unranged': unranged, 'form_action': action_url,
         }, request)
@@ -111,6 +112,14 @@ def _ce_highschool(request, record_id):
         scope_highschools(HighSchool.objects.all(), user=request.user), pk=record_id)
 
 
+def ce_can_manage(user, highschool):
+    """Buckets scope the school's counselors on every campus, so (as for
+    deleting the school) the user must be able to manage each campus link."""
+    from cis.highschool_scope import can_manage_link
+    return all(can_manage_link(user, link.campus)
+               for link in highschool.campus_links.select_related('campus'))
+
+
 def _ce_bucket(request, bucket_id):
     return get_object_or_404(
         RecommenderBucket.objects.select_related('highschool'), pk=bucket_id,
@@ -121,6 +130,8 @@ def ce_bucket_add(request, record_id):
     if not user_has_cis_role(request.user):
         return _forbidden()
     highschool = _ce_highschool(request, record_id)
+    if not ce_can_manage(request.user, highschool):
+        return _forbidden()
     return bucket_form_response(
         request, highschool, str(reverse(CE_URLS['add'], args=[highschool.id])))
 
@@ -129,6 +140,8 @@ def ce_bucket_edit(request, bucket_id):
     if not user_has_cis_role(request.user):
         return _forbidden()
     bucket = _ce_bucket(request, bucket_id)
+    if not ce_can_manage(request.user, bucket.highschool):
+        return _forbidden()
     return bucket_form_response(
         request, bucket.highschool, str(reverse(CE_URLS['edit'], args=[bucket.id])), bucket)
 
@@ -137,5 +150,7 @@ def ce_bucket_delete(request, bucket_id):
     if not user_has_cis_role(request.user):
         return _forbidden()
     bucket = _ce_bucket(request, bucket_id)
+    if not ce_can_manage(request.user, bucket.highschool):
+        return _forbidden()
     return bucket_delete_response(
         request, bucket, str(reverse(CE_URLS['delete'], args=[bucket.id])))

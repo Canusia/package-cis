@@ -2167,7 +2167,7 @@ class StudentRegistration(models.Model):
         from cis.services.recommender_scope import split_by_recommenders
 
         highschool_ids = set(applied_registrations.values_list(
-            'student__highschool__id', flat=True))
+            'student__highschool__id', flat=True).distinct())
         highschool_ids.discard(None)
 
         groups = []

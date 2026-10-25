@@ -101,8 +101,8 @@ def administrators_tab(request, record):
 @highschool_tabs.tab(slug='recommenders', title='Recommenders', order=65,
                      template='cis/highschools/tabs/_recommenders.html')
 def recommenders_tab(request, record):
-    from cis.views.recommender_bucket import CE_URLS, panel_context
-    return panel_context(record, can_manage=True, urls=CE_URLS)
+    from cis.views.recommender_bucket import CE_URLS, ce_can_manage, panel_context
+    return panel_context(record, can_manage=ce_can_manage(request.user, record), urls=CE_URLS)
 
 
 @highschool_tabs.tab(slug='visits', title='Visits', order=70,
