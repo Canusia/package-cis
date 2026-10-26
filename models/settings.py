@@ -150,7 +150,8 @@ class SettingQuerySet(models.QuerySet):
             self._mark_fallback(obj)
 
     def _iterator(self, use_chunked_fetch, chunk_size):
-        # iterator()/aiterator() bypass _fetch_all, so mark rows here too.
+        # iterator() bypasses _fetch_all, so mark rows here too (aiterator()
+        # never reaches _iterator, so async iteration is not marked).
         for obj in super()._iterator(use_chunked_fetch, chunk_size):
             yield self._mark_fallback(obj)
 
@@ -165,6 +166,9 @@ class SettingQuerySet(models.QuerySet):
 
     def delete(self):
         return super(SettingQuerySet, self._campus_rows_only()).delete()
+
+    delete.queryset_only = True
+    delete.alters_data = True
 
     def create(self, **kwargs):
         # Mirrors QuerySet.create(), noting whether the caller named a campus:

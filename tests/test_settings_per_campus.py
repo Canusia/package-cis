@@ -188,6 +188,9 @@ class CopyOnWriteTests(TestCase):
             Setting(key=OTHER, value={}).save()
         self.assertEqual(Setting._base_manager.get(key=OTHER).campus, self.c2)
 
+    def test_manager_has_no_bulk_delete(self):
+        self.assertFalse(hasattr(Setting.objects, 'delete'))
+
     def test_iterator_rows_are_marked_for_copy_on_write(self):
         with campus_context(self.c1):
             row = next(Setting.objects.filter(key=OTHER).iterator())
