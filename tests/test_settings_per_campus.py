@@ -271,3 +271,30 @@ class SettingPermissionTests(TestCase):
             self.assertFalse(can_edit_setting_key(staff, MENU))
             self.assertTrue(can_edit_setting_key(su, MENU))
 
+
+class RegisteredSettingsTests(TestCase):
+    """Every key an installed app registers resolves to a scope, and every
+    allow-listed GLOBAL key is a registered setting (catches a typo)."""
+
+    def _registered_keys(self):
+        from django.apps import apps
+        from django.utils.module_loading import import_string
+        keys = set()
+        for config in apps.get_app_configs():
+            for record in getattr(config, 'CONFIGURATORS', None) or []:
+                path = f"{record.get('app', 'cis')}.settings.{record['name']}.{record['name']}"
+                try:
+                    keys.add(import_string(path).key)
+                except ImportError:
+                    continue  # a record for an app this deployment lacks
+        return keys
+
+    def test_scopes(self):
+        keys = self._registered_keys()
+        self.assertTrue(keys)
+        for key in keys:
+            self.assertIn(setting_scope(key), (STRICT, CAMPUS, GLOBAL), key)
+
+    def test_every_global_key_is_registered(self):
+        keys = self._registered_keys()
+        self.assertEqual(GLOBAL_SETTING_KEYS - keys, set())
