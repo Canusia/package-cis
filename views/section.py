@@ -42,6 +42,7 @@ from cis.campus_gate import scope_queryset_by_campus, campus_gate, get_accessibl
 
 from ..models.customuser import CustomUser
 from cis.models.term import Term
+from cis.campus_context import campus_terms
 from cis.models.course import CourseAdministrator
 from cis.models.section import (
     ClassSection, ClassSectionSyllabi,
@@ -1372,7 +1373,7 @@ def index(request):
             'grade_status': ClassSection.GRADE_STATUS,
             'campus': get_accessible_campuses(request.user),
             'default_campus': get_default_campus(request.user),
-            'terms': Term.objects.all(),
+            'terms': campus_terms(),
             'extra_tabs': extra_tabs,
         }
     )

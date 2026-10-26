@@ -4,6 +4,7 @@ Each function is registered with @student_tabs.tab(...) and returns a context
 dict (rendered into the declared template) or an HttpResponse.  This module is
 eager-imported by myce/component_registry/student.py so the decorators run.
 """
+from cis.campus_context import campus_terms
 from myce.component_registry.student import student_tabs  # noqa: F401
 from cis.campus_context import is_multi_campus
 from cis.campus_gate import get_accessible_campuses
@@ -46,13 +47,12 @@ def recommendations_tab(request, record):
 @student_tabs.tab(slug='agreements', title='Agreement(s)', order=50,
                   template='cis/students/tabs/_agreements.html')
 def agreements_tab(request, record):
-    from cis.models.term import Term
     from django.utils.safestring import mark_safe
     return {
         # mark_safe: the URL is rendered in a <script> string; without it Django
         # escapes & -> &amp;, mangling the ?student= filter (shows all students').
         'agreements_url': mark_safe(f'/ce/api/student_agreement?format=datatables&student={record.id}'),
-        'terms': Term.objects.all(),
+        'terms': campus_terms(),
     }
 
 
@@ -65,14 +65,13 @@ def drop_wd_tab(request, record):
 # @student_tabs.tab(slug='parent_consents', title='Parent Consent for Home School', order=100,
 #                   template='cis/students/tabs/_parent_consents.html')
 def parent_consents_tab(request, record):
-    from cis.models.term import Term
     from django.urls import reverse
     from django.utils.safestring import mark_safe
     return {
         # mark_safe: rendered in a <script> string — keep & unescaped so the
         # ?student= filter is sent intact (else all students' consents show).
         'parent_consents_url': mark_safe(f'/ce/api/parent_consent?format=datatables&student={record.id}'),
-        'terms': Term.objects.all(),
+        'terms': campus_terms(),
         'student_ajax_url': reverse('cis:student_ajax'),
     }
 
@@ -129,7 +128,7 @@ def classes_tab(request, record):
         # these keys. Fragments don't inherit the parent page context, so set
         # them here to match the historic student-view context.
         'is_registration_open': True,
-        'registration_terms': Term.objects.all(),
+        'registration_terms': campus_terms(),
     }
 
 

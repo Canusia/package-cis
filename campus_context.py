@@ -129,3 +129,17 @@ def scope_to_current_campus(queryset, path, distinct=False):
         return queryset
     scoped = queryset.filter(**{path: current_campus()})
     return scoped.distinct() if distinct else scoped
+
+
+def campus_terms(campus=None):
+    """The terms a term picker offers (#130).
+
+    Multi-campus: ``campus``'s terms, or the current campus's (raising
+    NoCampusContext when none is set). Single-campus: every term. Use it as a
+    form field's queryset so a posted term from another campus fails
+    validation; callers keep their own ordering.
+    """
+    from cis.models.term import Term
+    if not is_multi_campus():
+        return Term.objects.all()
+    return Term.objects.filter(academic_year__campus=campus or current_campus())

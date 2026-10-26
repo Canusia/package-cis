@@ -2,6 +2,7 @@
 Eager-imported by myce/component_registry/faculty_coordinator.py so decorators run.
 """
 import copy
+from cis.campus_context import campus_terms
 from collections import defaultdict
 
 from django.core.exceptions import ValidationError
@@ -517,7 +518,6 @@ def assigned_instructors_tab(request, record):
                               order=20,
                               template='cis/faculty/tabs/_class_sections.html')
 def class_sections_tab(request, record):
-    from cis.models.term import Term
     from cis.services.table_configs import get_table_config
 
     build = get_table_config('sections_table').build_config
@@ -535,7 +535,7 @@ def class_sections_tab(request, record):
         # Opens on "All Terms" (term=-1), matching EWU's sibling sections tabs
         # (cis/tabs/highschool.py, course.py, teacher.py). The user narrows via
         # the dropdown.
-        'terms': Term.objects.all().order_by('-code'),
+        'terms': campus_terms().order_by('-code'),
     }
 
 

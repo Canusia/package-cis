@@ -42,6 +42,7 @@ from cis.models.student import (
 
 from cis.models.section import Campus, ClassSection
 from cis.models.term import Term
+from cis.campus_context import campus_terms
 from cis.forms.student import (
     # StudentProfileForm,
     StudentExportForm,
@@ -1803,9 +1804,9 @@ def detail(request, record_id):
             'detail_actions': student_actions.for_scope('detail', request.user),
             'record': record,
             'active_term': active_term(),
-            'terms': Term.objects.all(),
+            'terms': campus_terms(),
             'is_registration_open': True,
-            'registration_terms': Term.objects.all(),
+            'registration_terms': campus_terms(),
             'detail_tabs': student_tabs.for_record(
                 request, record,
                 url_for=lambda slug: reverse('cis:student_tab', args=[record.id, slug])),
@@ -1863,7 +1864,7 @@ def index(request):
         template, {
             'menu': menu,
             'page_title': 'Students',
-            'terms': Term.objects.all().order_by('-code'),
+            'terms': campus_terms().order_by('-code'),
             'accessible_campuses': get_accessible_campuses(request.user),
             'default_campus': get_default_campus(request.user),
             'onboarding_timeline_start': onboarding_timeline_start,
@@ -2388,7 +2389,7 @@ def recommendations(request):
             'menu': menu,
             'yes_no': YES_NO_OPTIONS,
             'active_term': act_term,
-            'terms': Term.objects.all().order_by('-code'),
+            'terms': campus_terms().order_by('-code'),
             'page_title': 'Student Recommendations',
             'accessible_campuses': get_accessible_campuses(request.user),
             'default_campus': get_default_campus(request.user),
@@ -2419,7 +2420,7 @@ def support_docs(request):
             'menu': menu,
             'yes_no': YES_NO_OPTIONS,
             'page_title': 'Support Doc(s).',
-            'terms': Term.objects.all().order_by('-code'),
+            'terms': campus_terms().order_by('-code'),
             'accessible_campuses': get_accessible_campuses(request.user),
             'default_campus': get_default_campus(request.user),
             'support_docs_table': build_support_docs_table_config(
@@ -2635,7 +2636,7 @@ def faa_index(request):
         template, {
             'menu': menu,
             'active_term': act_term,
-            'terms': Term.objects.all().order_by('-code'),
+            'terms': campus_terms().order_by('-code'),
             'page_title': 'Scholarship Requests',
             'accessible_campuses': get_accessible_campuses(request.user),
             'default_campus': get_default_campus(request.user),
@@ -2767,9 +2768,9 @@ def faa(request, record_id):
             'note_api_url': mark_safe('/ce/api/student-note/?student_id='+str(record.student.id)+'&format=datatables'),
             'transactions_api_url': mark_safe('/ce/student_transactions/api/transactions/?format=datatables&student_id='+str(record.student.id)),
             'active_term': active_term(),
-            'terms': Term.objects.all(),
+            'terms': campus_terms(),
             'is_registration_open': True,
-            'registration_terms': Term.objects.all()
+            'registration_terms': campus_terms()
         })
 
 

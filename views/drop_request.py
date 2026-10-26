@@ -16,6 +16,7 @@ from crispy_forms.utils import render_crispy_form
 from cis.models.section import StudentDropRequest
 from cis.models.student import Student
 from cis.models.term import Term
+from cis.campus_context import campus_terms
 from cis.models.course import Campus
 
 from cis.utils import (
@@ -190,7 +191,7 @@ def index(request):
             'active_term': active_term(),
             'campus': Campus.objects.filter(
                 code__startswith=settings.CAMPUS_CODE_PREFIX).all(),
-            'terms': Term.objects.all(),
+            'terms': campus_terms(),
             'default_campus': get_default_campus(request.user),
             'registration_status': StudentDropRequest.STATUS_OPTIONS
         }

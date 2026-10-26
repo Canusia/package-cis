@@ -11,6 +11,7 @@ from django.urls import reverse_lazy
 from ..models.crontab import CronTab
 
 from cis.models.term import AcademicYear, Term
+from cis.campus_context import NoCampusContext, campus_terms
 from cis.services.term_hierarchy import apply_term_tree
 from cis.models.course import Course
 from cis.models.teacher import TeacherCourseCertificate
@@ -306,7 +307,13 @@ class syllabi_review(forms.Form):
             'setting:run_record', args=[request.GET.get('report_id')])
         self.helper.add_input(Submit('submit', 'Save Setting'))
 
-        apply_term_tree(self.fields['term'], Term.objects.all().order_by('-code'))
+        # A campus's review setting may only name its own terms (#130).
+        # register_settings builds the form with no campus set.
+        try:
+            terms = campus_terms()
+        except NoCampusContext:
+            terms = Term.objects.none()
+        apply_term_tree(self.fields['term'], terms.order_by('-code'))
 
         # A field the saved setting has no value for shows the copy readers
         # would actually send (legacy key, else default), so saving the form

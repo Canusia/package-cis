@@ -22,6 +22,7 @@ from cis.utils import REGISTRATION_TYPES, YES_NO_SELECT_OPTIONS, YES_NO_OPTIONS
 from cis.models.highschool import HighSchool
 from cis.highschool_scope import picker_queryset
 from cis.models.term import Term
+from cis.campus_context import campus_terms
 from cis.services.term_hierarchy import apply_term_tree
 from cis.models.student import Student
 from cis.services.registration_statuses import registration_status_choices
@@ -74,7 +75,7 @@ class StudentClassChangeForm(forms.Form):
     def __init__(self, registration_ids=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        apply_term_tree(self.fields['new_crn_term'], Term.objects.all().order_by("-code"))
+        apply_term_tree(self.fields['new_crn_term'], campus_terms().order_by("-code"))
         
         self.fields['action'].initial = kwargs.get('action', 'change_class_section')
         if registration_ids:
@@ -340,7 +341,7 @@ class BulkRegistrationTermChangeForm(forms.Form):
 
     def __init__(self, record_ids=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        apply_term_tree(self.fields['new_registration_term'], Term.objects.all().order_by('-code'))
+        apply_term_tree(self.fields['new_registration_term'], campus_terms().order_by('-code'))
 
         if record_ids:
             records = ClassSection.objects.filter(
@@ -583,7 +584,7 @@ class AddNewHighSchoolClassOfferingForm(forms.Form):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.fields['term'].queryset = Term.objects.all()
+        self.fields['term'].queryset = campus_terms()
 
         self.helper = FormHelper()
         self.helper.form_class = 'frm_ajax'
@@ -863,6 +864,7 @@ class AddNewStudentRegistrationForm(forms.Form):
 
         # per request, so it follows the current campus
         self.fields['highschool'].queryset = picker_queryset()
+        self.fields['term'].queryset = campus_terms()
 
         self.helper = FormHelper()
         self.helper.form_class = 'frm_ajax'

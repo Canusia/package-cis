@@ -13,7 +13,6 @@ from rest_framework.response import Response
 from cis.models.course import (
     Campus
 )
-from ..models.term import Term
 
 from cis.forms.course import CampusForm
 
@@ -21,15 +20,13 @@ from cis.menu import cis_menu, draw_menu
 
 from ..serializers.course import CampusSerializer
 from cis.utils import CIS_user_only, TermNotConfigured, active_term
-from cis.campus_context import is_multi_campus
+from cis.campus_context import campus_terms
 
 
 def _campus_terms(campus):
     """The terms the detail page filters by: the viewed campus's own when
     multi-campus, whichever host the page is opened from."""
-    if is_multi_campus():
-        return Term.objects.filter(academic_year__campus=campus)
-    return Term.objects.all()
+    return campus_terms(campus)
 
 
 def _campus_active_term(campus):

@@ -28,6 +28,7 @@ from rest_framework.response import Response
 from cis.models.section import StudentRegistration
 from cis.models.student import Student, StudentCampusID, StudentAgreement, StudentRecommendation, ParentConsent
 from cis.models.term import Term
+from cis.campus_context import campus_terms
 from cis.models.course import Campus
 
 from cis.utils import (
@@ -555,7 +556,7 @@ def detail(request, record_id):
             'record': record,
             'left_tabs': left_tabs,
             'right_tabs': right_tabs,
-            'terms': Term.objects.all(),
+            'terms': campus_terms(),
             'campus': Campus.get_all(),
             'detail_actions': registration_actions.for_scope('detail', request.user),
         })
@@ -588,7 +589,7 @@ def index(request):
             'active_term': active_term(),
             'campus': get_accessible_campuses(request.user),
             'default_campus': get_default_campus(request.user),
-            'terms': Term.objects.all().order_by('-academic_year__name'),
+            'terms': campus_terms().order_by('-academic_year__name'),
             'registration_status': StudentRegistration.STATUS_OPTIONS,
             'yes_no': YES_NO_OPTIONS,
             'parent_consent_enabled': parent_consent_enabled,
