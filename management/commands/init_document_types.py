@@ -119,11 +119,17 @@ class Command(BaseCommand):
         known = {code.casefold() for code, _ in vocabulary}
         known |= {label.casefold() for _, label in vocabulary}
 
-        # Report unmatched setting values before writing anything.
-        unmatched = [
-            value for value in self._setting_types()
+        # Report unmatched setting values before writing anything. support_docs
+        # is per campus (#129): read each campus's own types.
+        from cis.campus_context import campus_context
+        values = []
+        for campus in campuses:
+            with campus_context(campus):
+                values.extend(self._setting_types())
+        unmatched = sorted({
+            value for value in values
             if value.strip() and value.strip().casefold() not in known
-        ]
+        })
 
         created = 0
         with transaction.atomic():

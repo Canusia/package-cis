@@ -1,6 +1,6 @@
 import logging, json
 
-from django.core.management.base import BaseCommand
+from cis.management.campus_command import CampusCommand
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
@@ -8,13 +8,14 @@ logger = logging.getLogger(__name__)
 from cis.settings.student_exporter import student_exporter
 from cis.signals.crontab import cron_task_done, cron_task_started
 
-class Command(BaseCommand):
+class Command(CampusCommand):
     '''
     Import class sections
     '''
     help = 'Export student XML'
 
     def add_arguments(self, parser):
+        super().add_arguments(parser)
         parser.add_argument('-t', '--time', type=str, help='Time of run')
 
     def handle(self, *args, **kwargs):

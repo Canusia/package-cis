@@ -13,7 +13,7 @@ import logging
 
 from django.conf import settings
 from django.core.files.base import ContentFile
-from django.core.management.base import BaseCommand
+from cis.management.campus_command import CampusCommand
 from django.template import Context, Template
 
 from mailer import send_mail
@@ -47,10 +47,11 @@ def _format_counts(counts):
     return ', '.join(parts) if parts else 'no counts reported'
 
 
-class Command(BaseCommand):
+class Command(CampusCommand):
     help = 'Pull ClassSections from SIS for the terms selected in the class_section_importer setting.'
 
     def add_arguments(self, parser):
+        super().add_arguments(parser)
         parser.add_argument('-t', '--time', type=str, help='Scheduled run time (for cron signals)')
 
     def handle(self, *args, **kwargs):

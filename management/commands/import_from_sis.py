@@ -1,7 +1,7 @@
 
 import os, csv, logging, io
 
-from django.core.management.base import BaseCommand
+from cis.management.campus_command import CampusCommand
 
 from cis.utils import get_uploaded_file
 
@@ -13,7 +13,7 @@ from cis.models.student import Student
 
 logger = logging.getLogger(__name__)
 
-class Command(BaseCommand):
+class Command(CampusCommand):
     '''
     Imports data from SIS exported CSV files
     '''

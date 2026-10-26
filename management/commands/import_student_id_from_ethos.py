@@ -19,7 +19,7 @@ import logging
 
 from django.conf import settings
 from django.core.files.base import ContentFile
-from django.core.management.base import BaseCommand
+from cis.management.campus_command import CampusCommand
 from django.http import HttpResponse
 from django.template import Context, Template
 
@@ -46,12 +46,13 @@ def _send_done(cls, time, summary, rows):
     )
 
 
-class Command(BaseCommand):
+class Command(CampusCommand):
     """Look up Banner SIS identity from Ethos for in_review students."""
 
     help = 'Look up SIS identity from Ethos for students with application_status=in_review'
 
     def add_arguments(self, parser):
+        super().add_arguments(parser)
         parser.add_argument('-t', '--time', type=str, help='Scheduled run time (for cron signals)')
 
     def handle(self, *args, **kwargs):
