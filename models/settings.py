@@ -270,14 +270,17 @@ class Setting(models.Model):
     def install_defaults(cls, key, defaults):
         """Create the setting, or add only the keys it does not already have.
 
-        `register_settings` is re-run whenever a tenant adopts a new cis version,
-        so install() must be safe to run against a customised setting. Assigning
-        `defaults` wholesale replaced every tenant edit (issue #19). Merging
-        key-by-key means a newly shipped key still appears, while anything the
-        tenant has already set is left alone.
+        This is safe to re-run against a customised setting: it merges only
+        the keys that are missing and never overwrites a value. Assigning
+        `defaults` wholesale replaced every tenant edit (issue #19).
+
+        Note `register_settings` only installs records that are new (it skips
+        existing SettingRecords), so a newly shipped key reaches existing rows
+        only when something calls this again: a new record, a data migration
+        or a script.
 
         A CAMPUS key's defaults go to the shared row, whatever campus is set,
-        and newly shipped keys are added to every campus's own row too (#129).
+        and the missing keys are added to every campus's own row too (#129).
         """
         defaults = defaults or {}
         if setting_scope(key) != CAMPUS:

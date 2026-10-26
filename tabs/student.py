@@ -114,7 +114,6 @@ def change_history_tab(request, record):
                   template='cis/students/tabs/_classes.html')
 def classes_tab(request, record):
     from cis.services.table_configs import get_table_config
-    from cis.models import Term
     from django.urls import reverse
     build = get_table_config('registrations_table').build_config
     return {
