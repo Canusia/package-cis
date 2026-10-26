@@ -38,9 +38,9 @@ class ScopeTests(TestCase):
         self.assertTrue(is_campus_scoped('cis.settings.sis_settings'))
         self.assertTrue(is_campus_scoped('cis_future_sections'))
 
-    def test_other_keys_are_global(self):
+    def test_allow_listed_keys_are_global(self):
         self.assertFalse(is_campus_scoped('cis.settings.menu'))
-        self.assertFalse(is_campus_scoped('two_step'))
+        self.assertFalse(is_campus_scoped('cis.settings.two_step'))
 
 
 class SingleCampusUnchangedTests(TestCase):

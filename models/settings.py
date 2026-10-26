@@ -1,5 +1,7 @@
 # users/models.py
 import uuid
+from contextlib import contextmanager
+from contextvars import ContextVar
 from django.conf import settings as django_settings
 from django.db import models
 from django.db.models import JSONField, Q
@@ -8,8 +10,7 @@ from simple_history.models import HistoricalRecords
 # Settings that are per campus on a multi-campus deployment besides the
 # CAMPUS_CODE_PREFIX-ed keys (MC-05, #29): each college has its own SIS
 # credentials, consume config, future-sections window, roster, syllabus and
-# charge rules. Anything else (menu, two_step, sms, password_reset, ...) is
-# one row for the whole deployment.
+# charge rules. These are STRICT: never read from another row.
 EXTRA_CAMPUS_SCOPED_KEYS = frozenset({
     'cis.settings.sis_settings',
     'ethos.settings.ethos_consume',
@@ -19,22 +20,65 @@ EXTRA_CAMPUS_SCOPED_KEYS = frozenset({
     'cis.settings.registration_charges',
 })
 
+# Settings that really are deployment-wide (#129): one row, superuser-only
+# in multi-campus mode. sent_email's retention prunes the shared mail log.
+GLOBAL_SETTING_KEYS = frozenset({
+    'cis.settings.menu',
+    'cis.settings.two_step',
+    'cis.settings.sms',
+    'cis.settings.password_reset',
+    'ses_tracking.settings.email_routing',
+    'ses_tracking.settings.sent_email',
+})
+
+# STRICT: one row per campus, no fallback (MC-05).
+# CAMPUS: the campus's row, else the shared row; a save writes the campus row.
+# GLOBAL: the shared row.
+STRICT, CAMPUS, GLOBAL = 'strict', 'campus', 'global'
+
+# Inside shared_settings(), CAMPUS keys read and write the shared row with no
+# campus needed: installing defaults, register_settings, scripts. STRICT keys
+# still need a campus.
+_shared = ContextVar('cis_shared_settings', default=False)
+
+
+@contextmanager
+def shared_settings():
+    token = _shared.set(True)
+    try:
+        yield
+    finally:
+        _shared.reset(token)
+
+
+def setting_scope(key):
+    """How a multi-campus deployment stores ``key`` (#129)."""
+    prefix = getattr(django_settings, 'CAMPUS_CODE_PREFIX', '')
+    if key and ((prefix and key.startswith(f'{prefix}_'))
+                or key in EXTRA_CAMPUS_SCOPED_KEYS):
+        return STRICT
+    if key in GLOBAL_SETTING_KEYS:
+        return GLOBAL
+    return CAMPUS
+
 
 def is_campus_scoped(key):
-    """True for a setting that has one row per campus on a multi-campus deployment."""
-    prefix = getattr(django_settings, 'CAMPUS_CODE_PREFIX', '')
-    return bool(key) and (
-        (bool(prefix) and key.startswith(f'{prefix}_'))
-        or key in EXTRA_CAMPUS_SCOPED_KEYS)
+    """True for a setting that can have one row per campus (STRICT or CAMPUS)."""
+    return bool(key) and setting_scope(key) != GLOBAL
 
 
 def _campus_for(key):
-    """The campus a campus-scoped lookup must be narrowed to, or None when the
-    lookup is unscoped (single-campus mode, or a global key). Raises
-    NoCampusContext in multi-campus mode with no campus set -- a global row is
-    never a stand-in for a campus's own."""
+    """The campus a new row for ``key`` belongs to, or None for a shared row.
+
+    None in single-campus mode, for a GLOBAL key, and for a CAMPUS key inside
+    shared_settings(). Otherwise the current campus -- raising NoCampusContext
+    in multi-campus mode with none set.
+    """
     from cis.campus_context import current_campus, is_multi_campus
-    if not is_multi_campus() or not is_campus_scoped(key):
+    if not is_multi_campus():
+        return None
+    scope = setting_scope(key)
+    if scope == GLOBAL or (scope == CAMPUS and _shared.get()):
         return None
     return current_campus()
 
