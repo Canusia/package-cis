@@ -256,3 +256,18 @@ class ScopeStatusTests(TestCase):
     def test_single_campus_has_no_status(self):
         from cis.models.settings import setting_scope_status
         self.assertIsNone(setting_scope_status(OTHER))
+
+
+@override_settings(MULTI_CAMPUS=True)
+class SettingPermissionTests(TestCase):
+    def test_campus_admin_saves_campus_keys_not_global_ones(self):
+        from unittest import mock
+        from cis.campus_gate import can_edit_setting_key
+        staff = mock.Mock(is_superuser=False)
+        su = mock.Mock(is_superuser=True)
+        with mock.patch('cis.campus_gate.can_manage_settings', return_value=True):
+            self.assertTrue(can_edit_setting_key(staff, OTHER))
+            self.assertTrue(can_edit_setting_key(staff, PREFIXED))
+            self.assertFalse(can_edit_setting_key(staff, MENU))
+            self.assertTrue(can_edit_setting_key(su, MENU))
+

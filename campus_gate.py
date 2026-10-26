@@ -88,10 +88,10 @@ def can_manage_settings(user):
 def can_edit_setting_key(user, key):
     """May ``user`` change the Setting stored under ``key``?
 
-    A campus-scoped key belongs to the campus being served, so its settings
-    admins may change it. In multi-campus mode any other key is shared by
-    every campus, so only a superuser may change it -- one campus's admins
-    must not be able to change another's behaviour.
+    A per-campus key (STRICT or CAMPUS, #129) belongs to the campus being
+    served, so its settings admins may change it -- a save writes that
+    campus's row only. A GLOBAL key is shared by every campus, so in
+    multi-campus mode only a superuser may change it.
     """
     from cis.campus_context import is_multi_campus
     from cis.models.settings import is_campus_scoped
