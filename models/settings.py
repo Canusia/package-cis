@@ -138,14 +138,33 @@ class SettingQuerySet(models.QuerySet):
         clone._fallback_campus = getattr(self, '_fallback_campus', None)
         return clone
 
+    def _mark_fallback(self, obj):
+        campus = getattr(self, '_fallback_campus', None)
+        if campus is not None and isinstance(obj, Setting) and obj.campus_id is None:
+            obj._fallback_campus = campus
+        return obj
+
     def _fetch_all(self):
         super()._fetch_all()
-        campus = getattr(self, '_fallback_campus', None)
-        if campus is None:
-            return
         for obj in self._result_cache:
-            if isinstance(obj, Setting) and obj.campus_id is None:
-                obj._fallback_campus = campus
+            self._mark_fallback(obj)
+
+    def _iterator(self, use_chunked_fetch, chunk_size):
+        # iterator()/aiterator() bypass _fetch_all, so mark rows here too.
+        for obj in super()._iterator(use_chunked_fetch, chunk_size):
+            yield self._mark_fallback(obj)
+
+    def _campus_rows_only(self):
+        """For a CAMPUS-narrowed queryset: just the campus's own row."""
+        campus = getattr(self, '_fallback_campus', None)
+        return self if campus is None else self.filter(campus=campus)
+
+    def update(self, **kwargs):
+        # The shared row is every campus's fallback; a campus never edits it.
+        return super(SettingQuerySet, self._campus_rows_only()).update(**kwargs)
+
+    def delete(self):
+        return super(SettingQuerySet, self._campus_rows_only()).delete()
 
     def create(self, **kwargs):
         # Mirrors QuerySet.create(), noting whether the caller named a campus:
@@ -192,11 +211,27 @@ class Setting(models.Model):
         ]
 
     def save(self, *args, **kwargs):
-        if self.campus_id is None and not getattr(self, '_campus_given', False):
+        fallback = getattr(self, '_fallback_campus', None)
+        if fallback is not None and self.campus_id is None:
+            # Copy-on-write (#129): a campus that read the shared row saves its
+            # own copy. The shared row stays every other campus's fallback.
+            self.pk = None
+            self._state.adding = True
+            self.campus = fallback
+            self._fallback_campus = None
+            kwargs.pop('update_fields', None)
+            kwargs.pop('force_update', None)
+        elif self.campus_id is None and not getattr(self, '_campus_given', False):
             campus = _campus_for(self.key)
             if campus is not None:
                 self.campus = campus
         super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        if getattr(self, '_fallback_campus', None) is not None and self.campus_id is None:
+            # The campus has no row of its own; the shared row is not its to delete.
+            return 0, {}
+        return super().delete(*args, **kwargs)
 
     @staticmethod
     def get_value(setting_key, k):

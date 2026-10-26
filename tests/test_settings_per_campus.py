@@ -118,3 +118,81 @@ class SingleCampusFallbackUnchangedTests(TestCase):
         Setting.objects.create(key=OTHER, value={'v': 1})
         row = Setting.objects.get(key=OTHER)
         self.assertIsNone(getattr(row, '_fallback_campus', None))
+
+
+@override_settings(MULTI_CAMPUS=True)
+class CopyOnWriteTests(TestCase):
+    def setUp(self):
+        self.c1, self.c2 = _campus('C1'), _campus('C2')
+        self.shared = Setting.objects.create(key=OTHER, value={'v': 'shared'}, campus=None)
+
+    def _shared_value(self):
+        return Setting._base_manager.get(pk=self.shared.pk).value
+
+    def test_saving_a_fallback_row_creates_the_campus_row(self):
+        with campus_context(self.c1):
+            row = Setting.objects.get(key=OTHER)
+            row.value = {'v': 'c1'}
+            row.save()
+            self.assertEqual(Setting.objects.get(key=OTHER).value, {'v': 'c1'})
+        self.assertEqual(row.campus, self.c1)
+        self.assertNotEqual(row.pk, self.shared.pk)
+        self.assertEqual(self._shared_value(), {'v': 'shared'})
+
+    def test_two_campuses_each_get_their_own_row(self):
+        for campus, value in ((self.c1, 'one'), (self.c2, 'two')):
+            with campus_context(campus):
+                row = Setting.objects.get(key=OTHER)
+                row.value = {'v': value}
+                row.save()
+        with campus_context(self.c1):
+            self.assertEqual(Setting.get_value(OTHER, 'v'), 'one')
+        with campus_context(self.c2):
+            self.assertEqual(Setting.get_value(OTHER, 'v'), 'two')
+        self.assertEqual(self._shared_value(), {'v': 'shared'})
+
+    def test_update_or_create_writes_the_campus_row(self):
+        with campus_context(self.c1):
+            Setting.objects.update_or_create(key=OTHER, defaults={'value': {'v': 'c1'}})
+            self.assertEqual(Setting.get_value(OTHER, 'v'), 'c1')
+        self.assertEqual(self._shared_value(), {'v': 'shared'})
+
+    def test_get_or_create_returns_the_fallback_without_writing(self):
+        with campus_context(self.c1):
+            row, created = Setting.objects.get_or_create(key=OTHER)
+        self.assertFalse(created)
+        self.assertEqual(row.pk, self.shared.pk)
+        self.assertEqual(Setting._base_manager.filter(key=OTHER).count(), 1)
+
+    def test_queryset_update_and_delete_never_touch_the_shared_row(self):
+        with campus_context(self.c1):
+            self.assertEqual(Setting.objects.filter(key=OTHER).update(value={'v': 'x'}), 0)
+            Setting.objects.filter(key=OTHER).delete()
+        self.assertEqual(self._shared_value(), {'v': 'shared'})
+
+    def test_queryset_update_changes_the_campus_row(self):
+        Setting.objects.create(key=OTHER, value={'v': 'c1'}, campus=self.c1)
+        with campus_context(self.c1):
+            Setting.objects.filter(key=OTHER).update(value={'v': 'new'})
+            self.assertEqual(Setting.get_value(OTHER, 'v'), 'new')
+        self.assertEqual(self._shared_value(), {'v': 'shared'})
+
+    def test_deleting_a_fallback_instance_keeps_the_shared_row(self):
+        with campus_context(self.c1):
+            Setting.objects.get(key=OTHER).delete()
+        self.assertTrue(Setting._base_manager.filter(pk=self.shared.pk).exists())
+
+    def test_new_row_for_a_campus_key_belongs_to_the_campus(self):
+        Setting._base_manager.filter(key=OTHER).delete()
+        with campus_context(self.c2):
+            Setting(key=OTHER, value={}).save()
+        self.assertEqual(Setting._base_manager.get(key=OTHER).campus, self.c2)
+
+    def test_iterator_rows_are_marked_for_copy_on_write(self):
+        with campus_context(self.c1):
+            row = next(Setting.objects.filter(key=OTHER).iterator())
+            row.value = {'v': 'c1'}
+            row.save()
+        self.assertEqual(row.campus, self.c1)
+        self.assertEqual(self._shared_value(), {'v': 'shared'})
+        self.assertEqual(Setting._base_manager.filter(key=OTHER).count(), 2)
