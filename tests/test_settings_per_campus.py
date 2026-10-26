@@ -199,3 +199,60 @@ class CopyOnWriteTests(TestCase):
         self.assertEqual(row.campus, self.c1)
         self.assertEqual(self._shared_value(), {'v': 'shared'})
         self.assertEqual(Setting._base_manager.filter(key=OTHER).count(), 2)
+
+
+@override_settings(MULTI_CAMPUS=True)
+class SharedSettingsTests(TestCase):
+    def setUp(self):
+        self.c1 = _campus('C1')
+
+    def test_shared_settings_reads_and_writes_the_shared_row_without_a_campus(self):
+        with shared_settings():
+            Setting(key=OTHER, value={'v': 1}).save()
+            self.assertEqual(Setting.objects.get(key=OTHER).value, {'v': 1})
+        self.assertIsNone(Setting._base_manager.get(key=OTHER).campus)
+
+    def test_shared_settings_does_not_open_strict_keys(self):
+        with shared_settings():
+            with self.assertRaises(NoCampusContext):
+                Setting.objects.get(key=PREFIXED)
+
+    def test_install_defaults_writes_the_shared_row_with_no_campus(self):
+        Setting.install_defaults(OTHER, {'a': 1})
+        self.assertEqual(Setting._base_manager.get(key=OTHER, campus=None).value, {'a': 1})
+
+    def test_install_defaults_with_a_campus_set_still_writes_the_shared_row(self):
+        with campus_context(self.c1):
+            Setting.install_defaults(OTHER, {'a': 1})
+        self.assertFalse(Setting._base_manager.filter(key=OTHER, campus=self.c1).exists())
+
+    def test_install_defaults_adds_new_keys_to_campus_rows_without_overwriting(self):
+        Setting.objects.create(key=OTHER, value={'a': 'shared'}, campus=None)
+        Setting.objects.create(key=OTHER, value={'a': 'mine'}, campus=self.c1)
+        Setting.install_defaults(OTHER, {'a': 'default', 'b': 'new'})
+        own = Setting._base_manager.get(key=OTHER, campus=self.c1).value
+        self.assertEqual(own, {'a': 'mine', 'b': 'new'})
+
+    def test_strict_install_defaults_unchanged(self):
+        with campus_context(self.c1):
+            Setting.install_defaults(PREFIXED, {'a': 1})
+        self.assertTrue(Setting._base_manager.filter(key=PREFIXED, campus=self.c1).exists())
+
+
+@override_settings(MULTI_CAMPUS=True)
+class ScopeStatusTests(TestCase):
+    def test_statuses(self):
+        from cis.models.settings import setting_scope_status
+        c1 = _campus('C1')
+        Setting.objects.create(key=OTHER, value={}, campus=None)
+        with campus_context(c1):
+            self.assertEqual(setting_scope_status(MENU), 'global')
+            self.assertEqual(setting_scope_status(OTHER), 'shared')
+            Setting.objects.create(key=OTHER, value={}, campus=c1)
+            self.assertEqual(setting_scope_status(OTHER), 'own')
+            self.assertEqual(setting_scope_status(PREFIXED), 'own')
+
+    @override_settings(MULTI_CAMPUS=False)
+    def test_single_campus_has_no_status(self):
+        from cis.models.settings import setting_scope_status
+        self.assertIsNone(setting_scope_status(OTHER))

@@ -67,6 +67,22 @@ def is_campus_scoped(key):
     return bool(key) and setting_scope(key) != GLOBAL
 
 
+def setting_scope_status(key):
+    """Where the serving campus's value of ``key`` comes from (#129):
+    'own' (its own row), 'shared' (the shared default), 'global' (one row
+    for every campus); None on a single-campus deployment."""
+    from cis.campus_context import current_campus, is_multi_campus
+    if not is_multi_campus():
+        return None
+    scope = setting_scope(key)
+    if scope == GLOBAL:
+        return 'global'
+    if scope == STRICT or Setting._base_manager.filter(
+            key=key, campus=current_campus()).exists():
+        return 'own'
+    return 'shared'
+
+
 def _campus_for(key):
     """The campus a new row for ``key`` belongs to, or None for a shared row.
 
@@ -259,26 +275,36 @@ class Setting(models.Model):
         `defaults` wholesale replaced every tenant edit (issue #19). Merging
         key-by-key means a newly shipped key still appears, while anything the
         tenant has already set is left alone.
+
+        A CAMPUS key's defaults go to the shared row, whatever campus is set,
+        and newly shipped keys are added to every campus's own row too (#129).
         """
         defaults = defaults or {}
+        if setting_scope(key) != CAMPUS:
+            return cls._merge_defaults(cls.objects, key, defaults)
+        with shared_settings():
+            setting = cls._merge_defaults(cls.objects, key, defaults)
+        for row in cls._base_manager.filter(key=key, campus__isnull=False):
+            cls._merge_into(row, defaults)
+        return setting
 
+    @classmethod
+    def _merge_defaults(cls, manager, key, defaults):
         try:
-            setting = cls.objects.get(key=key)
+            setting = manager.get(key=key)
         except cls.DoesNotExist:
             setting = cls(key=key)
             setting.value = defaults
             setting.save()
             return setting
-
-        stored = setting.value
-        if not isinstance(stored, dict):
-            stored = {}
-
-        missing = {k: v for k, v in defaults.items() if k not in stored}
-        if not missing:
-            return setting
-
-        stored.update(missing)
-        setting.value = stored
-        setting.save()
+        cls._merge_into(setting, defaults)
         return setting
+
+    @staticmethod
+    def _merge_into(setting, defaults):
+        stored = setting.value if isinstance(setting.value, dict) else {}
+        missing = {k: v for k, v in defaults.items() if k not in stored}
+        if missing:
+            stored.update(missing)
+            setting.value = stored
+            setting.save()
