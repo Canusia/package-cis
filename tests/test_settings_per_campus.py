@@ -59,3 +59,62 @@ class AssignSettingsCampusTests(TestCase):
         self.assertEqual(Setting.objects.get(key=PREFIXED).campus, c1)
         # CAMPUS rows stay shared: they are the other campuses' fallback.
         self.assertIsNone(Setting.objects.get(key=OTHER).campus)
+
+
+@override_settings(MULTI_CAMPUS=True)
+class FallbackReadTests(TestCase):
+    def setUp(self):
+        self.c1, self.c2 = _campus('C1'), _campus('C2')
+        Setting.objects.create(key=OTHER, value={'v': 'shared'}, campus=None)
+
+    def test_campus_without_a_row_reads_the_shared_row(self):
+        with campus_context(self.c1):
+            self.assertEqual(Setting.objects.get(key=OTHER).value, {'v': 'shared'})
+            self.assertEqual(Setting.get_value(OTHER, 'v'), 'shared')
+
+    def test_campus_row_wins(self):
+        Setting.objects.create(key=OTHER, value={'v': 'c1'}, campus=self.c1)
+        with campus_context(self.c1):
+            self.assertEqual(Setting.objects.get(key=OTHER).value, {'v': 'c1'})
+        with campus_context(self.c2):
+            self.assertEqual(Setting.objects.get(key=OTHER).value, {'v': 'shared'})
+
+    def test_exactly_one_row_through_every_accessor(self):
+        Setting.objects.create(key=OTHER, value={'v': 'c1'}, campus=self.c1)
+        with campus_context(self.c1):
+            qs = Setting.objects.filter(key=OTHER)
+            self.assertEqual(qs.count(), 1)
+            self.assertEqual(list(qs.values_list('value', flat=True)), [{'v': 'c1'}])
+            self.assertEqual(qs.first().value, {'v': 'c1'})
+            self.assertTrue(qs.exists())
+
+    def test_no_campus_raises(self):
+        with self.assertRaises(NoCampusContext):
+            Setting.objects.get(key=OTHER)
+        with self.assertRaises(NoCampusContext):
+            Setting.get_value(OTHER, 'v')
+
+    def test_strict_key_still_never_falls_back(self):
+        Setting.objects.create(key=PREFIXED, value={'a': 1}, campus=None)
+        with campus_context(self.c1):
+            with self.assertRaises(Setting.DoesNotExist):
+                Setting.objects.get(key=PREFIXED)
+
+    def test_global_key_reads_the_shared_row_with_or_without_a_campus(self):
+        Setting.objects.create(key=MENU, value={'m': 1})
+        self.assertEqual(Setting.objects.get(key=MENU).value, {'m': 1})
+        with campus_context(self.c2):
+            self.assertEqual(Setting.objects.get(key=MENU).value, {'m': 1})
+
+    def test_fallback_instance_is_marked(self):
+        with campus_context(self.c1):
+            row = Setting.objects.get(key=OTHER)
+        self.assertEqual(row._fallback_campus, self.c1)
+
+
+class SingleCampusFallbackUnchangedTests(TestCase):
+    def test_no_narrowing(self):
+        _campus('A')
+        Setting.objects.create(key=OTHER, value={'v': 1})
+        row = Setting.objects.get(key=OTHER)
+        self.assertIsNone(getattr(row, '_fallback_campus', None))

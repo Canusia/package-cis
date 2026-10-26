@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from django.conf import settings as django_settings
 from django.db import models
-from django.db.models import JSONField, Q
+from django.db.models import Exists, JSONField, Q
 from simple_history.models import HistoricalRecords
 
 # Settings that are per campus on a multi-campus deployment besides the
@@ -84,30 +84,68 @@ def _campus_for(key):
 
 
 class SettingQuerySet(models.QuerySet):
-    """Narrows lookups of campus-scoped keys to the current campus.
+    """Narrows lookups that name ``key=`` (and no campus) by the key's scope.
 
-    Only when MULTI_CAMPUS is on, and only for lookups that name the key
-    (key=...) without naming a campus; everything else passes through, so the
+    Only when MULTI_CAMPUS is on; everything else passes through, so the
     existing Setting.objects.get(key=...) call sites work unchanged.
+
+    STRICT: the current campus's row. GLOBAL (and CAMPUS inside
+    shared_settings()): the shared row. CAMPUS: the current campus's row if
+    it has one, else the shared row -- in one query -- and every shared row
+    it yields is marked ``_fallback_campus`` so saving it copies it to the
+    campus instead of editing the shared row (#129). With no campus set,
+    STRICT and CAMPUS raise NoCampusContext.
+
+    ``Setting.objects.get`` goes through ``filter``, so it is narrowed too.
     """
 
     @staticmethod
-    def _with_campus(kwargs):
-        if 'key' not in kwargs or 'campus' in kwargs or 'campus_id' in kwargs:
-            return kwargs
-        campus = _campus_for(kwargs['key'])
-        if campus is None:
-            return kwargs
-        return {**kwargs, 'campus': campus}
+    def _narrowing(kwargs):
+        """(kwargs, extra Q or None, fallback campus or None)."""
+        if 'key' not in kwargs or any(
+                name == 'campus' or name.startswith('campus_') for name in kwargs):
+            return kwargs, None, None
+        from cis.campus_context import current_campus, is_multi_campus
+        if not is_multi_campus():
+            return kwargs, None, None
+        key = kwargs['key']
+        scope = setting_scope(key)
+        if scope == GLOBAL or (scope == CAMPUS and _shared.get()):
+            return {**kwargs, 'campus__isnull': True}, None, None
+        campus = current_campus()
+        if scope == STRICT:
+            return {**kwargs, 'campus': campus}, None, None
+        own = Setting._base_manager.filter(key=key, campus=campus)
+        fallback = Q(campus=campus) | (Q(campus__isnull=True) & ~Exists(own))
+        return kwargs, fallback, campus
 
     def filter(self, *args, **kwargs):
-        return super().filter(*args, **self._with_campus(kwargs))
+        kwargs, extra, campus = self._narrowing(kwargs)
+        qs = super().filter(*args, **kwargs)
+        if extra is not None:
+            qs = qs.filter(extra)
+            qs._fallback_campus = campus
+        return qs
 
     def exclude(self, *args, **kwargs):
-        return super().exclude(*args, **self._with_campus(kwargs))
+        # STRICT/GLOBAL narrow as filter() does; a CAMPUS key's fallback has
+        # no exclude() meaning, so it is excluded by key alone, as before #129.
+        narrowed, extra, _ = self._narrowing(kwargs)
+        return super().exclude(*args, **(kwargs if extra is not None else narrowed))
 
-    def get(self, *args, **kwargs):
-        return super().get(*args, **self._with_campus(kwargs))
+    def _clone(self):
+        clone = super()._clone()
+        clone._fallback_campus = getattr(self, '_fallback_campus', None)
+        return clone
+
+    def _fetch_all(self):
+        super()._fetch_all()
+        campus = getattr(self, '_fallback_campus', None)
+        if campus is None:
+            return
+        for obj in self._result_cache:
+            if isinstance(obj, Setting) and obj.campus_id is None:
+                obj._fallback_campus = campus
 
     def create(self, **kwargs):
         # Mirrors QuerySet.create(), noting whether the caller named a campus:
