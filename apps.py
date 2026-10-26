@@ -159,14 +159,6 @@ class CisConfig(AppConfig):
             ]
         },
         {
-            'name': 'drop_wd_email',
-            'title': 'Drop/WD Request Settings',
-            'description': '-',
-            'categories': [
-                '3'
-            ]
-        },
-        {
             'name': 'roster_verification',
             'title': 'Roster Verification Settings',
             'description': '-',
