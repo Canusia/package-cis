@@ -228,6 +228,13 @@
                         }
                     },
                     {
+                        // On-campus and online sections have no high school (#133).
+                        'width': '15%',
+                        'render': function (data, type, row, meta) {
+                            return row.highschool ? row.highschool.name : '';
+                        }
+                    },
+                    {
                         'width': '10%',
                         'render': function (data, type, row, meta) {
                             return row.schedule;                            
@@ -361,14 +368,14 @@
                         <th data-name='term.code' data-data='term.code'>Term</th>
                         <th data-name='campus.name' data-data='campus.name'>Instructor</th>
                         <th data-data='class_number' data-name='class_number'>Course</th>
-                        </th>
+                        <th data-name='highschool.name' data-data='highschool.name'>High School</th>
                         <th data-data="start_date" data-name="start_date">Schedule</th>
                     </tr>
                 </thead>
 
                 <tfoot>
                     <tr>
-                        <td colspan="5">
+                        <td colspan="6">
                             <input type="submit" class="btn btn-primary" id="btn_apply_for_selected"
                                 value="Apply for Selected" name="apply_for_selected">
                         </td>

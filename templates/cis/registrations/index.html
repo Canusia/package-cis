@@ -64,6 +64,13 @@
                                                                     <option value="sis_error" >**SIS Error(s)</option>
                                                                 </select>
                                                                 &nbsp;
+                                                                <select class="form-control mt-2" name="highschool">
+                                                                    <option value="">By High School</option>
+                                                                    {% for hs in highschools %}
+                                                                    <option value="{{hs.id}}">{{hs.name}}</option>
+                                                                    {% endfor %}
+                                                                </select>
+                                                                &nbsp;
                                                                 <select class="form-control mt-2" name="status">
                                                                     <option value="">By Registration Status</option>
                                                                     {% for c, c_label in registration_status %}

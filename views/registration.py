@@ -109,6 +109,7 @@ class RegistrationViewSet(viewsets.ReadOnlyModelViewSet):
             
         campus = self.request.GET.get('campus', '').strip()
         status = self.request.GET.get('status', '').strip()
+        highschool = self.request.GET.get('highschool', '').strip()
         registration_term_code = self.request.GET.get('registration_term_code', '').strip()
 
         record_type = self.request.GET.get('record_type', '').strip()
@@ -177,6 +178,16 @@ class RegistrationViewSet(viewsets.ReadOnlyModelViewSet):
 
         if status:
             records = records.filter(status=status)
+
+        if highschool:
+            # The section's high school (#133); sections without one are left
+            # out, which is what "show me this school" means. A malformed id
+            # matches nothing rather than 500ing (PT-fuzz).
+            try:
+                uuid.UUID(highschool)
+            except (ValueError, AttributeError, TypeError):
+                return StudentRegistration.objects.none()
+            records = records.filter(class_section__highschool__id=highschool)
         
         if needs_mirroring:
             needs_mirroring = bool(needs_mirroring)
@@ -561,6 +572,17 @@ def detail(request, record_id):
             'detail_actions': registration_actions.for_scope('detail', request.user),
         })
 
+def _section_highschools(user):
+    """The "By High School" picker: schools that host a class section,
+    narrowed to the current campus like the term picker (#133, #130)."""
+    from cis.highschool_scope import scope_highschools
+    from cis.models.highschool import HighSchool
+    from cis.models.section import ClassSection
+    hosting = HighSchool.objects.filter(id__in=ClassSection.objects.filter(
+        highschool__isnull=False).values('highschool_id'))
+    return scope_highschools(hosting, user=user).order_by('name')
+
+
 def index(request):
     '''
      search and index page for staff
@@ -593,6 +615,7 @@ def index(request):
             'registration_status': StudentRegistration.STATUS_OPTIONS,
             'yes_no': YES_NO_OPTIONS,
             'parent_consent_enabled': parent_consent_enabled,
+            'highschools': _section_highschools(request.user),
         }
     )
 
