@@ -326,6 +326,9 @@ class ComponentRegistryDefaultTests(SimpleTestCase):
                     access_request_actions, access_request_tabs,
                 )
                 self.assertTrue(sys.modules[dotted].__cis_default__)
+                # find_spec() on a stand-in must not raise (#131).
+                import importlib.util
+                self.assertIsNotNone(importlib.util.find_spec(dotted))
                 self.assertEqual(type(access_request_actions).__name__, 'ActionRegistry')
                 # cis's own tabs registered into the stand-in.
                 self.assertTrue(access_request_tabs._tabs)

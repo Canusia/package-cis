@@ -3,9 +3,9 @@
 Pending SIS Mirror tab, which shares pending_sis_mirror()) picks up.
 Nothing ticked = every term. A ticked parent term includes its sub-terms.
 """
-import importlib.util
 import json
 import uuid
+from unittest import skipUnless
 from unittest.mock import patch
 
 from django.contrib.auth.models import Group
@@ -20,8 +20,12 @@ from cis.models.student import Student
 from cis.models.term import AcademicYear, Term
 from cis.settings.registration_status_email import registration_status_email
 
-ETHOS_PATH = ('ethos.ethos.library.ethos.Ethos' if importlib.util.find_spec('ethos.ethos')
-              else 'ethos.library.ethos.Ethos')
+from cis.integrations.ethos import ETHOS_ROOT, ethos_enabled, ethos_log_model
+
+# ethos is optional (#85): on a host without it, skip rather than fail (#131).
+# ETHOS_ROOT covers both layouts (nested editable submodule or flat pip).
+needs_ethos = skipUnless(ethos_enabled(), 'needs the ethos app')
+ETHOS_PATH = f"{ETHOS_ROOT or 'ethos'}.library.ethos.Ethos"
 
 
 class SisMirrorTermsTests(TestCase):
@@ -117,13 +121,11 @@ class SisMirrorTermsTests(TestCase):
         sub_labels = [label for v, label in field.choices if v == str(self.fall_a.id)]
         self.assertTrue(sub_labels[0].startswith('— '))
 
+    @needs_ethos
     @patch(ETHOS_PATH)
     def test_cron_sends_only_ticked_terms(self, MockEthos):
         self._configure([self.spring])
-        try:
-            from ethos.ethos.models import EthosLog
-        except ImportError:
-            from ethos.models import EthosLog
+        EthosLog = ethos_log_model()
         client = MockEthos.return_value
         client.mirror_registration.side_effect = lambda *a, **k: (False, EthosLog.objects.create(
             method='POST', url='https://example.invalid/api/section-registrations',

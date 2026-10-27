@@ -10,7 +10,7 @@ import importlib.util
 import json
 import sys
 import uuid
-from unittest import mock
+from unittest import mock, skipUnless
 
 from django.apps import apps
 from django.contrib.auth.models import Group
@@ -26,6 +26,9 @@ try:
     from django_login_history.models import post_login as _login_history_post_login
 except Exception:  # pragma: no cover
     _login_history_post_login = None
+
+# The with-ethos cases need the real app; skip them on a host without it (#131).
+needs_ethos = skipUnless(ethos_integration.ethos_enabled(), 'needs the ethos app')
 
 DISABLED = mock.patch('cis.integrations.ethos.ethos_enabled', return_value=False)
 
@@ -80,6 +83,7 @@ class DetectionTests(SimpleTestCase):
             exc = ethos_integration.ethos_not_configured_error()
             self.assertTrue(issubclass(exc, Exception))
 
+    @needs_ethos
     def test_enabled_on_this_deployment(self):
         # The host test settings install ethos; the helpers resolve the real code.
         self.assertTrue(ethos_integration.ethos_enabled())
@@ -119,6 +123,7 @@ class Migration0056Tests(SimpleTestCase):
         self.assertEqual([op.name for op in migration.operations],
                          ['last_mirror_at', 'last_mirror_error', 'last_mirror_status'])
 
+    @needs_ethos
     def test_with_ethos_unchanged(self):
         migration = self._load(with_ethos=True)
         self.assertIn(('ethos', '0003_resource_preferred_representation'),
@@ -135,6 +140,7 @@ class RegistrationMirrorLogsTests(SimpleTestCase):
             lookups = [p.prefetch_through for p in registration_prefetch_related()]
         self.assertNotIn('mirror_logs', lookups)
 
+    @needs_ethos
     def test_prefetch_keeps_mirror_logs_with_ethos(self):
         from cis.views.eager import registration_prefetch_related
         lookups = [p.prefetch_through for p in registration_prefetch_related()]
@@ -210,6 +216,7 @@ class AcademicYearAddNewTemplateTests(_NoLoginHistory, TestCase):
     def setUp(self):
         self.client.force_login(self.admin)
 
+    @needs_ethos
     def test_sis_import_card_rendered_with_ethos(self):
         resp = self.client.get(reverse('cis:academic_year_add_new'))
         self.assertEqual(resp.status_code, 200)

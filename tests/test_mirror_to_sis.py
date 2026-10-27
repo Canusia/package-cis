@@ -6,8 +6,8 @@ the failed-mirror page renders it). These unit tests cover the helpers
 new code paths depend on.
 """
 
-import importlib.util
 import uuid
+from unittest import skipUnless
 from unittest.mock import patch
 
 from django.contrib.auth.models import Group
@@ -17,12 +17,13 @@ from django.test import TestCase
 # The models import tolerated both already; the patch target did not — patch()
 # resolves its string by attribute walk, so 'ethos.ethos.…' raises
 # AttributeError under a flat install rather than falling back.
-_ETHOS = 'ethos.ethos' if importlib.util.find_spec('ethos.ethos') else 'ethos'
+from cis.integrations.ethos import ETHOS_ROOT, ethos_enabled, ethos_log_model
 
-if importlib.util.find_spec('ethos.ethos'):
-    from ethos.ethos.models import EthosLog
-else:  # pragma: no cover
-    from ethos.models import EthosLog
+# ethos is optional (#85): on a host without it, skip rather than fail (#131).
+# ETHOS_ROOT covers both layouts (nested editable submodule or flat pip).
+needs_ethos = skipUnless(ethos_enabled(), 'needs the ethos app')
+_ETHOS = ETHOS_ROOT or 'ethos'
+EthosLog = ethos_log_model()
 
 from cis.models import CustomUser
 from cis.models.section import StudentRegistration, ClassSection
@@ -35,6 +36,7 @@ from cis.tests.tenant_support import requires_tenant_service
 ETHOS_PATH = f'{_ETHOS}.library.ethos.Ethos'
 
 
+@needs_ethos
 class EthosLogHelperTests(TestCase):
 
     def _log(self, **overrides):
@@ -86,6 +88,7 @@ class EthosLogHelperTests(TestCase):
         self.assertTrue(msg.startswith('oops'))
 
 
+@needs_ethos
 class StudentRegistrationFieldsTests(TestCase):
     """Confirms the new fields exist on the model with expected types."""
 
@@ -129,6 +132,7 @@ class MirrorableStatusesTests(TestCase):
         self.assertEqual(reg_service.mirrorable_statuses(), [])
 
 
+@needs_ethos
 class MirrorStatusSyncTests(TestCase):
     """On a successful mirror, registration.status is set to the SIS-confirmed
     sectionRegistrationStatusReason, and the just-mirrored row is not re-queued

@@ -15,6 +15,7 @@ host without the base classes (`tabs.TabRegistry`, `ActionRegistry`) the
 stand-ins are built from: those stand-ins are then skipped, not fatal.
 """
 import importlib
+import importlib.machinery
 import importlib.util
 import sys
 import types
@@ -131,6 +132,9 @@ def install_defaults():
             # rather than failing django.setup().
             continue
         module = types.ModuleType(dotted, f'cis default for {dotted} (#97).')
+        # Without a spec, a later find_spec(dotted) raises ValueError (#131,
+        # package-grades#11).
+        module.__spec__ = importlib.machinery.ModuleSpec(dotted, None)
         module.__cis_default__ = True
         module.__dict__.update(attrs)
         sys.modules[dotted] = module

@@ -9,6 +9,7 @@ The login receiver deliberately re-seeds every time: CE staff's "Mark as
 Verified" action is a queryset update that fires no signal, so login is the
 catch-up that repairs verification which happened out of band.
 """
+import importlib.util
 import uuid
 
 from django.contrib.auth.models import Group
@@ -22,6 +23,21 @@ from student_onboarding.signals import onboarding_event
 from cis.models.customuser import CustomUser
 from cis.models.student import Student
 from cis.models.term import AcademicYear, Term
+
+
+def _onboarding_root():
+    """student_onboarding's code root: the nested editable submodule or a flat
+    pip install. patch() walks the dotted path, so it must name the real one
+    (#131)."""
+    try:
+        if importlib.util.find_spec('student_onboarding.student_onboarding'):
+            return 'student_onboarding.student_onboarding'
+    except (ImportError, AttributeError, ValueError):
+        pass
+    return 'student_onboarding'
+
+
+ONBOARDING = _onboarding_root()
 
 
 def _term(code='TPO1'):
@@ -49,7 +65,7 @@ class TwoPhaseSeedingTests(TestCase):
         # patched, or the receiver silently no-ops on the None guard.
         for path in (
             'cis.signals.onboarding.active_term',
-            'student_onboarding.student_onboarding.api.active_term',
+            f'{ONBOARDING}.api.active_term',
             'myce_tenant_configs.services.onboarding_steps.active_term',
         ):
             p = patch(path, return_value=self.term)

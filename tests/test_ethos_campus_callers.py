@@ -3,8 +3,8 @@
 Rule: the record decides the campus. A registration's campus is its section's
 course campus; a term's campus is its academic year's campus.
 """
-import importlib.util
 import uuid
+from unittest import skipUnless
 from unittest.mock import patch, MagicMock
 
 from django.contrib.auth.models import Group
@@ -17,10 +17,13 @@ from cis.models.section import ClassSection, StudentRegistration
 from cis.models.student import Student
 from cis.models.term import Term, AcademicYear
 
-if importlib.util.find_spec('ethos.ethos'):
-    ETHOS_PATH = 'ethos.ethos.library.ethos.Ethos'
-else:
-    ETHOS_PATH = 'ethos.library.ethos.Ethos'
+from cis.integrations.ethos import (
+    ETHOS_ROOT, ethos_enabled, ethos_not_configured_error)
+
+# ethos is optional (#85): on a host without it, skip rather than fail (#131).
+# ETHOS_ROOT covers both layouts (nested editable submodule or flat pip).
+needs_ethos = skipUnless(ethos_enabled(), 'needs the ethos app')
+ETHOS_PATH = f"{ETHOS_ROOT or 'ethos'}.library.ethos.Ethos"
 
 
 class _Recorder:
@@ -40,6 +43,7 @@ class _Recorder:
         return inst
 
 
+@needs_ethos
 class SendToSisCampusTests(TestCase):
     def setUp(self):
         Group.objects.get_or_create(name='student')
@@ -102,6 +106,7 @@ class SendToSisCampusTests(TestCase):
         self.assertEqual(sorted(pk for pk, _ in seen), sorted(campus_of))
 
 
+@needs_ethos
 class TermLookupCampusTests(TestCase):
     def setUp(self):
         self.campus = Campus.objects.create(name='A College', code='AAA')
@@ -130,12 +135,10 @@ class TermLookupCampusTests(TestCase):
         self.assertEqual(rec.campuses, [self.campus])
 
 
-if importlib.util.find_spec('ethos.ethos'):
-    from ethos.ethos.credentials import EthosNotConfigured
-else:
-    from ethos.credentials import EthosNotConfigured
+EthosNotConfigured = ethos_not_configured_error()
 
 
+@needs_ethos
 class _CampusRegs(TestCase):
     """Registrations in campus A, a campus-less course, and campus B (in that order)."""
 

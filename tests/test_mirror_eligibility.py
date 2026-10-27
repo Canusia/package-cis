@@ -5,8 +5,8 @@ calls Ethos.get_registration_eligibility with the section's reporting academic
 period, and records a failed mirror (surfacing on the failed-mirror page) when
 the SIS reports the student ineligible.
 """
-import importlib.util
 import uuid
+from unittest import skipUnless
 from unittest.mock import patch
 
 from django.contrib.auth.models import Group
@@ -23,18 +23,20 @@ from cis.services.tenant_services import get_tenant_service
 # The models import below tolerated both already; the patch target did not —
 # patch() resolves its string by attribute walk, so 'ethos.ethos.…' raises
 # AttributeError under a flat install rather than falling back.
-_ETHOS = 'ethos.ethos' if importlib.util.find_spec('ethos.ethos') else 'ethos'
+from cis.integrations.ethos import ETHOS_ROOT, ethos_enabled, ethos_log_model
 
-if importlib.util.find_spec('ethos.ethos'):
-    from ethos.ethos.models import EthosLog
-else:  # pragma: no cover
-    from ethos.models import EthosLog
+# ethos is optional (#85): on a host without it, skip rather than fail (#131).
+# ETHOS_ROOT covers both layouts (nested editable submodule or flat pip).
+needs_ethos = skipUnless(ethos_enabled(), 'needs the ethos app')
+_ETHOS = ETHOS_ROOT or 'ethos'
+EthosLog = ethos_log_model()
 
 
 PERIOD_ID = 'c0496632-88d2-4fac-95e6-d44234c99ed5'
 ETHOS_PATH = f'{_ETHOS}.library.ethos.Ethos'
 
 
+@needs_ethos
 class MirrorEligibilityGateTests(TestCase):
     def setUp(self):
         Group.objects.get_or_create(name='student')
