@@ -858,6 +858,11 @@ def update_class_status(request):
     from cis.forms.section import BulkClassStatusChangeForm
     template = 'cis/sections/bulk_action.html'
     ids = processable_ids(ClassSection, request.POST.getlist('ids[]'), request.user)
+    if not ids and not request.POST.get('action_confirmed'):
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Select at least one class section you can update.',
+        })
 
     if request.POST.get('action_confirmed'):
         form = BulkClassStatusChangeForm(data=request.POST)

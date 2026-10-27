@@ -412,7 +412,8 @@ class BulkClassStatusChangeForm(forms.Form):
         super().__init__(*args, **kwargs)
 
         if record_ids:
-            records = ClassSection.objects.filter(id__in=record_ids)
+            records = ClassSection.objects.filter(
+                id__in=record_ids).select_related('course', 'teacher__user')
             self.fields['record_ids'].choices = [
                 (record.id,
                  f"{record} / {record.teacher} ({record.get_status_display() or '-'})")
@@ -420,9 +421,10 @@ class BulkClassStatusChangeForm(forms.Form):
             ]
             self.fields['record_ids'].initial = record_ids
         else:
+            data = kwargs.get('data')
             self.fields['record_ids'].choices = [
                 (record_id, record_id)
-                for record_id in kwargs.get('data').getlist('record_ids')
+                for record_id in (data.getlist('record_ids') if data else [])
             ]
 
     def save(self, request=None):
@@ -433,7 +435,8 @@ class BulkClassStatusChangeForm(forms.Form):
         ids = processable_ids(ClassSection, data.get('record_ids'), request.user)
         records = ClassSection.objects.filter(id__in=ids)
 
-        # skip initiating signal
+        # A queryset update: no save() signals or history row. Nothing tracks
+        # status today; a future status signal would not fire from here.
         records.update(status=data.get('new_status'))
 
         for record in records:

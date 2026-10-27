@@ -118,9 +118,13 @@ class _Trim:
 
     drop_fields = ()
 
+    def fields_to_drop(self):
+        """The names dropped from this instance; override to decide per request."""
+        return self.drop_fields
+
     def get_fields(self):
         fields = super().get_fields()
-        for name in self.drop_fields:
+        for name in self.fields_to_drop():
             fields.pop(name, None)
         return fields
 
@@ -250,14 +254,11 @@ class SlimTeacherRowSerializer(TrimmedTeacherSerializer):
     top-level trim still drops them for a table that doesn't show them.
     """
 
-    def get_fields(self):
-        fields = super(_Trim, self).get_fields()  # untrimmed
+    def fields_to_drop(self):
         wanted = requested_column_roots(self.context.get('request'))
-        if wanted is not None:
-            for name in self.drop_fields:
-                if name not in wanted:
-                    fields.pop(name, None)
-        return fields
+        if wanted is None:
+            return ()
+        return tuple(name for name in self.drop_fields if name not in wanted)
 
     class Meta(TeacherSerializer.Meta):
         ref_name = 'CisSlimTeacher'

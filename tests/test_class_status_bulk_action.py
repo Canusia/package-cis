@@ -5,13 +5,14 @@ the same do_bulk_action modal-then-confirm flow as Change Roster Status.
 """
 import json
 
+from django.conf import settings
 from django.contrib.auth.models import Group
 from django.contrib.auth.signals import user_logged_in
 from django.test import TestCase
 from django.urls import reverse
 
 from cis.models import CustomUser
-from cis.models.course import Cohort, Course
+from cis.models.course import Campus, Cohort, Course
 from cis.models.section import ClassSection
 from cis.models.teacher import Teacher
 from cis.models.term import AcademicYear, Term
@@ -96,3 +97,26 @@ class UpdateClassStatusBulkActionTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         actions = resp.context['sections_table']
         self.assertIn('update_class_status', json.dumps(actions, default=str))
+
+    def test_empty_selection_answers_instead_of_500(self):
+        self.client.force_login(self.ce)
+        resp = self.client.post(self.url, {'action': 'update_class_status'})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()['status'], 'error')
+
+    def test_confirm_ignores_a_section_on_a_campus_the_user_cannot_process(self):
+        prefix = settings.CAMPUS_CODE_PREFIX
+        mine = Campus.objects.create(name='Mine', code=f'{prefix}-mine')
+        other = Campus.objects.create(name='Other', code=f'{prefix}-other')
+        ClassSection.objects.filter(pk=self.a.pk).update(campus=mine)
+        ClassSection.objects.filter(pk=self.b.pk).update(campus=other)
+        self.ce.set_process_campuses([str(mine.id)])
+        self.client.force_login(self.ce)
+        # A forged confirm naming both sections only updates the user's own.
+        self.client.post(self.url, {
+            'action': 'update_class_status', 'action_confirmed': '1',
+            'record_ids': [str(self.a.pk), str(self.b.pk)], 'new_status': 'C'})
+        self.assertEqual(
+            dict(ClassSection.objects.filter(pk__in=[self.a.pk, self.b.pk])
+                 .values_list('class_number', 'status')),
+            {'91001': 'C', '91002': 'A'})

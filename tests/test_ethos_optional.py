@@ -83,8 +83,12 @@ class DetectionTests(SimpleTestCase):
             exc = ethos_integration.ethos_not_configured_error()
             self.assertTrue(issubclass(exc, Exception))
 
-    @needs_ethos
+    @skipUnless(ethos_integration.ETHOS_INSTALLED
+                and 'ethos' in apps.app_configs, 'needs the ethos app')
     def test_enabled_on_this_deployment(self):
+        # The canary for every needs_ethos skip: gated on the app being there,
+        # not on ethos_enabled(), so a detection regression fails here instead
+        # of silently skipping every ethos test.
         # The host test settings install ethos; the helpers resolve the real code.
         self.assertTrue(ethos_integration.ethos_enabled())
         self.assertIsNotNone(ethos_integration.ethos_client_class())

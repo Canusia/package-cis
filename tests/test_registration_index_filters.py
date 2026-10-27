@@ -198,6 +198,45 @@ class HighSchoolFilterTests(TestCase):
         self.assertContains(resp, 'name="highschool"')
 
 
+class HighSchoolPickerCampusScopeTests(TestCase):
+    """#133: on a multi-campus deployment a CE user's picker lists only the
+    current campus's schools (superusers skip scope_highschools)."""
+
+    def test_lists_only_schools_linked_to_the_current_campus(self):
+        from django.conf import settings
+        from django.test import override_settings
+        from cis.campus_context import campus_context
+        from cis.models.course import Campus
+        from cis.models.highschool import HighSchool, HighSchoolCampus
+        from cis.views.registration import _section_highschools
+
+        prefix = settings.CAMPUS_CODE_PREFIX
+        c1 = Campus.objects.create(name='C1', code=f'{prefix}-c1')
+        c2 = Campus.objects.create(name='C2', code=f'{prefix}-c2')
+        ay = AcademicYear.objects.create(name=f'AY-{_sfx()}')
+        term = Term.objects.create(academic_year=ay, code='FA', label=f'Fall-{_sfx()}')
+        cohort = Cohort.objects.create(name=f'Co-{_sfx()}', designator='CO')
+        course = Course.objects.create(catalog_number='101', title='C', cohort=cohort)
+        schools = {}
+        for name, campus in (('One High', c1), ('Two High', c2)):
+            hs = HighSchool.objects.create(name=name, code=_sfx()[:6])
+            HighSchoolCampus.objects.update_or_create(
+                highschool=hs, campus=campus, defaults={'status': 'Active'})
+            # The post_save signal may link a new school to another campus too.
+            HighSchoolCampus.objects.filter(highschool=hs).exclude(campus=campus).delete()
+            ClassSection.objects.create(
+                class_number=_sfx()[:6], term=term, course=course, highschool=hs)
+            schools[name] = hs
+        ce = User.objects.create_user(
+            username=f'ce_{_sfx()}', email=f'ce_{_sfx()}@x.com', password='x')
+        ce.groups.add(Group.objects.get_or_create(name='ce')[0])
+
+        with override_settings(MULTI_CAMPUS=True), campus_context(c1):
+            names = [hs.name for hs in _section_highschools(ce)]
+        self.assertIn('One High', names)
+        self.assertNotIn('Two High', names)
+
+
 class ClassSectionSearchHighSchoolColumnTests(TestCase):
     """#133: the class section search shows each section's high school."""
 
