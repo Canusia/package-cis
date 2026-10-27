@@ -387,6 +387,62 @@ class BulkRegistrationTermChangeForm(forms.Form):
 
         return records
 
+class BulkClassStatusChangeForm(forms.Form):
+    """Set ClassSection.status (Active / Cancelled) on the selected sections
+    (#131 item 4, upstreamed from nnu)."""
+    record_ids = forms.MultipleChoiceField(
+        required=False,
+        label='Records to Update',
+        widget=forms.CheckboxSelectMultiple,
+        choices=[]
+    )
+
+    new_status = forms.ChoiceField(
+        required=True,
+        label='New Class Status',
+        choices=ClassSection.CLASS_STATUS
+    )
+
+    action = forms.CharField(
+        widget=forms.HiddenInput,
+        initial='update_class_status'
+    )
+
+    def __init__(self, record_ids=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        if record_ids:
+            records = ClassSection.objects.filter(id__in=record_ids)
+            self.fields['record_ids'].choices = [
+                (record.id,
+                 f"{record} / {record.teacher} ({record.get_status_display() or '-'})")
+                for record in records
+            ]
+            self.fields['record_ids'].initial = record_ids
+        else:
+            self.fields['record_ids'].choices = [
+                (record_id, record_id)
+                for record_id in kwargs.get('data').getlist('record_ids')
+            ]
+
+    def save(self, request=None):
+        from cis.campus_gate import processable_ids
+        data = self.cleaned_data
+        # The confirm step posts the ids back from the browser: re-check them
+        # against the user's campus scope rather than trusting them.
+        ids = processable_ids(ClassSection, data.get('record_ids'), request.user)
+        records = ClassSection.objects.filter(id__in=ids)
+
+        # skip initiating signal
+        records.update(status=data.get('new_status'))
+
+        for record in records:
+            record.add_note(
+                request.user,
+                f'Updated class status to {record.get_status_display()}')
+
+        return records
+
 class SyllabiNeedsUpdateForm(forms.Form):
     action = forms.CharField(
         widget=forms.HiddenInput
