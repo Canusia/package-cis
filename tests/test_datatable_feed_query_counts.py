@@ -23,8 +23,11 @@ serialization would hide them and flatter the eager path.
 """
 
 import uuid
+from contextlib import contextmanager
 
 from django.conf import settings
+from django.core.signals import request_finished, request_started
+from django.db import close_old_connections
 from django.contrib.auth.models import Group
 from django.db import connection
 from django.test import TestCase
@@ -226,15 +229,38 @@ class FeedFixture:
         return registration
 
 
+@contextmanager
+def as_in_a_request():
+    """Run the block the way a real request would.
+
+    Sends request_started / request_finished, so per-request memos in
+    companion packages are active (grades caches the final-period statuses
+    per request, grades#12), and reads the recommending-school setting once.
+    close_old_connections is held off, as Django's test client does, so the
+    test transaction's connection survives.
+    """
+    from cis.services.recommender_scope import cached_school_rule
+    request_started.disconnect(close_old_connections)
+    request_finished.disconnect(close_old_connections)
+    try:
+        request_started.send(sender=None)
+        try:
+            with cached_school_rule():
+                yield
+        finally:
+            request_finished.send(sender=None)
+    finally:
+        request_started.connect(close_old_connections)
+        request_finished.connect(close_old_connections)
+
+
 def _cost(queryset, serializer_class, limit):
     """(rows, queries) for serializing `limit` rows of `queryset`.
 
     The evaluation happens inside the capture on purpose -- see the module
     docstring.
     """
-    # As in a request, which reads the recommending-school setting once.
-    from cis.services.recommender_scope import cached_school_rule
-    with cached_school_rule(), CaptureQueriesContext(connection) as captured:
+    with as_in_a_request(), CaptureQueriesContext(connection) as captured:
         rows = list(queryset.order_by('id')[:limit])
         serializer_class(rows, many=True).data
     return len(rows), len(captured.captured_queries)
@@ -422,7 +448,12 @@ class DataTableFeedQueryCountTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         for _ in range(cls.ROWS):
-            FeedFixture.build()
+            registration = FeedFixture.build()
+        # One shared term, as on a real page. Per-term lookups (grades caches
+        # the final grading period per term within a request, grades#12) are
+        # then a constant, not a per-row cost of the fixture's one term per row.
+        term = registration.class_section.term
+        ClassSection.objects.update(term=term, registration_term=term)
 
     def test_every_feed_beats_its_bare_queryset(self):
         for label, model, plan, serializer_class, _, _ in self.FEEDS:

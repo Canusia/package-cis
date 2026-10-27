@@ -28,7 +28,7 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 
 from cis.models import CustomUser
 from cis.models.section import ClassSection
-from cis.tests.test_datatable_feed_query_counts import FeedFixture
+from cis.tests.test_datatable_feed_query_counts import FeedFixture, as_in_a_request
 from cis.views import eager
 
 
@@ -70,9 +70,7 @@ class LiveFeedMixin:
         request = APIRequestFactory().get('/x', query)
         force_authenticate(request, user=self.user)
         view = router_viewsets[basename].as_view({'get': 'list'})
-        # As in a request, which reads the recommending-school setting once.
-        from cis.services.recommender_scope import cached_school_rule
-        with cached_school_rule(), CaptureQueriesContext(connection) as captured:
+        with as_in_a_request(), CaptureQueriesContext(connection) as captured:
             response = view(request)
             response.render()
         self.assertEqual(response.status_code, 200, basename)
