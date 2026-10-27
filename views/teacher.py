@@ -269,8 +269,14 @@ class TeacherViewSet(viewsets.ReadOnlyModelViewSet):
         record_type = self.request.GET.get('record_type')
         faculty_coordinator_id = self.request.GET.get('faculty_coordinator_id')
         teacher_id = self.request.GET.get('teacher_id')
-        
+        course = self.request.GET.get('course', '').strip()
+        highschool = self.request.GET.get('highschool', '').strip()
+
         records = Teacher.objects.all()
+
+        if course or highschool:
+            records = self._filter_by_course_and_highschool(
+                records, course, highschool)
 
 
         if teacher_id:
@@ -370,6 +376,51 @@ class TeacherViewSet(viewsets.ReadOnlyModelViewSet):
             return records.filter(user=user)
 
         return records.none()
+
+    def _filter_by_course_and_highschool(self, records, course, highschool):
+        """The Course and High School dropdowns (#132, ported from nnu).
+
+        A faculty caller matches only through the (course, instructor) pairs
+        they mentor -- the same pairs their columns show -- so "who do I mentor
+        for X?" doesn't also list an instructor visible through another course.
+        High school follows Teacher's "in the program" rule, like the
+        active_highschools column. A malformed id matches nothing.
+        """
+        for value in (course, highschool):
+            if value:
+                try:
+                    uuid.UUID(value)
+                except (ValueError, AttributeError, TypeError):
+                    return records.none()
+
+        user = self.request.user
+        # CE first: user_has_faculty_role() is also True for CE users.
+        faculty = not user_has_cis_role(user) and user_has_faculty_role(user)
+        certificates = TeacherCourseCertificate.objects.all()
+        if faculty:
+            from cis.services.faculty_scope import visible_pairs_q
+            certificates = certificates.filter(visible_pairs_q(
+                user, course_field='course_id',
+                teacher_field='teacher_highschool__teacher_id'))
+
+        if highschool:
+            if faculty:
+                teacher_ids = certificates.filter(
+                    teacher_highschool__highschool__id=highschool,
+                    teacher_highschool__status__iexact=Teacher.IN_PROGRAM_STATUS,
+                ).values('teacher_highschool__teacher_id')
+            else:
+                teacher_ids = TeacherHighSchool.objects.filter(
+                    highschool__id=highschool,
+                    status__iexact=Teacher.IN_PROGRAM_STATUS,
+                ).values('teacher_id')
+            records = records.filter(id__in=teacher_ids)
+
+        if course:
+            records = records.filter(id__in=certificates.filter(
+                course__id=course).values('teacher_highschool__teacher_id'))
+
+        return records
 
 class DanglingInstructorViewSet(viewsets.ReadOnlyModelViewSet):
     """Accounts left in the instructor group with no Teacher record.

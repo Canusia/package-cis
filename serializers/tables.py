@@ -221,7 +221,44 @@ class SlimStudentRowSerializer(TrimmedStudentSerializer):
         ref_name = 'CisSlimStudent'
 
 
+def requested_column_roots(request):
+    """Top-level field names a DataTables request asks for as columns, or None
+    when it names no columns at all.
+
+    ``columns[3][data]=active_courses.0.course.name`` yields ``active_courses``.
+    None mirrors the renderer: with no columns it trims nothing either.
+    """
+    params = getattr(request, 'query_params', None) or getattr(request, 'GET', None)
+    if params is None:
+        return None
+    roots = {
+        (value or '').split('.')[0]
+        for key, value in params.items()
+        if key.startswith('columns[') and key.endswith('][data]')
+    }
+    return roots or None
+
+
 class SlimTeacherRowSerializer(TrimmedTeacherSerializer):
+    """The top-level teacher row (/ce/api/teacher datatables).
+
+    Unlike the nested teacher on the high school-teacher feed, this row *is*
+    what the table renders, so active_courses / active_highschools come back
+    whenever a column asks for them (or no columns are named) -- the faculty
+    "My Instructors" Course and High School columns, which TeacherSerializer
+    narrows to the caller's mentored pairs (#132). The renderer's own
+    top-level trim still drops them for a table that doesn't show them.
+    """
+
+    def get_fields(self):
+        fields = super(_Trim, self).get_fields()  # untrimmed
+        wanted = requested_column_roots(self.context.get('request'))
+        if wanted is not None:
+            for name in self.drop_fields:
+                if name not in wanted:
+                    fields.pop(name, None)
+        return fields
+
     class Meta(TeacherSerializer.Meta):
         ref_name = 'CisSlimTeacher'
 
