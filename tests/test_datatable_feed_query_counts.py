@@ -27,9 +27,8 @@ from contextlib import contextmanager
 
 from django.conf import settings
 from django.core.signals import request_finished, request_started
-from django.db import close_old_connections
 from django.contrib.auth.models import Group
-from django.db import connection
+from django.db import close_old_connections, connection
 from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
 
@@ -235,18 +234,18 @@ def as_in_a_request():
 
     Sends request_started / request_finished, so per-request memos in
     companion packages are active (grades caches the final-period statuses
-    per request, grades#12), and reads the recommending-school setting once.
-    close_old_connections is held off, as Django's test client does, so the
+    per request, grades#12) and cis reads the recommending-school setting
+    once (its own request_started receiver). close_old_connections is held off, as Django's test client does, so the
     test transaction's connection survives.
     """
-    from cis.services.recommender_scope import cached_school_rule
     request_started.disconnect(close_old_connections)
     request_finished.disconnect(close_old_connections)
     try:
-        request_started.send(sender=None)
         try:
-            with cached_school_rule():
-                yield
+            # Inside the try: if a receiver raises, request_finished still
+            # resets the memos the earlier receivers started.
+            request_started.send(sender=None)
+            yield
         finally:
             request_finished.send(sender=None)
     finally:
@@ -449,9 +448,10 @@ class DataTableFeedQueryCountTests(TestCase):
     def setUpTestData(cls):
         for _ in range(cls.ROWS):
             registration = FeedFixture.build()
-        # One shared term, as on a real page. Per-term lookups (grades caches
-        # the final grading period per term within a request, grades#12) are
-        # then a constant, not a per-row cost of the fixture's one term per row.
+        # One shared term. grades caches its final-period lookup per term
+        # within a request (grades#12), so its cost grows with the distinct
+        # terms on a page, not with rows; sharing a term isolates the per-row
+        # cost, which is what these tests measure.
         term = registration.class_section.term
         ClassSection.objects.update(term=term, registration_term=term)
 
