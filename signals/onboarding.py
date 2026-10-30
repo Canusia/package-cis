@@ -297,9 +297,9 @@ def _rollover_terms(student):
 # inside a rolled-back atomic block or savepoint). Outside any atomic block
 # on_commit runs immediately, so each save recalculates on its own.
 
-# A registration save whose update_fields miss all of these cannot change
-# onboarding, so it does not queue a recalculation.
-_REGISTRATION_FIELDS_THAT_MATTER = frozenset({'status', 'class_section', 'student'})
+# Only these StudentRegistration changes can move onboarding. Saves that
+# change neither (SIS import refreshes, grade/mirror updates) do not queue.
+_REGISTRATION_TRACKED_FIELDS = ('status', 'class_section')
 
 
 class _RecalcBatch:
@@ -381,24 +381,51 @@ def _queue_from_instance(instance, kwargs):
     queue_recalculation(instance.student_id, using=kwargs.get('using'))
 
 
+def _registration_change_matters(instance, created):
+    """Created, or status / class_section changed. model_utils restores the
+    tracker only after save_base returns, so during post_save it still holds
+    the pre-save values."""
+    if created:
+        return True
+    tracker = getattr(instance, 'tracker', None)
+    if tracker is None:
+        return True
+    try:
+        return any(tracker.has_changed(f) for f in _REGISTRATION_TRACKED_FIELDS)
+    except Exception:
+        # A tracker without one of the fields (older model): be safe.
+        return True
+
+
 @receiver(post_save, sender=StudentRegistration,
           dispatch_uid='cis.onboarding.recalc_on_registration_save')
 def recalc_on_registration_save(sender, instance, created, **kwargs):
-    update_fields = kwargs.get('update_fields')
-    if update_fields and not (set(update_fields) & _REGISTRATION_FIELDS_THAT_MATTER):
+    if not _registration_change_matters(instance, created):
         return
     _queue_from_instance(instance, kwargs)
 
 
 @receiver(post_delete, sender=StudentRegistration,
           dispatch_uid='cis.onboarding.recalc_on_registration_delete')
-@receiver(post_save, sender=StudentAgreement,
-          dispatch_uid='cis.onboarding.recalc_on_agreement_save')
 @receiver(post_delete, sender=StudentAgreement,
           dispatch_uid='cis.onboarding.recalc_on_agreement_delete')
-@receiver(post_save, sender=ParentConsent,
-          dispatch_uid='cis.onboarding.recalc_on_consent_save')
 @receiver(post_delete, sender=ParentConsent,
           dispatch_uid='cis.onboarding.recalc_on_consent_delete')
-def recalc_on_change(sender, instance, **kwargs):
+def recalc_on_delete(sender, instance, **kwargs):
+    _queue_from_instance(instance, kwargs)
+
+
+# A StudentAgreement / ParentConsent save restricted by update_fields to none
+# of these (e.g. a notification-flag update) cannot change onboarding.
+_CONSENT_FIELDS_THAT_MATTER = frozenset({'student', 'term'})
+
+
+@receiver(post_save, sender=StudentAgreement,
+          dispatch_uid='cis.onboarding.recalc_on_agreement_save')
+@receiver(post_save, sender=ParentConsent,
+          dispatch_uid='cis.onboarding.recalc_on_consent_save')
+def recalc_on_consent_save(sender, instance, created, **kwargs):
+    update_fields = kwargs.get('update_fields')
+    if update_fields and not (set(update_fields) & _CONSENT_FIELDS_THAT_MATTER):
+        return
     _queue_from_instance(instance, kwargs)

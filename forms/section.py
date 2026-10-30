@@ -2,7 +2,7 @@ from django.conf import settings
 from django import forms
 from django.forms.formsets import BaseFormSet
 
-from django.db import models
+from django.db import models, transaction
 from django.db.models import Q
 
 from django.forms import ValidationError
@@ -481,18 +481,24 @@ class StudentRegistrationChangeStatusForm(forms.Form):
         if allowed_ids is not None:
             allowed = {str(a) for a in allowed_ids}
             registration_ids = [i for i in registration_ids if str(i) in allowed]
-        for regis_id in registration_ids:
-            try:
-                registration = StudentRegistration.objects.get(
-                    id=regis_id
-                )
+        # One transaction, so on_commit work keyed per transaction (onboarding
+        # recalculation) runs once per student rather than once per row. Each
+        # row gets its own savepoint: a failing row is skipped, as before, and
+        # its DB error must not poison the rows around it.
+        with transaction.atomic():
+            for regis_id in registration_ids:
+                try:
+                    with transaction.atomic():
+                        registration = StudentRegistration.objects.get(
+                            id=regis_id
+                        )
 
-                registration.status = new_status
-                registration.needs_mirroring = data.get('needs_mirroring', False)
+                        registration.status = new_status
+                        registration.needs_mirroring = data.get('needs_mirroring', False)
 
-                registration.save()
-            except Exception as e:
-                ...
+                        registration.save()
+                except Exception as e:
+                    ...
 
 
 class SetNeedsMirroringForm(forms.Form):

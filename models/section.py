@@ -1697,7 +1697,9 @@ class StudentRegistration(models.Model):
         default='-'
     )
 
-    tracker = FieldTracker(fields=['status'])
+    # class_section is tracked for the onboarding recalculation receiver
+    # (cis.signals.onboarding), which skips saves that change neither field.
+    tracker = FieldTracker(fields=['status', 'class_section'])
 
 
     REQUIRED_HEADERS = [

@@ -213,18 +213,95 @@ class RecalculationTriggerTests(_Base):
             self.assertEqual(recalc.call_count, 1)
 
     def test_bulk_status_change_recalculates_once_per_student(self):
+        """The real CE bulk "Change Status" path, in autocommit (no
+        ATOMIC_REQUESTS): the form wraps its loop in one transaction."""
         with patch(RECALC) as recalc:
             with self.captureOnCommitCallbacks(execute=True):
                 registrations = [self._register() for _ in range(5)]
             recalc.reset_mock()
 
             with self.captureOnCommitCallbacks(execute=True):
-                with transaction.atomic():
-                    for registration in registrations:
-                        registration.status = 'dropped'
-                        registration.save()
+                response = self.client.post('/ce/registration/bulk_actions', {
+                    'action': 'change_status',
+                    'new_status': 'dropped',
+                    'registration_ids': [str(r.id) for r in registrations],
+                })
 
+        self.assertEqual(response.json().get('status'), 'success', response.content)
+        self.assertEqual(
+            StudentRegistration.objects.filter(
+                student=self.student, status='dropped').count(), 5)
         self.assertEqual(recalc.call_count, 1)
+
+    def test_bulk_status_change_skips_a_failing_row(self):
+        """Per-row savepoints: one row's DB error leaves the others saved."""
+        from cis.forms.section import StudentRegistrationChangeStatusForm
+        with patch(RECALC):
+            with self.captureOnCommitCallbacks(execute=True):
+                good, bad = self._register(), self._register()
+        from django.http import QueryDict
+        data = QueryDict(mutable=True)
+        data.update({'action': 'change_status', 'new_status': 'dropped'})
+        data.setlist('registration_ids', [str(bad.id), str(good.id)])
+        form = StudentRegistrationChangeStatusForm(data=data)
+        self.assertTrue(form.is_valid(), form.errors)
+        real_save = StudentRegistration.save
+
+        def failing_save(instance, *args, **kwargs):
+            if instance.pk == bad.pk:
+                # A real DB error: it aborts the enclosing (sub)transaction.
+                from django.db import connection
+                with connection.cursor() as cursor:
+                    cursor.execute('SELECT 1/0')
+            return real_save(instance, *args, **kwargs)
+
+        with patch(RECALC), patch.object(StudentRegistration, 'save', failing_save):
+            form.save()
+        good.refresh_from_db()
+        bad.refresh_from_db()
+        self.assertEqual(good.status, 'dropped')
+        self.assertEqual(bad.status, 'applied')
+
+    def test_unrelated_registration_save_does_not_recalculate(self):
+        with patch(RECALC) as recalc:
+            with self.captureOnCommitCallbacks(execute=True):
+                registration = self._register()
+            recalc.reset_mock()
+            with self.captureOnCommitCallbacks(execute=True):
+                registration = StudentRegistration.objects.get(pk=registration.pk)
+                registration.grade = 'B'
+                registration.save()
+            recalc.assert_not_called()
+
+            with self.captureOnCommitCallbacks(execute=True):
+                registration.status = 'approved'
+                registration.save()
+            self.assertEqual(recalc.call_count, 1)
+
+    def test_class_section_change_recalculates(self):
+        with patch(RECALC) as recalc:
+            with self.captureOnCommitCallbacks(execute=True):
+                registration = self._register()
+            recalc.reset_mock()
+            with self.captureOnCommitCallbacks(execute=True):
+                registration = StudentRegistration.objects.get(pk=registration.pk)
+                registration.class_section = self._section()
+                registration.save()
+            self.assertEqual(recalc.call_count, 1)
+
+    def test_consent_notification_flag_save_does_not_recalculate(self):
+        with patch(RECALC) as recalc:
+            with self.captureOnCommitCallbacks(execute=True):
+                agreement = StudentAgreement.objects.create(
+                    student=self.student, term=self.term,
+                    student_signature='Signed',
+                    student_signed_on=datetime.datetime.now())
+            self.assertEqual(recalc.call_count, 1)
+            recalc.reset_mock()
+            with self.captureOnCommitCallbacks(execute=True):
+                agreement.student_signature = 'Re-signed'
+                agreement.save(update_fields=['student_signature'])
+            recalc.assert_not_called()
 
     def test_rollback_does_not_recalculate(self):
         with patch(RECALC) as recalc:
