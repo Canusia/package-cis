@@ -84,13 +84,37 @@ class Command(CampusCommand):
 
 
         
+        from cis.utils import TermNotConfigured
+        try:
+            term = active_term()
+        except TermNotConfigured:  # multi-campus: none set for this campus
+            term = None
+        if term is None:
+            summary += 'No active term; no payment reminders sent'
+            self.stdout.write(summary)
+            if kwargs.get('time'):
+                cron_task_done.send(
+                    sender=self.__class__,
+                    task=self.__class__,
+                    scheduled_time=time,
+                    summary=summary,
+                    detailed_log=json.dumps(detailed_log)
+                )
+            return
+
         summary += 'Found ' + str(students.count()) + ' records to notify'
-        # The link carries the billing term, where the charges sit (the
-        # parent when the active term is a sub-term billed with it).
-        term = active_term().billing_term
+        # One link per billing term under the active term's root that the
+        # student owes on: the root's billing term (the parent when the
+        # active term is a sub-term billed with it) and any separately
+        # billed sub-terms. Each link's page shows that term's balance.
+        root = term.parent or term
         balance = 0
         for record in students:
-            record.send_payment_url(term.id, mode)
+            owing = record.billing_terms_with_balance(root)
+            if not owing:
+                continue
+            for billing_term in owing:
+                record.send_payment_url(billing_term.id, mode)
             detailed_log['successfully_sent'] += 1
             detailed_log['sent'].append(record.user.email)
 

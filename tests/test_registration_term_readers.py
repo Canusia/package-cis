@@ -76,13 +76,25 @@ class CounselorReminderTests(RegistrationTermReaderBase):
 
 
 class MissingPaymentReminderTests(RegistrationTermReaderBase):
+    def setUp(self):
+        super().setUp()
+        self.active = self.a
+        self._charge(self.parent)
+
+    def _charge(self, term, amount=50):
+        from student_transactions.models import StudentTransaction
+        StudentTransaction.objects.create(
+            student=self.student, t_type='debit', label='class_charge',
+            amount=amount, term=term,
+            meta={'registration': str(self.registration.pk)})
+
     def _run(self, terms):
         Student.objects.filter(pk=self.student.pk).update(current_student_balance=50)
         sent = []
         self.sent_term_ids = []
         with patch('cis.utils.is_student_billpay_open', return_value=True), \
                 patch('cis.utils.registration_terms', return_value=terms), \
-                patch('cis.utils.active_term', return_value=self.a), \
+                patch('cis.utils.active_term', return_value=self.active), \
                 patch.object(Student, 'send_payment_url',
                              lambda s, term_id, mode: (sent.append(s.pk),
                                                        self.sent_term_ids.append(term_id))), \
@@ -102,6 +114,34 @@ class MissingPaymentReminderTests(RegistrationTermReaderBase):
         # link must carry the parent's id, where the charges sit.
         self._run(Term.objects.filter(pk__in=[self.a.pk, self.b.pk]))
         self.assertEqual(self.sent_term_ids, [self.parent.id])
+
+
+    def test_missing_payment_reminder_links_each_billing_term_with_a_balance(self):
+        # C bills separately: a student owing only on C gets a C link, not P.
+        from student_transactions.models import StudentTransaction
+        StudentTransaction.objects.filter(student=self.student).delete()
+        c = Term.objects.create(label='Fall C', code='FAC', parent=self.parent,
+                                academic_year=self.a.academic_year,
+                                bills_with_parent=False)
+        self._charge(c)
+        self._run(Term.objects.filter(pk__in=[self.a.pk, self.b.pk]))
+        self.assertEqual(self.sent_term_ids, [c.id])
+        # Owing on both: one link each, the root's billing term first.
+        self._charge(self.parent)
+        self._run(Term.objects.filter(pk__in=[self.a.pk, self.b.pk]))
+        self.assertEqual(self.sent_term_ids, [self.parent.id, c.id])
+
+    def test_missing_payment_reminder_without_active_term_exits_cleanly(self):
+        self.active = None
+        out = StringIO()
+        with patch('cis.utils.is_student_billpay_open', return_value=True), \
+                patch('cis.utils.registration_terms',
+                      return_value=Term.objects.filter(pk=self.a.pk)), \
+                patch('cis.utils.active_term', return_value=None), \
+                patch.object(Student, 'send_payment_url') as send:
+            call_command('send_missing_payment_reminder', stdout=out)
+        send.assert_not_called()
+        self.assertIn('No active term', out.getvalue())
 
 
 class RecommendationCoverageTests(RegistrationTermReaderBase):

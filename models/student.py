@@ -875,8 +875,13 @@ class Student(models.Model):
         from cis.utils import qr_code
 
         qrcode = None
-        if student.current_student_balance > 0:
-            billing_term = active_term.billing_term
+        if student.current_student_balance > 0 and active_term is not None:
+            # The first billing term under the active term's root that the
+            # student owes on (a separately billed sub-term may be the only
+            # one), else the root's billing term.
+            root = active_term.parent or active_term
+            owing = student.billing_terms_with_balance(root)
+            billing_term = owing[0] if owing else root.billing_term
             if not is_eligible_to_pay:
                 if not student.has_signed_parent_consent_for_term(billing_term.id):
                     url = ParentConsent.get_url(student.id, billing_term.id)
@@ -945,6 +950,14 @@ class Student(models.Model):
         from cis.integrations.grades import render_transcript
 
         return render_transcript(self, request=request)
+
+    def billing_terms_with_balance(self, root):
+        """Billing terms under ``root`` (``root.billing_terms_under()``) on
+        which this student's balance is above zero, in that order."""
+        if root is None:
+            return []
+        return [term for term in root.billing_terms_under()
+                if self.student_balance(term) > 0]
 
     def send_payment_url(self, term_id, mode='active'):
         student = self

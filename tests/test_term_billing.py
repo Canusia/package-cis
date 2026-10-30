@@ -228,6 +228,15 @@ class TermBillingTests(TermTreeFixtureMixin, TestCase):
         self.assertIn(str(self.P.id), url)
         self.assertNotIn(str(self.A.id), url)
 
+    def test_account_statement_payment_qr_uses_billing_term_with_a_balance(self):
+        # A balance only on separately billed C: the QR pays C, not P.
+        self.C.bills_with_parent = False
+        self.C.save()
+        self._charge(self.C)
+        url = self._statement_qr_url(eligible=True)
+        self.assertIn(str(self.C.id), url)
+        self.assertNotIn(str(self.P.id), url)
+
     def test_account_statement_consent_qr_uses_billing_term(self):
         url = self._statement_qr_url(eligible=False)
         self.assertIn(str(self.P.id), url)
