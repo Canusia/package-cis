@@ -366,7 +366,7 @@ FROZEN_PATHS = {
         'ce_url', 'class_number', 'co_reqs', 'course.credit_hours',
         'course.name', 'course.title', 'highschool.name', 'id',
         'num_students', 'registered_students',
-        'registration_term.label', 'roster_status',
+        'billing_term.id', 'billing_term.label', 'term.id', 'roster_status',
         'section_number', 'status', 'teacher.user.first_name',
         'teacher.user.last_name', 'term.code', 'term.label',
     ],
@@ -394,7 +394,7 @@ FROZEN_PATHS = {
     'course detail > offerings': [
         'ce_url', 'class_number', 'co_reqs', 'course.credit_hours',
         'course.name', 'course.title', 'highschool.name', 'id',
-        'registration_term.label', 'section_number',
+        'billing_term.id', 'billing_term.label', 'term.id', 'section_number',
         'teacher.user.first_name', 'teacher.user.last_name',
         'term.code', 'term.label',
     ],
@@ -443,21 +443,21 @@ FROZEN_PATHS = {
     'academic year detail > sections': [
         'ce_url', 'class_number', 'co_reqs', 'course.credit_hours',
         'course.name', 'course.title', 'highschool.name', 'id',
-        'registration_term.label', 'section_number', 'status',
+        'billing_term.id', 'billing_term.label', 'term.id', 'section_number', 'status',
         'teacher.user.first_name', 'teacher.user.last_name',
         'term.code', 'term.label',
     ],
     'highschool detail > sections (profile)': [
         'ce_url', 'class_number', 'co_reqs', 'course.credit_hours',
         'course.name', 'course.title', 'highschool.name', 'id',
-        'registration_term.label', 'section_number',
+        'billing_term.id', 'billing_term.label', 'term.id', 'section_number',
         'teacher.user.first_name', 'teacher.user.last_name',
         'term.code', 'term.label',
     ],
     'instructor detail > sections (profile)': [
         'ce_url', 'class_number', 'co_reqs', 'course.credit_hours',
         'course.name', 'course.title', 'highschool.name', 'id',
-        'registration_term.label', 'section_number',
+        'billing_term.id', 'billing_term.label', 'term.id', 'section_number',
         'teacher.user.first_name', 'teacher.user.last_name',
         'term.code', 'term.label',
     ],
@@ -523,20 +523,20 @@ FROZEN_PATHS = {
     'faculty coordinator detail > sections': [
         'ce_url', 'class_number', 'co_reqs', 'course.credit_hours',
         'course.name', 'course.title', 'highschool.name', 'id',
-        'registration_term.label', 'section_number',
+        'billing_term.id', 'billing_term.label', 'term.id', 'section_number',
         'teacher.user.first_name', 'teacher.user.last_name',
         'term.code', 'term.label',
     ],
     'term detail > sections by course': [
         'ce_url', 'class_number', 'co_reqs', 'course.credit_hours',
         'course.name', 'course.title', 'highschool.name', 'id',
-        'registration_term.label', 'section_number', 'status',
+        'billing_term.id', 'billing_term.label', 'section_number', 'status',
         'teacher.user.first_name', 'teacher.user.last_name',
     ],
     'term detail > sections by highschool': [
         'ce_url', 'class_number', 'co_reqs', 'course.credit_hours',
         'course.name', 'course.title', 'highschool.name', 'id',
-        'registration_term.label', 'section_number', 'status',
+        'billing_term.id', 'billing_term.label', 'section_number', 'status',
         'teacher.user.first_name', 'teacher.user.last_name',
     ],
     'student detail > files (student profile)': [
@@ -608,10 +608,10 @@ KNOWN_UNANSWERED = {
         'ce_url',
     ],
     'term detail > sections by course': [
-        'term.label',
+        'term.id', 'term.label',
     ],
     'term detail > sections by highschool': [
-        'term.label',
+        'term.id', 'term.label',
     ],
     'student detail > files (student profile)': [
         'student.ce_url', 'student.user.first_name',
