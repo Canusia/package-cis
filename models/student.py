@@ -876,12 +876,13 @@ class Student(models.Model):
 
         qrcode = None
         if student.current_student_balance > 0:
+            billing_term = active_term.billing_term
             if not is_eligible_to_pay:
-                if not student.has_signed_parent_consent_for_term(active_term.id):
-                    url = ParentConsent.get_url(student.id, active_term.id)
+                if not student.has_signed_parent_consent_for_term(billing_term.id):
+                    url = ParentConsent.get_url(student.id, billing_term.id)
                     qrcode = qr_code(url + '?scaned=1')    
             else:
-                qrcode = qr_code(student.get_payment_url(student.id, active_term.id) + '?scaned=1')
+                qrcode = qr_code(student.get_payment_url(student.id, billing_term.id) + '?scaned=1')
 
         context = Context({
             'record': student,
@@ -3000,6 +3001,18 @@ class StudentAgreement(models.Model):
                         term__id=term.id, student=student).exists():
                     return False
         return True
+
+    @classmethod
+    def has_signed_for_billing_term(cls, student, term):
+        """True when an agreement exists on ``term`` or any of its sub-terms.
+
+        Bill pay is keyed on a billing term (usually the parent registration
+        term), while the agreement may have been saved on the sub-terms the
+        student registered in.
+        """
+        from cis.services.term_hierarchy import expand_term_ids
+        return StudentAgreement.objects.filter(
+            student=student, term_id__in=expand_term_ids([term.id])).exists()
 
     @property
     def _student_signed_on(self):

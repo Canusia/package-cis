@@ -79,3 +79,56 @@ class TermBillingTests(TermTreeFixtureMixin, TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn('bills_with_parent', form.errors)
         self.assertTrue(self._post(True).is_valid())
+
+    def _sa(self, student, term):
+        from cis.models.student import StudentAgreement
+        return StudentAgreement.objects.create(
+            student=student, term=term, student_signature='S')
+
+    def test_has_signed_for_billing_term_accepts_sub_term_rows(self):
+        from cis.models.student import StudentAgreement
+        student = self.registrations['Fall Semester'].student
+        self.assertFalse(StudentAgreement.has_signed_for_billing_term(student, self.P))
+        self._sa(student, self.A)
+        self._sa(student, self.B)
+        self.assertTrue(StudentAgreement.has_signed_for_billing_term(student, self.P))
+
+    def test_has_signed_for_billing_term_own_row_and_other_terms(self):
+        from cis.models.student import StudentAgreement
+        student = self.registrations['Fall Semester'].student
+        self._sa(student, self.spring)
+        self.assertFalse(StudentAgreement.has_signed_for_billing_term(student, self.P))
+        self.C.bills_with_parent = False
+        self.C.save()
+        self.assertFalse(StudentAgreement.has_signed_for_billing_term(student, self.C))
+        self._sa(student, self.C)
+        self.assertTrue(StudentAgreement.has_signed_for_billing_term(student, self.C))
+        self.assertTrue(StudentAgreement.has_signed_for_billing_term(student, self.P))
+        other = self.registrations['Spring'].student
+        self.assertFalse(StudentAgreement.has_signed_for_billing_term(other, self.P))
+
+    def _statement_qr_url(self, eligible):
+        from unittest import mock
+        from django.test import RequestFactory
+        student = self.registrations['Fall Semester'].student
+        student.current_student_balance = 100
+        captured = []
+        request = RequestFactory().get('/', {'mode': 'page'})
+        with mock.patch('cis.utils.active_term', return_value=self.A), \
+                mock.patch('cis.utils.qr_code', side_effect=lambda u: captured.append(u)), \
+                mock.patch.object(type(student), 'is_eligible_to_pay',
+                                  return_value=(eligible, [])), \
+                mock.patch.object(type(student), 'has_signed_parent_consent_for_term',
+                                  return_value=False):
+            student.generate_account_statement(request)
+        return captured[0]
+
+    def test_account_statement_payment_qr_uses_billing_term(self):
+        url = self._statement_qr_url(eligible=True)
+        self.assertIn(str(self.P.id), url)
+        self.assertNotIn(str(self.A.id), url)
+
+    def test_account_statement_consent_qr_uses_billing_term(self):
+        url = self._statement_qr_url(eligible=False)
+        self.assertIn(str(self.P.id), url)
+        self.assertNotIn(str(self.A.id), url)
