@@ -3004,15 +3004,21 @@ class StudentAgreement(models.Model):
 
     @classmethod
     def has_signed_for_billing_term(cls, student, term):
-        """True when an agreement exists on ``term`` or any of its sub-terms.
+        """True when an agreement exists on ``term``, any of its sub-terms, or
+        its parent.
 
         Bill pay is keyed on a billing term (usually the parent registration
         term), while the agreement may have been saved on the sub-terms the
-        student registered in.
+        student registered in. A separately billed sub-term also accepts the
+        agreement on its parent, for tenants whose registration terms list
+        only the parent.
         """
         from cis.services.term_hierarchy import expand_term_ids
+        term_ids = expand_term_ids([term.id])
+        if term.parent_id:
+            term_ids.add(term.parent_id)
         return StudentAgreement.objects.filter(
-            student=student, term_id__in=expand_term_ids([term.id])).exists()
+            student=student, term_id__in=term_ids).exists()
 
     @property
     def _student_signed_on(self):

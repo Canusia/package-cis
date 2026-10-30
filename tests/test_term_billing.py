@@ -107,6 +107,18 @@ class TermBillingTests(TermTreeFixtureMixin, TestCase):
         other = self.registrations['Spring'].student
         self.assertFalse(StudentAgreement.has_signed_for_billing_term(other, self.P))
 
+    def test_has_signed_for_billing_term_accepts_parent_row(self):
+        # Tenants that list [P] as the registration terms save SAs only on P;
+        # a separately billed sub-term C must accept that row.
+        from cis.models.student import StudentAgreement
+        self.C.bills_with_parent = False
+        self.C.save()
+        student = self.registrations['Fall Semester'].student
+        self._sa(student, self.P)
+        self.assertTrue(StudentAgreement.has_signed_for_billing_term(student, self.C))
+        self.assertTrue(StudentAgreement.has_signed_for_billing_term(student, self.P))
+        self.assertFalse(StudentAgreement.has_signed_for_billing_term(student, self.spring))
+
     def _statement_qr_url(self, eligible):
         from unittest import mock
         from django.test import RequestFactory

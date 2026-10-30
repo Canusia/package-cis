@@ -79,11 +79,13 @@ class MissingPaymentReminderTests(RegistrationTermReaderBase):
     def _run(self, terms):
         Student.objects.filter(pk=self.student.pk).update(current_student_balance=50)
         sent = []
+        self.sent_term_ids = []
         with patch('cis.utils.is_student_billpay_open', return_value=True), \
                 patch('cis.utils.registration_terms', return_value=terms), \
                 patch('cis.utils.active_term', return_value=self.a), \
                 patch.object(Student, 'send_payment_url',
-                             lambda s, term_id, mode: sent.append(s.pk)), \
+                             lambda s, term_id, mode: (sent.append(s.pk),
+                                                       self.sent_term_ids.append(term_id))), \
                 patch.object(Student, 'add_note', lambda *a, **k: None):
             call_command('send_missing_payment_reminder', stdout=StringIO())
         return sent
@@ -94,6 +96,12 @@ class MissingPaymentReminderTests(RegistrationTermReaderBase):
 
     def test_no_registration_terms_configured(self):
         self.assertEqual(self._run(None), [])
+
+    def test_missing_payment_reminder_links_billing_term(self):
+        # Active term is sub-term A, which bills with its parent: the emailed
+        # link must carry the parent's id, where the charges sit.
+        self._run(Term.objects.filter(pk__in=[self.a.pk, self.b.pk]))
+        self.assertEqual(self.sent_term_ids, [self.parent.id])
 
 
 class RecommendationCoverageTests(RegistrationTermReaderBase):

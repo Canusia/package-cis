@@ -85,7 +85,9 @@ class Command(CampusCommand):
 
         
         summary += 'Found ' + str(students.count()) + ' records to notify'
-        term = active_term() 
+        # The link carries the billing term, where the charges sit (the
+        # parent when the active term is a sub-term billed with it).
+        term = active_term().billing_term
         balance = 0
         for record in students:
             record.send_payment_url(term.id, mode)
