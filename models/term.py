@@ -1,7 +1,7 @@
 # users/models.py
 import uuid, logging
 from django.db import models
-from django.db.models import JSONField
+from django.db.models import JSONField, Q
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +81,20 @@ class AcademicYear(models.Model):
                 name='academicyear_unique_name_per_campus'),
         ]
 
+def billed_to_q(term, prefix=''):
+    """Q for rows (reached through ``prefix``) whose term bills to ``term``.
+
+    A term's own sections bill to it unless it is a sub-term that bills with
+    its parent; sub-terms that bill with ``term`` are included. One level only.
+    """
+    p = prefix
+    own = Q(**{f'{p}term': term}) & (
+        Q(**{f'{p}term__parent__isnull': True})
+        | Q(**{f'{p}term__bills_with_parent': False}))
+    from_children = Q(**{f'{p}term__parent': term, f'{p}term__bills_with_parent': True})
+    return own | from_children
+
+
 class Term(models.Model):
     """
     Term model
@@ -105,6 +119,27 @@ class Term(models.Model):
     meta = JSONField(
         default=dict
     )
+    bills_with_parent = models.BooleanField(
+        default=True,
+        verbose_name='Bill with parent term',
+        help_text="Charges for classes in this sub-term go on the parent "
+                  "term's bill and use its payment due date. Ignored for a "
+                  "term with no parent.",
+    )
+
+    @property
+    def billing_term(self):
+        """The term whose bill carries charges for this term's classes."""
+        if self.parent_id and self.bills_with_parent:
+            return self.parent
+        return self
+
+    def billing_terms_under(self):
+        """Terms bill pay lists for this (active) term: its billing term, then
+        its sub-terms that bill separately, by code."""
+        return [self.billing_term] + list(
+            self.sub_terms.filter(bills_with_parent=False).order_by('code'))
+
     def __str__(self):
         return f"{self.academic_year.name}, {self.label}"
 

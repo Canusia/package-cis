@@ -354,6 +354,10 @@ class ClassSection(MyCEBaseModel):
     )
 
     @property
+    def billing_term(self):
+        return self.term.billing_term
+
+    @property
     def grade_submitted(self):
         return self.grade_status == 'submitted'
     

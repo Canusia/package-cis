@@ -333,6 +333,23 @@ class TermForm(forms.ModelForm):
                     'That parent would create a circular term hierarchy.')
         return parent
 
+    def clean_bills_with_parent(self):
+        value = self.cleaned_data.get('bills_with_parent')
+        if self.instance.pk and not self.instance._state.adding:
+            stored = Term.objects.filter(pk=self.instance.pk).values_list(
+                'bills_with_parent', flat=True).first()
+            if stored is not None and stored != value:
+                from student_transactions.models import StudentTransaction
+                from cis.models.section import StudentRegistration
+                ids = [str(i) for i in StudentRegistration.objects.filter(
+                    class_section__term=self.instance).values_list('id', flat=True)]
+                if ids and StudentTransaction.objects.filter(
+                        meta__registration__in=ids).exists():
+                    raise ValidationError(
+                        'Classes in this term already have charges. Move or '
+                        'remove them before changing how this term bills.')
+        return value
+
     def clean(self):
         cleaned = super().clean()
         parent = cleaned.get('parent')
