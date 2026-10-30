@@ -28,6 +28,7 @@ from rest_framework.response import Response
 from cis.models.section import StudentRegistration
 from cis.models.student import Student, StudentCampusID, StudentAgreement, StudentRecommendation, ParentConsent
 from cis.models.term import Term
+from cis.services.term_hierarchy import expand_term_ids
 from cis.campus_context import campus_terms
 from cis.models.course import Campus
 
@@ -124,8 +125,11 @@ class RegistrationViewSet(viewsets.ReadOnlyModelViewSet):
         records = StudentRegistration.objects.filter().all()
 
         if registration_term_code:
+            # The section's term, or anything under it (the name is kept for
+            # saved links); the registration term itself is retired.
             records = records.filter(
-                class_section__registration_term__code=registration_term_code
+                class_section__term__id__in=expand_term_ids(
+                    [t.pk for t in Term.by_code(registration_term_code)])
             )
             term = None
             

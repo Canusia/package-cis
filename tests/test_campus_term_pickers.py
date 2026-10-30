@@ -149,18 +149,3 @@ class CampusTermFormValidationTests(TestCase):
         self._field = 'term'
         self.assertTrue(self._term_field_accepts(AddNewStudentRegistrationForm, self.t1))
         self.assertFalse(self._term_field_accepts(AddNewStudentRegistrationForm, self.t2))
-
-    def test_change_registration_term_form_rejects_another_campus_term(self):
-        from cis.forms.section import BulkRegistrationTermChangeForm
-        self._field = 'new_registration_term'
-        data = QueryDict('')
-        self.assertTrue(self._term_field_accepts(BulkRegistrationTermChangeForm, self.t1, data=data))
-        self.assertFalse(self._term_field_accepts(BulkRegistrationTermChangeForm, self.t2, data=data))
-
-    def test_choices_list_only_this_campus(self):
-        from cis.forms.section import BulkRegistrationTermChangeForm
-        with campus_context(self.c1):
-            form = BulkRegistrationTermChangeForm(data=QueryDict(''))
-        values = {str(v) for v, _ in form.fields['new_registration_term'].choices}
-        self.assertIn(str(self.t1.id), values)
-        self.assertNotIn(str(self.t2.id), values)

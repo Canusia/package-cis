@@ -88,12 +88,15 @@ class ClassSectionRow(BaseModel):
         min_length=1, description="Course title",
         json_schema_extra={"db_field": "course", "is_lookup": True}
     )
-    registration_term_code: str = Field(
-        min_length=1, description="Registration term code",
-        json_schema_extra={"db_field": "registration_term", "is_lookup": True}
-    )
-
     # --- Optional fields ---
+    # Deprecated and ignored: a section's term (and that term's parent) now
+    # stand in for the registration term. Still accepted so existing files and
+    # API clients keep working.
+    registration_term_code: Optional[str] = Field(
+        default=None,
+        description="Deprecated, ignored: set the term's parent instead",
+        json_schema_extra={"db_field": None}
+    )
     highschool_ceeb: Optional[str] = Field(
         default=None, description="High school CEEB code",
         json_schema_extra={"db_field": "highschool", "is_lookup": True}

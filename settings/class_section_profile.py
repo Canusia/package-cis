@@ -33,7 +33,7 @@ CLASS_SECTION_DEFAULT_DISPLAY = [
     ],
     [
         'term',
-        'registration_term',
+        '',
         '',
     ],
     [

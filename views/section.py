@@ -787,9 +787,6 @@ def do_bulk_action(request):
     if action == 'change_roster_status':
         return change_roster_status(request)
 
-    if action == 'change_registration_term':
-        return change_registration_term(request)
-
     if action == 'update_class_status':
         return update_class_status(request)
 
@@ -826,33 +823,6 @@ def change_roster_status(request):
     }, request=request)
     return JsonResponse({'outcome': 'modal', 'html': html})
 
-def change_registration_term(request):
-    from cis.forms.section import BulkRegistrationTermChangeForm
-    template = 'cis/sections/bulk_action.html'
-    ids = processable_ids(ClassSection, request.POST.getlist('ids[]'), request.user)
-
-    if request.POST.get('action_confirmed'):
-        form = BulkRegistrationTermChangeForm(data=request.POST)
-        if form.is_valid():
-            form.save(request)
-            return JsonResponse({
-                'outcome': 'call',
-                'fn': 'onBulkActionComplete',
-                'args': {'message': 'Successfully updated records', 'status': 'success'},
-            })
-        return JsonResponse({
-            'message': 'Please correct the errors and try again.',
-            'errors': form.errors.as_json(),
-        }, status=400)
-
-    form = BulkRegistrationTermChangeForm(ids)
-    html = render_to_string(template, {
-        'title': 'Change Term',
-        'form': form,
-        'form_action': reverse('cis:section_bulk_actions'),
-    }, request=request)
-    return JsonResponse({'outcome': 'modal', 'html': html})
-    
 def update_class_status(request):
     """Bulk-set ClassSection.status (#131 item 4)."""
     from cis.forms.section import BulkClassStatusChangeForm

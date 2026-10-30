@@ -81,6 +81,7 @@ class ClassSectionImporter:
         self.use_bulk_operations = use_bulk_operations
         self.batch_size = batch_size
         self.use_transactions = use_transactions
+        self._registration_term_noted = False
 
         self.row_schema = class_section_row_schema()
         self.updatable_fields = self._updatable_fields(self.row_schema)
@@ -350,7 +351,7 @@ class ClassSectionImporter:
             query |= Q(term_id=term_id, class_number=class_number)
 
         existing = ClassSection.objects.filter(query).select_related(
-            'term', 'course', 'teacher', 'highschool', 'campus', 'location', 'registration_term'
+            'term', 'course', 'teacher', 'highschool', 'campus', 'location'
         )
 
         return {
@@ -379,7 +380,6 @@ class ClassSectionImporter:
         field_mapping['course'] = related['course']
         field_mapping['teacher'] = related.get('teacher')
         field_mapping['highschool'] = related.get('highschool')
-        field_mapping['registration_term'] = related['registration_term']
 
         # Derived fields
         field_mapping['status'] = data['status']
@@ -507,9 +507,13 @@ class ClassSectionImporter:
         if not related['term']:
             raise ValueError(f"Term does not exist: {validated.term_code}")
 
-        related['registration_term'] = self._get_or_create_registration_term(
-            validated.registration_term_code
-        )
+        if validated.registration_term_code and not self._registration_term_noted:
+            # Deprecated column: never read for a term, never written. The
+            # pre_save default (term.parent, else term) fills the stored value.
+            self._registration_term_noted = True
+            logger.info(
+                "registration_term_code is deprecated and ignored; "
+                "set the term's parent instead.")
 
         related['course'] = self._get_or_create_course(
             validated.course_name,
@@ -769,36 +773,3 @@ class ClassSectionImporter:
         """Get term by code"""
         from cis.models.term import Term
         return Term.by_code(term_code).first()
-
-    def _get_or_create_registration_term(self, term_code: str):
-        """The registration term by code (the active campus's first); else a
-        new one. In multi-campus mode with an active campus it is created
-        under that campus's academic year, never matched to another
-        campus's term with the same code."""
-        from cis.campus_context import current_campus_or_none, is_multi_campus
-        from cis.models.term import Term
-
-        registration_term = Term.by_code(term_code).first()
-        if registration_term is not None:
-            return registration_term
-
-        campus = current_campus_or_none() if is_multi_campus() else None
-        if campus is None:
-            registration_term, _ = Term.objects.get_or_create(
-                code=term_code,
-                defaults={
-                    'label': f"{term_code}",
-                    'academic_year': AcademicYear.objects.first()
-                }
-            )
-            return registration_term
-
-        academic_year = (
-            AcademicYear.objects.filter(campus=campus).order_by('-name').first()
-            or AcademicYear.objects.filter(campus__isnull=True).order_by('-name').first())
-        if academic_year is None:
-            raise ValueError(
-                f"Registration term {term_code} does not exist and campus "
-                f"{campus} has no academic year to create it under.")
-        return Term.objects.create(
-            code=term_code, label=f"{term_code}", academic_year=academic_year)

@@ -658,8 +658,10 @@ class PlanCompositionTests(TestCase):
     def test_class_section_plan_is_built_from_the_term_plan(self):
         paths = set(eager.class_section_select_related())
         self.assertTrue(set(eager.term_select_related('term__')) <= paths)
-        self.assertTrue(
-            set(eager.term_select_related('registration_term__')) <= paths)
+        # billing_term is term or term.parent; the parent's own year and
+        # campus are joined too, so serialising it costs no extra query.
+        self.assertIn('term__parent__academic_year__campus', paths)
+        self.assertFalse([p for p in paths if p.startswith('registration_term')])
 
     def test_class_section_plan_is_built_from_the_course_and_teacher_plans(self):
         paths = set(eager.class_section_select_related())

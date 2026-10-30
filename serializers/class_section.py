@@ -114,7 +114,7 @@ class ClassSectionSerializer(serializers.ModelSerializer):
 
     location = LocationSerializer()
     term = TermSerializer()
-    registration_term = TermSerializer()
+    billing_term = TermSerializer()
     teacher = TeacherSerializer()
 
     start_date = serializers.DateField(
@@ -211,7 +211,7 @@ class ClassSectionSerializer(serializers.ModelSerializer):
             'co_reqs',
             'is_a_co_req',
             'highschool_course_name',
-            'registration_term'
+            'billing_term'
         ]
 
 class ClassSectionSyllabiSerializer(serializers.ModelSerializer):

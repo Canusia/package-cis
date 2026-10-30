@@ -280,7 +280,6 @@ class ClassSection(MyCEBaseModel):
         'part_of_term',
         'tuition',
         'status',
-        'registration_term',
         'free_period',
         'period_time',
     ]
@@ -1190,7 +1189,6 @@ class ClassSection(MyCEBaseModel):
                 'tuition',
                 'highschool_course_name',
                 'status',
-                'registration_term'
             ]
 
             for key, value in kwargs.items():
@@ -1353,15 +1351,6 @@ class ClassSection(MyCEBaseModel):
                         row['RESULT'] = 'Term does not exist'
                         result.append(row)
                         continue
-                    
-                    if not Term.objects.filter(code=row['registration_term_code']).exists():
-                        registration_term, created = Term.objects.get_or_create(
-                            code=row['registration_term_code'],
-                            label=f"{row['registration_term_code']}",
-                            academic_year=AcademicYear.objects.first()
-                        )
-                    else:
-                        registration_term = Term.objects.filter(code=row['registration_term_code']).first()
 
                 except Exception as e:
                     print('failed')
@@ -1400,7 +1389,6 @@ class ClassSection(MyCEBaseModel):
                         tuition=row.get('tuition', 0) if row.get('tuition', '') != '' else 0,
                         highschool_course_name=row.get('highschool_course_title', ''),
                         status='A' if row.get('cancel_flag', '').lower() == 'n' else 'C',
-                        registration_term=registration_term
                     )
 
                     meta = class_section.meta

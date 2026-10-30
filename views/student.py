@@ -475,7 +475,7 @@ class StudentViewSet(viewsets.ReadOnlyModelViewSet):
 
                 applied_students = StudentRegistration.objects.filter(
                     Q(status__in=['applied', 'registered', 'approved']) &
-                    Q(class_section__registration_term__id__in=expand_term_ids(registration_term_id)) &
+                    Q(class_section__term__id__in=expand_term_ids(registration_term_id)) &
                     recommendation_required_q()
                 ).values_list('student__id', flat=True)
 
@@ -499,7 +499,7 @@ class StudentViewSet(viewsets.ReadOnlyModelViewSet):
                     from django.db.models import Exists, OuterRef
                     uncovered = StudentRegistration.objects.filter(
                         Q(status__in=['applied', 'registered', 'approved']) &
-                        Q(class_section__registration_term__id__in=expand_term_ids(
+                        Q(class_section__term__id__in=expand_term_ids(
                             registration_term_id)) &
                         recommendation_required_q()
                     ).exclude(Exists(StudentRecommendation.objects.filter(
@@ -519,7 +519,7 @@ class StudentViewSet(viewsets.ReadOnlyModelViewSet):
                 term_id = self.request.GET.get('term_id')
 
                 applied_students = StudentRegistration.objects.filter(
-                    class_section__registration_term__id__in=expand_term_ids(term_id)
+                    class_section__term__id__in=expand_term_ids(term_id)
                 ).values_list('student__id', flat=True)
 
                 has_faa = StudentTuitionAssistance.objects.filter(

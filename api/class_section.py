@@ -55,8 +55,12 @@ API_TO_SCHEMA_FIELD_MAP = {
     'highschool_course_name': 'highschool_course_title',
 }
 
+REGISTRATION_TERM_CODE_WARNING = (
+    "registration_term_code is deprecated and ignored; "
+    "set the term's parent instead.")
+
 # Fields accepted by the API but not defined in the pydantic schema.
-API_ONLY_FIELDS = {'lab_fees', 'status'}
+API_ONLY_FIELDS = {'lab_fees', 'status', 'registration_term_code'}
 
 
 def _api_payload_to_schema_dict(data: dict) -> dict:
@@ -171,9 +175,12 @@ class ClassSectionSerializer(serializers.ModelSerializer):
         source='teacher.user.email'
     )
 
+    # Output only: the term that bills this section's classes. On input the
+    # field is accepted and ignored (see ClassSectionViewSet.create).
     registration_term_code = serializers.CharField(
         max_length=10,
-        source='registration_term.code'
+        source='billing_term.code',
+        read_only=True
     )
 
     class Meta:
@@ -205,7 +212,7 @@ class ClassSectionSerializer(serializers.ModelSerializer):
 
         1. **Pydantic validation** — delegates field-level rules to
            ``ClassSectionRow`` (type coercion, format checks, range rules).
-        2. **FK resolution** — resolves Term, RegistrationTerm, HighSchool,
+        2. **FK resolution** — resolves Term, HighSchool,
            Teacher, and Course from the database, collecting all errors
            before raising.
 
@@ -237,21 +244,6 @@ class ClassSectionSerializer(serializers.ModelSerializer):
             errors['term_code'] = ['Term code does not exist.']
         except Term.MultipleObjectsReturned:
             errors['term_code'] = ['Multiple terms found for this code.']
-
-        # Registration Term
-        registration_term = None
-        try:
-            registration_term = _term_by_code(
-                validated_row.registration_term_code
-            )
-        except Term.DoesNotExist:
-            errors['registration_term_code'] = [
-                'Registration term code does not exist.'
-            ]
-        except Term.MultipleObjectsReturned:
-            errors['registration_term_code'] = [
-                'Multiple terms found for this registration term code.'
-            ]
 
         # High School
         highschool = None
@@ -299,7 +291,6 @@ class ClassSectionSerializer(serializers.ModelSerializer):
         data['_resolved'] = {
             'validated_row': validated_row,
             'term': term,
-            'registration_term': registration_term,
             'highschool': highschool,
             'teacher': teacher,
             'course': course,
@@ -333,7 +324,6 @@ class ClassSectionSerializer(serializers.ModelSerializer):
             tuition=row.tuition or 0,
             highschool_course_name=row.highschool_course_title or '',
             status=raw_status,
-            registration_term=resolved['registration_term'],
         )
 
         # Handle lab_fees (API-only field, not in pydantic schema)
@@ -381,9 +371,12 @@ class ClassSectionViewSet(viewsets.ModelViewSet):
             "highschool_ceeb": "123456",
             "teacher_hs_email": "jsmith@school.edu",
             "highschool_course_name": "AP Biology",
-            "status": "A",
-            "registration_term_code": "202410"
+            "status": "A"
         }
+
+    ``registration_term_code`` is deprecated: it is accepted and ignored (the
+    response carries a warning) and the response field shows the section's
+    billing term. Set the term's ``parent`` to group terms instead.
 
     **Responses**:
 
@@ -396,6 +389,12 @@ class ClassSectionViewSet(viewsets.ModelViewSet):
     authentication_classes = [TokenAuthentication, SessionAuthentication]
     permission_classes = [CIS_user_only]
     http_method_names = ['post', 'head']
+
+    def create(self, request, *args, **kwargs):
+        response = super().create(request, *args, **kwargs)
+        if 'registration_term_code' in request.data:
+            response.data['warnings'] = [REGISTRATION_TERM_CODE_WARNING]
+        return response
 
     def update(self, request):
         """Reject PUT/PATCH — this endpoint is POST-only."""

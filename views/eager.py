@@ -113,7 +113,7 @@ def with_teacher_related(records):
 
 # --------------------------------------------------------------------------
 # ClassSection -- ClassSectionSerializer(course, campus, highschool, co_reqs,
-#                 syllabi, location, term, registration_term, teacher)
+#                 syllabi, location, term, billing_term, teacher)
 # --------------------------------------------------------------------------
 
 def term_select_related(prefix=''):
@@ -128,14 +128,14 @@ def campus_prefetch_related(prefix=''):
 
 
 def class_section_select_related(prefix=''):
-    # term__parent (loaded by the term plan) stands in for the retired
-    # registration_term. registration_term is still joined only because
-    # ClassSectionSerializer nests it; drop this line when that field goes.
+    # ClassSectionSerializer's billing_term is term or term.parent. The term
+    # plan loads term.parent; the second join loads what TermSerializer reads
+    # when the parent is the one serialised (its year and campus).
     return (
         course_select_related(prefix + 'course__')
         + prefixed(prefix, ('campus', 'highschool__district', 'location'))
         + term_select_related(prefix + 'term__')
-        + term_select_related(prefix + 'registration_term__')
+        + prefixed(prefix, ('term__parent__academic_year__campus',))
         + teacher_select_related(prefix + 'teacher__')
     )
 

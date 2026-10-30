@@ -92,7 +92,7 @@ class students_by_date(forms.Form):
         # Get student IDs who have registrations in the selected term
         student_ids = set(
             str(sid) for sid in StudentRegistration.objects.filter(
-                class_section__registration_term__id__in=expand_term_ids(data.get('term'))
+                class_section__term__id__in=expand_term_ids(data.get('term'))
             ).values_list('student_id', flat=True).distinct()
         )
 
