@@ -15,16 +15,18 @@ import logging
 from functools import lru_cache
 
 from django.contrib.auth.signals import user_logged_in
-from django.db.models.signals import post_save
+from django.db import transaction
+from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
 
-from student_onboarding import handlers, events
+from student_onboarding import api as onboarding_api, handlers, events
 from student_onboarding.api import (
     add_step, complete_step, get_or_create_for_current_term,
 )
 from student_onboarding.step_registry import register, all_steps, get as get_step
 
-from cis.models.student import Student
+from cis.models.section import StudentRegistration
+from cis.models.student import ParentConsent, Student, StudentAgreement
 from cis.services.tenant_services import (
     MissingTenantService, get_tenant_service, tenant_services_app,
 )
@@ -33,6 +35,12 @@ from cis.utils import TermNotConfigured, active_term
 
 logger = logging.getLogger(__name__)
 
+
+# --- Compatibility: student_onboarding < v0.0.21 -------------------------
+# `StepDefinition.should_seed` (student_onboarding v0.0.21) now owns the
+# one-/two-argument predicate handling below. These local copies remain only
+# for tenants still pinned to student_onboarding v0.0.20; delete them (and the
+# fallback in `_should_seed`) once every tenant is on >= v0.0.21.
 
 @lru_cache(maxsize=None)
 def _predicate_accepts_term(predicate):
@@ -64,6 +72,10 @@ def _predicate_accepts_term(predicate):
 
 
 def _should_seed(step, student, term):
+    should_seed = getattr(step, 'should_seed', None)
+    if callable(should_seed):
+        return should_seed(student, term)
+    # Compatibility fallback for student_onboarding < v0.0.21.
     if not step.seeded_when:
         return True
     if _predicate_accepts_term(step.seeded_when):
@@ -270,3 +282,123 @@ def _rollover_terms(student):
         except TermNotConfigured:
             logger.warning('No active term for %s; onboarding not rolled over', campus)
     return terms
+
+
+# --- Recalculation after CE-side changes ---------------------------------
+#
+# Registrations, student agreements and parent consents change from the CE
+# side (add/drop a class, mark received, delete) without any onboarding event,
+# so the receivers below ask student_onboarding to re-evaluate the student's
+# checklist against the step predicates.
+#
+# Work is deferred to transaction.on_commit and collected per transaction, so a
+# bulk change of N rows for one student recalculates once, and a rolled-back
+# change recalculates nothing (Django discards on_commit callbacks registered
+# inside a rolled-back atomic block or savepoint). Outside any atomic block
+# on_commit runs immediately, so each save recalculates on its own.
+
+# A registration save whose update_fields miss all of these cannot change
+# onboarding, so it does not queue a recalculation.
+_REGISTRATION_FIELDS_THAT_MATTER = frozenset({'status', 'class_section', 'student'})
+
+
+class _RecalcBatch:
+    """One on_commit callback and the student ids it will recalculate."""
+
+    def __init__(self):
+        self.student_ids = set()
+        self.done = False
+
+    def __call__(self):
+        self.done = True
+        _recalculate_students(self.student_ids)
+
+
+def _live_batches(connection):
+    """The batches whose callback will still run for this transaction.
+
+    A batch drops out once it has run, or once Django has discarded its
+    callback -- a commit or rollback empties `run_on_commit`, and a savepoint
+    rollback removes the callbacks registered inside it. Any surviving batch was
+    registered at the current atomic level or an enclosing one, so anything
+    that would discard it also discards the change being queued now.
+    """
+    registered = {id(entry[1]) for entry in connection.run_on_commit}
+    batches = [
+        batch for batch in getattr(connection, '_onboarding_recalc_batches', ())
+        if not batch.done and id(batch) in registered
+    ]
+    connection._onboarding_recalc_batches = batches
+    return batches
+
+
+def queue_recalculation(student_id, using=None):
+    """Recalculate the student's onboarding once the current transaction
+    commits (immediately in autocommit). No-op on student_onboarding < v0.0.21,
+    which has no `recalculate`."""
+    if not student_id or getattr(onboarding_api, 'recalculate', None) is None:
+        return
+    connection = transaction.get_connection(using)
+    if not connection.in_atomic_block:
+        transaction.on_commit(lambda: _recalculate_students({student_id}), using=using)
+        return
+    batches = _live_batches(connection)
+    if any(student_id in batch.student_ids for batch in batches):
+        return
+    if batches:
+        batches[-1].student_ids.add(student_id)
+        return
+    batch = _RecalcBatch()
+    batch.student_ids.add(student_id)
+    batches.append(batch)
+    transaction.on_commit(batch, using=using)
+
+
+def _recalculate_students(student_ids):
+    recalculate = getattr(onboarding_api, 'recalculate', None)
+    if recalculate is None:
+        return
+    for student_id in student_ids:
+        try:
+            student = Student.objects.filter(pk=student_id).first()
+            if student is None:
+                continue  # deleted along with its registrations
+            if is_multi_campus():
+                # Each campus the student is onboarding with, at its own
+                # active term -- as on login rollover (MC-12).
+                for term in _rollover_terms(student):
+                    recalculate(student, term=term)
+            else:
+                recalculate(student)
+        except Exception:
+            logger.exception(
+                'Failed to recalculate onboarding for student %s', student_id)
+
+
+def _queue_from_instance(instance, kwargs):
+    if kwargs.get('raw'):
+        return
+    queue_recalculation(instance.student_id, using=kwargs.get('using'))
+
+
+@receiver(post_save, sender=StudentRegistration,
+          dispatch_uid='cis.onboarding.recalc_on_registration_save')
+def recalc_on_registration_save(sender, instance, created, **kwargs):
+    update_fields = kwargs.get('update_fields')
+    if update_fields and not (set(update_fields) & _REGISTRATION_FIELDS_THAT_MATTER):
+        return
+    _queue_from_instance(instance, kwargs)
+
+
+@receiver(post_delete, sender=StudentRegistration,
+          dispatch_uid='cis.onboarding.recalc_on_registration_delete')
+@receiver(post_save, sender=StudentAgreement,
+          dispatch_uid='cis.onboarding.recalc_on_agreement_save')
+@receiver(post_delete, sender=StudentAgreement,
+          dispatch_uid='cis.onboarding.recalc_on_agreement_delete')
+@receiver(post_save, sender=ParentConsent,
+          dispatch_uid='cis.onboarding.recalc_on_consent_save')
+@receiver(post_delete, sender=ParentConsent,
+          dispatch_uid='cis.onboarding.recalc_on_consent_delete')
+def recalc_on_change(sender, instance, **kwargs):
+    _queue_from_instance(instance, kwargs)

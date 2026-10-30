@@ -1526,6 +1526,18 @@ def waive_student_consent(request):
         student_agreeement.student_signed_on = datetime.datetime.now()
 
         student_agreeement.save()
+
+        # Same row the student signing writes, so the same onboarding event
+        # (StudentAgreementForm.save sends it; see waive_parent_consent).
+        from student_onboarding.signals import onboarding_event
+        from student_onboarding import events as onboarding_events
+
+        onboarding_event.send(
+            sender=__name__,
+            event=onboarding_events.STUDENT_AGREEMENT_SIGNED,
+            student=student,
+        )
+
         data = {
             'message': 'Successfully marked as received',
             'status': 'success'
