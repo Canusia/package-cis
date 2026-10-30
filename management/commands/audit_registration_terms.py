@@ -4,7 +4,10 @@ A section has one term, and that term's parent stands in for the registration
 term. Before relying on that, list what disagrees:
 
 (a) sections whose registration_term is neither their term nor its parent,
-    with how many registrations and charges they carry;
+    with how many registrations and charges they carry; and sections on a
+    sub-term that bills with its parent whose registration_term is the
+    sub-term itself (their old charges sit on the sub-term, but after the
+    upgrade the sub-term bills with its parent);
 (b) class_charge / school_charge transactions whose term is not the billing
     term of their registration's class section.
 
@@ -53,30 +56,50 @@ class Command(BaseCommand):
             .select_related('term', 'registration_term')
             .annotate(num_registrations=Count('studentregistration', distinct=True))
             .order_by('term__code', 'class_number'))
+        own_sub_term = list(
+            sections.filter(registration_term=F('term'),
+                            term__parent__isnull=False,
+                            term__bills_with_parent=True)
+            .select_related('term__parent', 'registration_term')
+            .annotate(num_registrations=Count('studentregistration', distinct=True))
+            .order_by('term__code', 'class_number'))
         registration_section = {}
         for reg_id, section_id in StudentRegistration.objects.filter(
-                class_section__in=[s.pk for s in mismatched]
+                class_section__in=[s.pk for s in mismatched + own_sub_term]
         ).values_list('pk', 'class_section_id'):
             registration_section[str(reg_id)] = section_id
         charges_by_section = Counter()
-        for chunk in self._chunks(StudentTransaction.objects.filter(
-                label__in=CHARGE_LABELS, meta__registration__isnull=False
-        ).values_list('meta', flat=True)):
-            for meta in chunk:
-                section_id = registration_section.get(str(meta.get('registration')))
-                if section_id is not None:
-                    charges_by_section[section_id] += 1
+        if registration_section:
+            for chunk in self._chunks(StudentTransaction.objects.filter(
+                    label__in=CHARGE_LABELS, meta__registration__isnull=False
+            ).values_list('meta', flat=True)):
+                for meta in chunk:
+                    section_id = registration_section.get(str(meta.get('registration')))
+                    if section_id is not None:
+                        charges_by_section[section_id] += 1
 
         self.stdout.write(
             f'(a) Sections whose registration_term is not their term or its '
             f'parent: {len(mismatched)}')
         for section in mismatched:
+            self._write_section(section, charges_by_section)
+        if mismatched:
             self.stdout.write(
-                f'  {section.class_number} {section.section_number} '
-                f'term={section.term.code} registration_term='
-                f'{section.registration_term.code} '
-                f'registrations={section.num_registrations} '
-                f'charges={charges_by_section[section.pk]}')
+                '  What to do: set term parents so each registration_term is '
+                "its section's term or that term's parent, or move the "
+                "charges to the section's billing term.")
+
+        self.stdout.write(
+            f'(a) Sections on a sub-term that bills with its parent whose '
+            f'registration_term is the sub-term itself: {len(own_sub_term)}')
+        for section in own_sub_term:
+            self._write_section(section, charges_by_section)
+        if own_sub_term:
+            terms = sorted({s.term.code for s in own_sub_term})
+            self.stdout.write(
+                '  What to do: turn off "Bill with parent term" on '
+                f'{", ".join(terms)} (their charges sit on those terms), or '
+                'move the charges to the parent term.')
 
         # (b) charges outside their section's billing term
         in_scope = None
@@ -110,6 +133,14 @@ class Command(BaseCommand):
                 f'section={section.class_number} charge_term={transaction.term.code} '
                 f'billing_term={section.billing_term.code} '
                 f'amount={transaction.amount}')
+
+    def _write_section(self, section, charges_by_section):
+        self.stdout.write(
+            f'  {section.class_number} {section.section_number} '
+            f'term={section.term.code} registration_term='
+            f'{section.registration_term.code} '
+            f'registrations={section.num_registrations} '
+            f'charges={charges_by_section[section.pk]}')
 
     @staticmethod
     def _is_uuid(value):

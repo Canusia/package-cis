@@ -186,7 +186,11 @@ def assign_parent(request):
             assigned, skipped = form.save()
             msg = f'{assigned} assigned'
             if skipped:
-                msg += f', {skipped} skipped (self/cycle/other campus)'
+                msg += f', {skipped} skipped (self/cycle/other campus'
+                if form.stranded:
+                    msg += ('/charges on the current billing term: '
+                            + ', '.join(t.code for t in form.stranded))
+                msg += ')'
             return JsonResponse({'outcome': 'call', 'fn': 'onBulkActionComplete',
                                  'args': {'message': msg + '.', 'status': 'success'}})
         return JsonResponse({'message': 'Please correct the errors and try again.',

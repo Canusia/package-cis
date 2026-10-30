@@ -80,6 +80,94 @@ class TermBillingTests(TermTreeFixtureMixin, TestCase):
         self.assertIn('bills_with_parent', form.errors)
         self.assertTrue(self._post(True).is_valid())
 
+    def _charge(self, term, label='Fall Semester'):
+        from student_transactions.models import StudentTransaction
+        reg = self.registrations[label]
+        return StudentTransaction.objects.create(
+            student=reg.student, t_type='debit', label='class_charge',
+            amount=10, term=term, meta={'registration': str(reg.id)})
+
+    def test_term_form_unchanged_post_on_charged_term_is_valid(self):
+        self._charge(self.A)  # charges on A while A bills with P
+        self.assertTrue(self._post(True).is_valid())
+
+    def test_term_form_allows_flip_that_lines_billing_up_with_charges(self):
+        # Pre-upgrade charges sit on the sub-term A; turning "bill with
+        # parent" off makes A its own billing term again.
+        self._charge(self.A)
+        form = self._post(False)
+        self.assertTrue(form.is_valid(), form.errors)
+
+    def test_term_form_refuses_flip_when_charges_are_split(self):
+        self._charge(self.A)
+        self._charge(self.P)
+        form = self._post(False)
+        self.assertFalse(form.is_valid())
+        self.assertIn('split', str(form.errors['bills_with_parent']))
+
+    def test_term_form_ignores_payments_when_checking_charges(self):
+        from student_transactions.models import StudentTransaction
+        reg = self.registrations['Fall Semester']
+        StudentTransaction.objects.create(
+            student=reg.student, t_type='credit', label='payment',
+            amount=10, term=self.P, meta={'registration': str(reg.id)})
+        self.assertTrue(self._post(False).is_valid())
+
+    def test_term_form_refuses_parent_change_that_strands_charges(self):
+        self._charge(self.P)
+        data = {
+            'academic_year': str(self.ay.pk), 'parent': str(self.spring.pk),
+            'code': self.A.code, 'label': self.A.label, 'bills_with_parent': 'on',
+        }
+        form = TermForm(data, instance=self.A)
+        self.assertFalse(form.is_valid())
+        self.assertIn('parent', form.errors)
+        # Detaching it strands them too (A would bill itself).
+        data['parent'] = ''
+        form = TermForm(data, instance=self.A)
+        self.assertFalse(form.is_valid())
+        self.assertIn('parent', form.errors)
+
+    def test_term_form_allows_parent_change_that_lines_up_charges(self):
+        # A bills itself with charges on itself; giving it parent P with
+        # "bill with parent" off keeps billing on A.
+        self.A.parent = None
+        self.A.save()
+        self._charge(self.A)
+        data = {
+            'academic_year': str(self.ay.pk), 'parent': str(self.P.pk),
+            'code': self.A.code, 'label': self.A.label,
+        }
+        self.assertTrue(TermForm(data, instance=self.A).is_valid())
+        data['bills_with_parent'] = 'on'
+        self.assertFalse(TermForm(data, instance=self.A).is_valid())
+
+    def test_term_form_skips_charge_check_without_student_transactions(self):
+        import sys
+        from unittest import mock
+        self._charge(self.P)
+        with mock.patch.dict(sys.modules, {'student_transactions.models': None}):
+            self.assertTrue(self._post(False).is_valid())
+
+    def test_bulk_assign_parent_refuses_to_strand_charges(self):
+        from cis.forms.term import BulkAssignParentForm
+        self._charge(self.P)
+        form = BulkAssignParentForm(
+            [str(self.A.pk)], data={'parent': str(self.spring.pk)})
+        self.assertTrue(form.is_valid(), form.errors)
+        assigned, skipped = form.save()
+        self.assertEqual((assigned, skipped), (0, 1))
+        self.A.refresh_from_db()
+        self.assertEqual(self.A.parent_id, self.P.pk)
+        self.assertEqual(len(form.stranded), 1)
+
+    def test_bulk_assign_parent_allows_terms_without_charges(self):
+        from cis.forms.term import BulkAssignParentForm
+        form = BulkAssignParentForm(
+            [str(self.A.pk)], data={'parent': str(self.spring.pk)})
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.save(), (1, 0))
+
     def _sa(self, student, term):
         from cis.models.student import StudentAgreement
         return StudentAgreement.objects.create(

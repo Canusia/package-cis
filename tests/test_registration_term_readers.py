@@ -313,6 +313,24 @@ class AuditRegistrationTermsTests(RegistrationTermReaderBase):
         self.assertIn('(b)', text)
         self.assertIn(str(self.registration.pk), text)
 
+    def test_audit_lists_sub_term_sections_registered_on_their_own_term(self):
+        # Pre-upgrade charges for such a section sit on the sub-term; after
+        # the upgrade the sub-term bills with its parent by default.
+        ClassSection.objects.filter(pk=self.section.pk).update(registration_term=self.a)
+        out = StringIO()
+        call_command('audit_registration_terms', stdout=out)
+        text = out.getvalue()
+        self.assertIn('C00001', text)
+        self.assertIn('Bill with parent term', text)
+        self.assertIn(self.a.code, text)
+
+    def test_audit_skips_sub_term_that_bills_separately(self):
+        ClassSection.objects.filter(pk=self.section.pk).update(registration_term=self.a)
+        Term.objects.filter(pk=self.a.pk).update(bills_with_parent=False)
+        out = StringIO()
+        call_command('audit_registration_terms', stdout=out)
+        self.assertNotIn('C00001', out.getvalue())
+
     def test_audit_is_quiet_when_everything_matches(self):
         out = StringIO()
         call_command('audit_registration_terms', stdout=out)

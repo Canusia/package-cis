@@ -46,6 +46,49 @@ def _campus_choices(field, queryset, user, campus_path, campus_of):
     field.label_from_instance = label
     return queryset
 
+CHARGE_LABELS = ('class_charge', 'school_charge')
+
+
+def _charge_term_ids(term):
+    """Term ids carrying class/school charges for registrations in ``term``'s
+    classes, or None when student_transactions isn't installed."""
+    try:
+        from student_transactions.models import StudentTransaction
+    except ImportError:
+        return None
+    from cis.models.section import StudentRegistration
+    ids = [str(i) for i in StudentRegistration.objects.filter(
+        class_section__term=term).values_list('id', flat=True)]
+    if not ids:
+        return set()
+    return set(StudentTransaction.objects.filter(
+        label__in=CHARGE_LABELS, meta__registration__in=ids
+    ).values_list('term_id', flat=True).distinct())
+
+
+def billing_change_error(term, parent, bills_with_parent):
+    """Message refusing a change to ``term``'s parent / "bill with parent"
+    flag that would move its billing term away from where its registrations'
+    existing charges sit; None if the change is fine.
+
+    A change that lines the billing term up with the charges is allowed (e.g.
+    pre-upgrade charges on a sub-term: turning the flag off is fine).
+    """
+    current = term.parent_id if (term.parent_id and term.bills_with_parent) else term.pk
+    new = parent.pk if (parent is not None and bills_with_parent) else term.pk
+    if new == current:
+        return None
+    charge_terms = _charge_term_ids(term)
+    if not charge_terms or charge_terms == {new}:
+        return None
+    if len(charge_terms) > 1:
+        return ('Classes in this term have charges split across more than '
+                'one term. Move them onto one term before changing how this '
+                'term bills.')
+    return ('Classes in this term already have charges on another term. '
+            'Move or remove them before changing how this term bills.')
+
+
 class AcademicYearUploadForm(forms.Form):
     file = forms.FileField(
         widget=forms.FileInput(attrs={'accept': 'text/csv'})
@@ -256,7 +299,10 @@ class BulkAssignParentForm(forms.Form):
 
     def save(self):
         """Returns (assigned, skipped); skips self, cycles and, in multi-campus
-        mode, terms on another campus or outside the user's campuses."""
+        mode, terms on another campus or outside the user's campuses.
+
+        Terms whose existing charges the new parent would strand are skipped
+        too and listed in ``self.stranded``."""
         parent = self.cleaned_data['parent']
         terms = Term.objects.select_related('academic_year__campus').filter(
             pk__in=self.ids)
@@ -266,10 +312,15 @@ class BulkAssignParentForm(forms.Form):
                 terms, self.user, campus_path='academic_year__campus')
         assigned = 0
         skipped = len(self.ids) - len(terms)
+        self.stranded = []
         for term in terms:
             if (term.pk == parent.pk or term.would_create_cycle(parent)
                     or (multi and not _same_campus(
                         _term_campus(term), _term_campus(parent)))):
+                skipped += 1
+                continue
+            if billing_change_error(term, parent, term.bills_with_parent):
+                self.stranded.append(term)
                 skipped += 1
                 continue
             term.parent = parent
@@ -333,23 +384,6 @@ class TermForm(forms.ModelForm):
                     'That parent would create a circular term hierarchy.')
         return parent
 
-    def clean_bills_with_parent(self):
-        value = self.cleaned_data.get('bills_with_parent')
-        if self.instance.pk and not self.instance._state.adding:
-            stored = Term.objects.filter(pk=self.instance.pk).values_list(
-                'bills_with_parent', flat=True).first()
-            if stored is not None and stored != value:
-                from student_transactions.models import StudentTransaction
-                from cis.models.section import StudentRegistration
-                ids = [str(i) for i in StudentRegistration.objects.filter(
-                    class_section__term=self.instance).values_list('id', flat=True)]
-                if ids and StudentTransaction.objects.filter(
-                        meta__registration__in=ids).exists():
-                    raise ValidationError(
-                        'Classes in this term already have charges. Move or '
-                        'remove them before changing how this term bills.')
-        return value
-
     def clean(self):
         cleaned = super().clean()
         parent = cleaned.get('parent')
@@ -369,7 +403,25 @@ class TermForm(forms.ModelForm):
             self.add_error(
                 'academic_year', 'This term has sub-terms on another campus; '
                                  'move or detach them first.')
+        self._check_billing_change(cleaned)
         return cleaned
+
+    def _check_billing_change(self, cleaned):
+        """Refuse a parent / "bill with parent" change that would strand this
+        term's existing charges on a term that no longer bills its classes."""
+        if self.instance._state.adding or 'bills_with_parent' not in cleaned:
+            return
+        if 'parent' not in cleaned:
+            return  # the parent field already has an error
+        stored = Term.objects.filter(pk=self.instance.pk).first()
+        if stored is None:
+            return
+        parent, flag = cleaned['parent'], cleaned['bills_with_parent']
+        message = billing_change_error(stored, parent, flag)
+        if message:
+            field = ('bills_with_parent' if flag != stored.bills_with_parent
+                     else 'parent')
+            self.add_error(field, message)
 
     def save(self, commit=False):
         record = super().save(commit=False)
