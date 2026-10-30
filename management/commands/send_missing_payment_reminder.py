@@ -65,9 +65,17 @@ class Command(CampusCommand):
         else:
             # get all registrations that have needs_mirroring set
 
-            registrations = StudentRegistration.objects.filter(
-                class_section__registration_term__in=registration_terms()
-            )
+            # registration_terms() is None when the setting is absent: nothing
+            # is open, so nobody is chased. A parent in the setting covers its
+            # sub-term classes.
+            open_terms = registration_terms()
+            if open_terms is None:
+                registrations = StudentRegistration.objects.none()
+            else:
+                from cis.services.term_hierarchy import expand_term_ids
+                registrations = StudentRegistration.objects.filter(
+                    class_section__term__id__in=expand_term_ids(open_terms)
+                )
 
             students = Student.objects.filter(
                 id__in=registrations.values_list('student__id'),

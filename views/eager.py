@@ -128,7 +128,9 @@ def campus_prefetch_related(prefix=''):
 
 
 def class_section_select_related(prefix=''):
-    # Term appears twice (term and registration_term).
+    # term__parent (loaded by the term plan) stands in for the retired
+    # registration_term. registration_term is still joined only because
+    # ClassSectionSerializer nests it; drop this line when that field goes.
     return (
         course_select_related(prefix + 'course__')
         + prefixed(prefix, ('campus', 'highschool__district', 'location'))
@@ -287,7 +289,7 @@ def annotate_registration_flags(records):
     # myce_tenant_configs/services/registration.py) the annotation would never
     # be read, so skip it rather than make the database evaluate a correlated
     # EXISTS per row for nothing. The stock rule matches on either the
-    # section's term or its registration_term, mirroring the property's Q().
+    # section's term or that term's parent, mirroring the property's Q().
     #
     # When the class's high school recommends, only the recommending school's
     # record covers a registration (covering_outer_q, per campus on a
@@ -298,8 +300,8 @@ def annotate_registration_flags(records):
         annotations['_has_recommendation'] = Exists(
             StudentRecommendation.objects.filter(
                 Q(student=OuterRef('student'))
-                & (Q(term=OuterRef('class_section__registration_term'))
-                   | Q(term=OuterRef('class_section__term')))
+                & (Q(term=OuterRef('class_section__term'))
+                   | Q(term=OuterRef('class_section__term__parent')))
                 & covering_outer_q(rule)))
 
     return records.annotate(**annotations)

@@ -1614,8 +1614,9 @@ class StudentRegistrationQuerySet(models.QuerySet):
 
         The selection half of the counselor chase-up, as a queryset so callers
         can narrow it further (by school, by student) instead of re-deriving the
-        rule. `terms` scopes to the sections' registration terms; None applies
-        no term scoping.
+        rule. `terms` scopes to the sections' own term, expanded to include
+        sub-terms (a parent in the setting covers its sub-term classes); None
+        applies no term scoping.
 
         The grade rule is `recommendation_required_q()` rather than a Python
         loop collecting skip_ids, which is one query and — unlike a bare
@@ -1626,7 +1627,8 @@ class StudentRegistrationQuerySet(models.QuerySet):
 
         qs = self.filter(status='applied').filter(recommendation_required_q())
         if terms is not None:
-            qs = qs.filter(class_section__registration_term__in=terms)
+            from cis.services.term_hierarchy import expand_term_ids
+            qs = qs.filter(class_section__term__id__in=expand_term_ids(terms))
         return qs
 
 
@@ -2436,7 +2438,10 @@ class StudentRegistration(models.Model):
             return annotated
 
         from cis.models.student import StudentRecommendation
-        term_ids = {self.class_section.registration_term_id, self.class_section.term_id}
+        # A recommendation filed for the section's term or for its parent
+        # (which stands in for the retired registration_term) covers it.
+        term = self.class_section.term
+        term_ids = {self.class_section.term_id, term.parent_id if term else None}
         term_ids.discard(None)
         return StudentRecommendation.covering(self, term_ids).exists()
     
