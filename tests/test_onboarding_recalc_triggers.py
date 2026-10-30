@@ -363,6 +363,35 @@ class RecalculationTriggerTests(_Base):
                     registration = self._register()
         self.assertTrue(StudentRegistration.objects.filter(pk=registration.pk).exists())
 
+    def test_registration_change_without_a_record_creates_none(self):
+        # A past student (no onboarding for the active term) must not be
+        # started on onboarding by a CE-side registration change.
+        from student_onboarding.models import StudentOnboarding
+        StudentOnboarding.objects.filter(student=self.student).delete()
+        with self.captureOnCommitCallbacks(execute=True):
+            self._register()
+        self.assertFalse(StudentOnboarding.objects.filter(student=self.student).exists())
+
+    def test_registration_change_with_a_record_recalculates(self):
+        with patch(RECALC, return_value={}) as recalc:
+            with self.captureOnCommitCallbacks(execute=True):
+                self._register()
+        recalc.assert_called_once()
+        self.assertEqual(recalc.call_args.kwargs.get('term'), self.term)
+
+    def test_multi_campus_skips_campus_terms_without_a_record(self):
+        from student_onboarding.models import StudentOnboarding
+        from cis.signals import onboarding as wiring
+        other = Term.objects.create(
+            academic_year=self.term.academic_year, code='S27', label=_u('Spring'))
+        self.assertFalse(StudentOnboarding.objects.filter(
+            student=self.student, term=other).exists())
+        with patch.object(wiring, 'is_multi_campus', return_value=True), \
+                patch.object(wiring, '_rollover_terms', return_value=[other, self.term]), \
+                patch(RECALC, return_value={}) as recalc:
+            wiring._recalculate_students({self.student.id})
+        self.assertEqual([c.kwargs.get('term') for c in recalc.call_args_list], [self.term])
+
     def test_old_student_onboarding_without_recalculate_is_a_no_op(self):
         # package-cis must run against student_onboarding v0.0.20.
         with patch(RECALC, new=None):

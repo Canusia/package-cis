@@ -23,6 +23,7 @@ from student_onboarding import api as onboarding_api, handlers, events
 from student_onboarding.api import (
     add_step, complete_step, get_or_create_for_current_term,
 )
+from student_onboarding.models import StudentOnboarding
 from student_onboarding.step_registry import register, all_steps, get as get_step
 
 from cis.models.section import StudentRegistration
@@ -366,10 +367,20 @@ def _recalculate_students(student_ids):
             if is_multi_campus():
                 # Each campus the student is onboarding with, at its own
                 # active term -- as on login rollover (MC-12).
-                for term in _rollover_terms(student):
-                    recalculate(student, term=term)
+                terms = _rollover_terms(student)
             else:
-                recalculate(student)
+                term = active_term()
+                terms = [term] if term is not None else []
+            for term in terms:
+                # Only existing records: a registration change must never
+                # start onboarding (and its emails) for a past student. The
+                # manual endpoint/action still create. Checked here rather
+                # than via recalculate(create=False) so older
+                # student_onboarding versions behave the same.
+                if not StudentOnboarding.objects.filter(
+                        student=student, term=term).exists():
+                    continue
+                recalculate(student, term=term)
         except Exception:
             logger.exception(
                 'Failed to recalculate onboarding for student %s', student_id)
