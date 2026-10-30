@@ -233,6 +233,43 @@ class RecalculationTriggerTests(_Base):
                 student=self.student, status='dropped').count(), 5)
         self.assertEqual(recalc.call_count, 1)
 
+    def test_bulk_status_change_saves_rows_in_one_form_transaction(self):
+        """TestCase already wraps everything in atomic blocks, so the
+        once-per-student count above would hold even if the form stopped
+        batching. Prove the form opens its own transaction: every row save
+        must run below one shared atomic block that the form opened (deeper
+        than the test's), each in its own per-row savepoint."""
+        from django.db import connection
+        with patch(RECALC):
+            with self.captureOnCommitCallbacks(execute=True):
+                registrations = [self._register() for _ in range(3)]
+
+        baseline = len(connection.atomic_blocks)
+        stacks = []
+        real_save = StudentRegistration.save
+
+        def recording_save(instance, *args, **kwargs):
+            stacks.append(list(connection.atomic_blocks))
+            return real_save(instance, *args, **kwargs)
+
+        with patch(RECALC), \
+                patch.object(StudentRegistration, 'save', recording_save):
+            response = self.client.post('/ce/registration/bulk_actions', {
+                'action': 'change_status',
+                'new_status': 'dropped',
+                'registration_ids': [str(r.id) for r in registrations],
+            })
+
+        self.assertEqual(response.json().get('status'), 'success', response.content)
+        self.assertEqual(len(stacks), 3)
+        for stack in stacks:
+            # The form's outer atomic + the per-row savepoint.
+            self.assertGreaterEqual(len(stack), baseline + 2)
+        outer = {id(stack[baseline]) for stack in stacks}
+        self.assertEqual(len(outer), 1, 'rows were not saved in one shared transaction')
+        rows = {id(stack[baseline + 1]) for stack in stacks}
+        self.assertEqual(len(rows), 3, 'each row needs its own savepoint')
+
     def test_bulk_status_change_skips_a_failing_row(self):
         """Per-row savepoints: one row's DB error leaves the others saved."""
         from cis.forms.section import StudentRegistrationChangeStatusForm
